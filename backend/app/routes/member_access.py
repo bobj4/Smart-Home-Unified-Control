@@ -17,6 +17,7 @@ from app.audit import record_event
 from app.authorization import require_role
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
+from app.login_times import forget_all
 from app.models import HomeMembership, Role, User
 from app.models import Session as SessionModel
 
@@ -69,6 +70,7 @@ def set_active(
     member.is_active = body.active
     if not body.active:  # log them out everywhere now
         db.execute(delete(SessionModel).where(SessionModel.user_id == user_id))
+        forget_all(db, user_id)
     db.commit()
     record_event(
         db,

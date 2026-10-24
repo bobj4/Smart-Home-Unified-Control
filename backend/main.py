@@ -26,13 +26,17 @@ from app.routes import (
     homes,
     https_admin,
     integrations,
+    layout,
+    login_times,
     member_access,
     members,
     rheem,
     safety_limits,
     samsung,
     thermostat,
+    verbose,
 )
+from app.verbose import VerboseRequestMiddleware
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 # Only files that exist in web/js and web/css when the app starts are served.
@@ -83,6 +87,7 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-CSRF-Token"],
 )
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(VerboseRequestMiddleware)
 
 app.include_router(auth.router)
 app.include_router(homes.router)
@@ -104,6 +109,9 @@ app.include_router(integrations.router)
 app.include_router(rheem.router)
 app.include_router(rheem.usage_router)
 app.include_router(thermostat.router)
+app.include_router(login_times.router)
+app.include_router(verbose.router)
+app.include_router(layout.router)
 app.include_router(cync.router)
 app.include_router(home_security.router)
 app.include_router(samsung.router)
@@ -122,23 +130,35 @@ def api_health() -> dict[str, str]:
 
 
 # Web app (PWA). Served without a session so the login page can load.
+# "no-cache": the browser asks each time whether its copy is current (a quick
+# 304 when it is), so an update takes effect on the next reload instead of
+# the browser running its old copy of a script for hours.
+REVALIDATE = {"Cache-Control": "no-cache"}
+
+
 @app.get("/", include_in_schema=False)
 def web_index() -> FileResponse:
-    return FileResponse(WEB_DIR / "public" / "index.html", media_type="text/html")
+    return FileResponse(
+        WEB_DIR / "public" / "index.html", media_type="text/html", headers=REVALIDATE
+    )
 
 
 @app.get("/js/{name}", include_in_schema=False)
 def web_script(name: str) -> FileResponse:
     if name not in WEB_SCRIPTS:
         raise HTTPException(status_code=404, detail="Not found")
-    return FileResponse(WEB_DIR / "js" / name, media_type="text/javascript")
+    return FileResponse(
+        WEB_DIR / "js" / name, media_type="text/javascript", headers=REVALIDATE
+    )
 
 
 @app.get("/css/{name}", include_in_schema=False)
 def web_style(name: str) -> FileResponse:
     if name not in WEB_STYLES:
         raise HTTPException(status_code=404, detail="Not found")
-    return FileResponse(WEB_DIR / "css" / name, media_type="text/css")
+    return FileResponse(
+        WEB_DIR / "css" / name, media_type="text/css", headers=REVALIDATE
+    )
 
 
 @app.get("/icons/{name}", include_in_schema=False)

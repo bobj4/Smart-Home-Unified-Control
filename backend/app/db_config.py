@@ -15,8 +15,6 @@ class Settings(BaseSettings):
     # Sessions (SEC-03): 30 minutes idle, 12 hours in total.
     IDLE_TIMEOUT_SECONDS: int = 30 * 60
     TOTAL_TIMEOUT_SECONDS: int = 12 * 60 * 60
-    # "Keep me logged in" on the login page (owner-approved 2026-10-24).
-    KEEP_LOGGED_IN_SECONDS: int = 30 * 24 * 60 * 60
 
     # Login methods (comma-separated): password, passkey, oidc.
     LOGIN_METHODS: str = "password"

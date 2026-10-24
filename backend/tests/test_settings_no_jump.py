@@ -70,3 +70,13 @@ def test_live_refresh_never_replaces_typing(open_page, owner, make_device):
         }"""
     )
     assert handle.evaluate("node => node.isConnected") is True
+
+
+def test_scripts_are_revalidated_so_updates_load(client):
+    # Without this the browser kept running its old settings.js for hours
+    # after an update (heuristic caching), so fixes did not show up.
+    for path in ("/", "/js/settings.js", "/css/app.css"):
+        r = client.get(path)
+        assert r.status_code == 200
+        assert r.headers["cache-control"] == "no-cache", path
+        assert r.headers.get("etag") or r.headers.get("last-modified")

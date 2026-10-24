@@ -111,8 +111,11 @@ class SmartHomeApp {
 
   /** "Remember me": the server keeps the login name in an HttpOnly cookie. */
   async fillRememberedLogin() {
-    let login = '';
-    try { ({ login } = await this.api.getRememberedLogin()); } catch (error) { return; }
+    let remembered;
+    try { remembered = await this.api.getRememberedLogin(); } catch (error) { return; }
+    const { login, device, keep_days: keepDays } = remembered;
+    byTestId('login-device-known').hidden = !device;
+    if (keepDays) byTestId('login-keep-label').textContent = `Keep me logged in for ${keepDays} day${keepDays === 1 ? '' : 's'}`;
     if (login && !byTestId('login-email').value) {
       byTestId('login-email').value = login;
       byTestId('login-remember').checked = true;
@@ -211,6 +214,7 @@ class SmartHomeApp {
       await this.api.login(name, password.value, code.value.trim(), {
         keepLoggedIn: byTestId('login-keep').checked,
         rememberMe: byTestId('login-remember').checked,
+        rememberDevice: byTestId('login-remember-device').checked,
       });
       password.value = '';
       code.value = '';
@@ -234,6 +238,7 @@ class SmartHomeApp {
     this.home = null;
     this.applyTheme('system');
     this.route();
+    await this.fillRememberedLogin(); // a device approved at this login
   }
 }
 

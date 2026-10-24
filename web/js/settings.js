@@ -54,7 +54,6 @@ class SettingsView {
     this.drawn = key;
     const token = (this.drawToken || 0) + 1;
     this.drawToken = token;
-    const { scrollX, scrollY } = window;
     if (redraw && live) {
       // Built off screen and swapped in whole: no blank page, no jump. Not
       // swapped if someone typed meanwhile or a newer draw started.
@@ -63,6 +62,7 @@ class SettingsView {
         if (token === this.drawToken) this.shown = null; // try again next tick
         return;
       }
+      const { scrollX, scrollY } = window; // where it is now, not when loading began
       this.root.replaceChildren(...page);
       window.scrollTo(scrollX, scrollY);
       return;

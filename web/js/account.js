@@ -23,9 +23,26 @@ class AccountSection {
       this.recoveryForm(),
       this.totpForm(),
     );
+    // Two tabs: where you are logged in now, and the devices approved to
+    // skip the two-factor code.
     this.sessionsBox = el('div', { className: 'sessions' });
-    container.append(el('h3', { text: 'Logged-in devices' }), this.sessionsBox);
-    await this.loadSessions();
+    const approved = new TrustedDevicesList(this.app);
+    const approvedBox = el('div', { hidden: true });
+    const tabs = [['sessions', 'Logged-in devices', this.sessionsBox], ['approved', 'Approved devices', approvedBox]];
+    const buttons = tabs.map(([key, label, box]) => el('button', {
+      type: 'button', className: key === 'sessions' ? 'on' : 'secondary', testid: `account-tab-${key}`, text: label,
+      'aria-pressed': String(key === 'sessions'),
+      onclick: () => {
+        tabs.forEach(([, , other], i) => {
+          other.hidden = other !== box;
+          buttons[i].className = other === box ? 'on' : 'secondary';
+          buttons[i].setAttribute('aria-pressed', String(other === box));
+        });
+        if (key === 'approved') this.app.run(() => approved.load());
+      },
+    }));
+    container.append(el('div', { className: 'segmented', role: 'group', 'aria-label': 'Devices' }, buttons), this.sessionsBox, approvedBox);
+    await Promise.all([this.loadSessions(), approved.render(approvedBox)]);
   }
 
   passwordForm() {

@@ -31,7 +31,9 @@ class AdminSection {
     ]);
     this.httpsBox = el('div', { className: 'subpanel', testid: 'https-box' });
     this.fillHttps(https);
-    container.append(this.nameForm(), this.displayBox(display), this.twoFactor(security), this.policyForm(policy), this.emailForm(email), this.httpsBox);
+    container.append(this.nameForm(), this.displayBox(display), this.twoFactor(security), this.policyForm(policy));
+    await new LoginTimesPanel(this.app).render(container);
+    container.append(this.emailForm(email), this.httpsBox);
   }
 
   /** Optional: an email server, so people can get recovery codes by email. */

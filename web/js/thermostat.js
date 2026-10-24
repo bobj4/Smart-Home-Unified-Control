@@ -1,7 +1,8 @@
 /**
  * Cync thermostat tile: the temperature it works from in the dial,
  * what the system is doing, the mode with the set points that mode uses
- * under it, the fan, the sensors, and an Info window with the rest. Demo
+ * under it, then the fan, the hold button and the schedule, the sensors,
+ * and an Info window with the rest. Demo
  * thermostats (no mode) keep the plain target dial from devices.js.
  */
 
@@ -76,6 +77,14 @@ function thermostatExtras(view, device, state) {
       ? el('p', { className: 'muted', testid: 'temp-limits', text: `Allowed ${limits.min_temperature}–${limits.max_temperature} °${limits.unit}` })
       : el('p', { className: 'warning', testid: 'limits-missing', text: 'Control is off until an admin sets safety limits.' }));
   }
+  if (state.fan) {
+    const fanOn = state.fan === 'on';
+    box.append(el('button', {
+      type: 'button', className: `toggle${fanOn ? ' on' : ''}`, testid: 'thermo-fan', 'aria-pressed': String(fanOn),
+      disabled: !device.controllable, text: fanOn ? 'Fan: on' : 'Fan: auto', 'aria-label': `${device.name} fan`,
+      onclick: () => view.command(device, 'set_fan', { fan: fanOn ? 'auto' : 'on' }),
+    }));
+  }
   if (THERMO_HOLDS[state.hold]) {
     const next = HOLD_ORDER[(HOLD_ORDER.indexOf(state.hold) + 1) % HOLD_ORDER.length];
     box.append(el('button', {
@@ -85,15 +94,11 @@ function thermostatExtras(view, device, state) {
       onclick: () => view.command(device, 'set_hold', { hold: next }),
     }));
   }
-  if (state.mode === 'eco') box.append(el('p', { className: 'muted', testid: 'thermo-eco', text: 'Eco mode: the thermostat keeps its own energy-saving range. Change the mode to set a temperature.' }));
-  if (state.fan) {
-    const fanOn = state.fan === 'on';
-    box.append(el('button', {
-      type: 'button', className: `toggle${fanOn ? ' on' : ''}`, testid: 'thermo-fan', 'aria-pressed': String(fanOn),
-      disabled: !device.controllable, text: fanOn ? 'Fan: on' : 'Fan: auto', 'aria-label': `${device.name} fan`,
-      onclick: () => view.command(device, 'set_fan', { fan: fanOn ? 'auto' : 'on' }),
-    }));
+  // The schedule sits right under the hold button: the hold decides whether it is followed.
+  if (device.integration === 'cync') {
+    box.append(el('button', { type: 'button', className: 'secondary', testid: 'thermo-schedule-open', text: 'Schedule', onclick: () => thermostatSchedulePanel(view).open(device) }));
   }
+  if (state.mode === 'eco') box.append(el('p', { className: 'muted', testid: 'thermo-eco', text: 'Eco mode: the thermostat keeps its own energy-saving range. Change the mode to set a temperature.' }));
   parts.push(box);
   const sensors = (state.sensors || []).filter((s) => typeof s.temperature === 'number');
   if (sensors.length) {
@@ -101,9 +106,6 @@ function thermostatExtras(view, device, state) {
       el('strong', { text: 'Sensors' }),
       ...sensors.map((s) => el('p', { className: 'muted', text: `${s.name}: ${sensorText(s)}` })),
     ]));
-  }
-  if (device.integration === 'cync') {
-    parts.push(el('button', { type: 'button', className: 'secondary', testid: 'thermo-schedule-open', text: 'Schedule', onclick: () => thermostatSchedulePanel(view).open(device) }));
   }
   parts.push(el('button', { type: 'button', className: 'secondary', testid: 'thermo-info-open', text: 'Info', onclick: () => thermostatPanel(view).open(device) }));
   return parts;

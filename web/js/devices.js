@@ -70,6 +70,14 @@ class DevicesView {
       this.app.api.getDisplay(homeId),
     ]);
     this.display = display;
+    if (this.layoutHome !== homeId) { // each user's room order, read once per home
+      try {
+        this.roomOrder = (await this.app.api.getLayout(homeId)).room_order;
+      } catch (error) {
+        this.roomOrder = null; // the default order
+      }
+      this.layoutHome = homeId;
+    }
     this.limits = Object.fromEntries(limits.map((l) => [l.device_type, l]));
     this.integrationsOn = new Set(integrations.filter((i) => i.enabled).map((i) => i.id));
     for (const device of devices) {
@@ -100,10 +108,17 @@ class DevicesView {
       rooms.get(room).push(tile);
     };
     if (!apart) groupList.forEach((g) => add(g.room || '', this.groupTile(g)));
-    devices.filter((d) => !grouped.has(d.id)).forEach((d) => add(d.room || '', this.card(d)));
-    const names = [...rooms.keys()].sort((a, b) => (a === '') - (b === '') || a.localeCompare(b));
+    devices.filter((d) => !grouped.has(d.id)).forEach((d) => add(displayRoom(d), this.card(d)));
+    const names = orderRooms([...rooms.keys()], this.roomOrder);
     const top = apart ? this.groups.section(groupList) : this.groups.hint(groupList);
-    this.root.replaceChildren(...[top].filter(Boolean), ...names.map((room) => el('section', { className: 'room', testid: 'room', 'data-room': room }, [
+    const layout = el('button', {
+      type: 'button', className: 'secondary layout-open', testid: 'layout-open', text: 'Edit layout',
+      onclick: () => {
+        if (!this.layoutEditor) this.layoutEditor = new RoomLayoutEditor(this);
+        this.layoutEditor.open(names);
+      },
+    });
+    this.root.replaceChildren(el('div', { className: 'devices-top' }, [top, layout].filter(Boolean)), ...names.map((room) => el('section', { className: 'room', testid: 'room', 'data-room': room }, [
       el('h2', { text: room || 'No room' }),
       el('div', { className: 'device-grid' }, rooms.get(room)),
     ])));
@@ -134,7 +149,9 @@ class DevicesView {
   }
 
   card(device) {
-    const state = device.state || {};
+    // A disconnected device is drawn off (and dimmed by .offline) until it is
+    // back online; then its real state shows again on the next refresh.
+    const state = device.online ? (device.state || {}) : { ...(device.state || {}), on: false, status: 'off' };
     const on = Boolean(state.on);
     const card = el('article', {
       className: `device-card${on ? ' on' : ''}${device.online ? '' : ' offline'}`,

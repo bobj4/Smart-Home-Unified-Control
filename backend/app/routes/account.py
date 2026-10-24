@@ -25,6 +25,7 @@ from app.auth import (
 from app.db_config import get_db
 from app.dependencies import client_ip, current_session, current_user, require_csrf
 from app.login_policy import check_password
+from app.login_times import forget_all
 from app.models import Home, HomeMembership, User
 from app.models import Session as SessionModel
 from app.rate_limiter import check_login_allowed, record_login_failure
@@ -120,6 +121,7 @@ def change_password(
             SessionModel.user_id == user.id, SessionModel.id != session.id
         )
     )
+    forget_all(db, user.id)  # remembered devices need the code again
     db.commit()
     record_event(db, "password_changed", user_id=user.id, ip_address=ip)
     return {"detail": "Password changed"}
@@ -175,6 +177,7 @@ def confirm_totp_reset(
     user.pending_totp_secret = None
     user.totp_last_step = step
     user.is_totp_enabled = True
+    forget_all(db, user.id)  # remembered devices need the new code once
     db.commit()
     record_event(db, "totp_reset", user_id=user.id, ip_address=client_ip(request))
     return {"detail": "Authenticator replaced"}
@@ -209,6 +212,7 @@ def disable_totp(
     user.totp_secret = None
     user.pending_totp_secret = None
     user.totp_last_step = None
+    forget_all(db, user.id)
     db.commit()
     record_event(db, "totp_disabled", user_id=user.id, ip_address=ip)
     return {"detail": "Two-factor login turned off"}
