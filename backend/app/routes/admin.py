@@ -18,6 +18,7 @@ from app.authorization import require_role
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
 from app.login_policy import check_password, normalize_login, settings, settings_out
+from app.login_times import forget_all
 from app.mailer import configured
 from app.models import Home, HomeMembership, PasswordReset, Role, User
 from app.models import Session as SessionModel
@@ -300,6 +301,7 @@ def set_member_password(
     check_password(db, body.password)
     target.hashed_password = hash_password(body.password)
     db.execute(delete(SessionModel).where(SessionModel.user_id == user_id))
+    forget_all(db, user_id)
     db.commit()
     record_event(
         db,
@@ -355,6 +357,7 @@ def recover(
     target.totp_last_step = None
     reset.used_at = datetime.now(UTC)
     db.execute(delete(SessionModel).where(SessionModel.user_id == target.id))
+    forget_all(db, target.id)
     db.commit()
     record_event(db, "password_recovered", user_id=target.id, ip_address=ip)
     return {"detail": "Password changed. Log in with the new password."}

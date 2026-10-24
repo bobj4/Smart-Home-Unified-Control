@@ -20,8 +20,10 @@
                 <label for="totp">Authenticator code or recovery code (leave empty if two-factor is off)</label>
                 <input type="text" id="totp" data-testid="login-code" inputmode="numeric" autocomplete="one-time-code"
                        pattern="[0-9]{6}|[0-9]{8}" maxlength="8">
+                <p class="muted" data-testid="login-device-known" hidden>This device is remembered: leave the code empty.</p>
                 <label class="check"><input type="checkbox" id="login-remember" data-testid="login-remember"> Remember me</label>
-                <label class="check"><input type="checkbox" id="login-keep" data-testid="login-keep"> Keep me logged in for 30 days</label>
+                <label class="check"><input type="checkbox" id="login-keep" data-testid="login-keep"> <span data-testid="login-keep-label">Keep me logged in for 30 days</span></label>
+                <label class="check"><input type="checkbox" id="login-remember-device" data-testid="login-remember-device"> Remember this device (no code needed here next time)</label>
                 <button type="submit" data-testid="login-submit">Log in</button>
                 <p id="login-error" class="error" data-testid="login-error" role="alert"></p>
             </form>
@@ -133,6 +135,7 @@
     <script src="/js/thermostat.js"></script>
     <script src="/js/thermostat-schedule-edit.js"></script>
     <script src="/js/thermostat-schedule.js"></script>
+    <script src="/js/room-layout.js"></script>
     <script src="/js/devices.js"></script>
     <script src="/js/rheem.js"></script>
     <script src="/js/cync.js"></script>
@@ -141,11 +144,13 @@
     <script src="/js/cameras.js"></script>
     <script src="/js/activity-log.js"></script>
     <script src="/js/home-settings.js"></script>
+    <script src="/js/trusted-devices.js"></script>
     <script src="/js/account.js"></script>
     <script src="/js/members.js"></script>
     <script src="/js/settings.js"></script>
     <script src="/js/enroll.js"></script>
     <script src="/js/recover.js"></script>
+    <script src="/js/login-times.js"></script>
     <script src="/js/admin.js"></script>
     <script src="/js/app.js"></script>
 </body>

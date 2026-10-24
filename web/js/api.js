@@ -54,16 +54,28 @@ class SmartHomeAPI {
   del(path) { return this.request(path, { method: 'DELETE' }); }
 
   // Login and logout
-  login(email, password, code, { keepLoggedIn = false, rememberMe = false } = {}) {
+  login(email, password, code, { keepLoggedIn = false, rememberMe = false, rememberDevice = false } = {}) {
     // 6 digits: authenticator code. 8 digits: one of the recovery codes.
     // Empty: the account has two-factor login turned off.
-    const body = { email, password, keep_logged_in: keepLoggedIn, remember_me: rememberMe };
+    const body = {
+      email, password, keep_logged_in: keepLoggedIn, remember_me: rememberMe, remember_device: rememberDevice,
+    };
     if (code.length === 8) body.recovery_code = code;
     else if (code) body.totp_code = code;
     return this.post('/auth/login', body);
   }
   logout() { return this.post('/auth/logout'); }
   getRememberedLogin() { return this.get('/auth/remembered'); }
+  getLoginTimes() { return this.get('/admin/login-times'); }
+  setLoginTimes(body) { return this.put('/admin/login-times', body); }
+  getMyDevices() { return this.get('/account/trusted-devices'); }
+  forgetMyDevice(id) { return this.del(`/account/trusted-devices/${enc(id)}`); }
+  getAllDevices() { return this.get('/admin/trusted-devices'); }
+  forgetAnyDevice(id) { return this.del(`/admin/trusted-devices/${enc(id)}`); }
+  getVerbose() { return this.get('/admin/verbose-logging'); }
+  setVerbose(enabled) { return this.put('/admin/verbose-logging', { enabled }); }
+  getLayout(homeId) { return this.get(`/homes/${enc(homeId)}/layout`); }
+  setLayout(homeId, roomOrder) { return this.put(`/homes/${enc(homeId)}/layout`, { room_order: roomOrder }); }
 
   // Devices
   getDevices(homeId) { return this.get(`/homes/${enc(homeId)}/devices`); }

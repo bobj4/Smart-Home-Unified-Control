@@ -25,6 +25,7 @@ from app.authorization import require_role
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
 from app.login_policy import check_password, normalize_login
+from app.login_times import forget_all
 from app.models import Enrollment, HomeMembership, Role, User
 from app.models import Session as SessionModel
 from app.rate_limiter import check_login_allowed, record_login_failure
@@ -143,6 +144,7 @@ def remove_member(
         # the same email or username can be used again. Kept (deactivated)
         # so the activity log still shows who did what.
         db.execute(delete(SessionModel).where(SessionModel.user_id == user_id))
+        forget_all(db, user_id)
         gone = db.get(User, user_id)
         if gone is not None:
             gone.email = f"deleted:{gone.id}"

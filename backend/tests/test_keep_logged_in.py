@@ -81,20 +81,20 @@ def test_logout_ends_a_kept_session(client, db, owner, csrf):
 
 
 def test_remember_me_keeps_only_the_login_name(client, owner):
-    assert client.get("/api/v1/auth/remembered").json() == {"login": ""}
+    assert client.get("/api/v1/auth/remembered").json()["login"] == ""
     r = client.post(LOGIN, json=body(owner, owner.totp.now(), remember_me=True))
     assert r.status_code == 200
     header = cookie_header(r, "remembered_login").lower()
     assert "httponly" in header and "secure" in header and "samesite=strict" in header
     assert owner.password.lower() not in header
-    assert client.get("/api/v1/auth/remembered").json() == {"login": owner.email}
+    assert client.get("/api/v1/auth/remembered").json()["login"] == owner.email
     # Logging out keeps it; logging in without remember me forgets it.
     csrf_token = client.cookies.get("csrf_token")
     client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": csrf_token})
-    assert client.get("/api/v1/auth/remembered").json() == {"login": owner.email}
+    assert client.get("/api/v1/auth/remembered").json()["login"] == owner.email
     r = client.post(LOGIN, json=body(owner, owner.totp.at(time.time() + 30)))
     assert r.status_code == 200
-    assert client.get("/api/v1/auth/remembered").json() == {"login": ""}
+    assert client.get("/api/v1/auth/remembered").json()["login"] == ""
 
 
 def test_remember_me_must_be_a_boolean(client, owner):
@@ -105,7 +105,7 @@ def test_remember_me_must_be_a_boolean(client, owner):
 def test_failed_login_does_not_remember(client, owner):
     bad = {"email": owner.email, "password": "wrong", "remember_me": True}
     assert client.post(LOGIN, json=bad).status_code == 401
-    assert client.get("/api/v1/auth/remembered").json() == {"login": ""}
+    assert client.get("/api/v1/auth/remembered").json()["login"] == ""
 
 
 def test_ui_remember_me_and_keep_logged_in(open_page, db, owner):

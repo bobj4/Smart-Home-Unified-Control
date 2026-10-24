@@ -186,7 +186,9 @@ class Device(Base):
     # only narrow the home's limits for the type. None = use the type's.
     min_temperature: Mapped[float | None] = mapped_column(Float)
     max_temperature: Mapped[float | None] = mapped_column(Float)
-    online: Mapped[bool] = mapped_column(Boolean, default=False)
+    # active_history: the old value is loaded when it changes, so verbose
+    # logging can tell a real online/offline change (app/verbose.py).
+    online: Mapped[bool] = mapped_column(Boolean, default=False, active_history=True)
     last_updated: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow
     )
@@ -337,6 +339,23 @@ class SystemSettings(Base):
     smtp_username: Mapped[str | None] = mapped_column(String(255))
     smtp_password: Mapped[str | None] = mapped_column(Text)
     smtp_from: Mapped[str | None] = mapped_column(String(255))
+    # How long the login page's choices last (Settings > Admin > Login times).
+    # "Keep me logged in": days a kept session lasts.
+    keep_logged_in_days: Mapped[int] = mapped_column(
+        Integer, default=30, server_default="30"
+    )
+    # "Remember me": days the login name stays filled in.
+    remember_me_days: Mapped[int] = mapped_column(
+        Integer, default=365, server_default="365"
+    )
+    # "Remember this device" (skip the two-factor code): days, 0 = forever.
+    remember_device_days: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0"
+    )
+    # Settings > Activity log: also record integration detail (app/verbose.py).
+    verbose_logging: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
@@ -400,3 +419,49 @@ class Room(Base):
         String(36), ForeignKey("homes.id", ondelete="CASCADE"), index=True
     )
     name: Mapped[str] = mapped_column(String(50))
+
+
+class TrustedDevice(Base):
+    """A browser a user approved at login ("Remember this device"): logging
+    in there needs the password but not the two-factor code. The browser
+    holds a random token in an HttpOnly cookie; only its SHA-256 is stored.
+    It lasts SystemSettings.remember_device_days from created_at (0 =
+    forever) and ends when the user or an admin removes it, the password
+    changes, the authenticator is reset or the account is turned off."""
+
+    __tablename__ = "trusted_devices"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    name: Mapped[str] = mapped_column(String(100))  # "Chrome on Windows"
+    ip_address: Mapped[str | None] = mapped_column(String(45))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RoomLayout(Base):
+    """One user's order of the rooms on a home's Devices page (a JSON list
+    of room names; THERMOSTATS_ROOM stands for the thermostats' own room).
+    Rooms not in the list follow in name order."""
+
+    __tablename__ = "room_layouts"
+    __table_args__ = (
+        UniqueConstraint("user_id", "home_id", name="uq_room_layout_user_home"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    home_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("homes.id", ondelete="CASCADE"), index=True
+    )
+    room_order: Mapped[str] = mapped_column(Text, default="[]")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )

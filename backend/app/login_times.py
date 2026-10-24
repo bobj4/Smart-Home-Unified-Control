@@ -1,0 +1,164 @@
+"""How long the login page's choices last, and "Remember this device".
+
+Admins set three times in Settings > Admin > Login times (installation-wide,
+like the other login rules):
+  keep_logged_in_days   a "Keep me logged in" session (default 30)
+  remember_me_days      the remembered login name (default 365)
+  remember_device_days  an approved device skips the two-factor code
+                        (default 0 = forever)
+
+A remembered device is a random token in an HttpOnly, Secure, SameSite=Strict
+cookie scoped to /api/v1; the database keeps only its SHA-256. It only
+replaces the two-factor code: the password is still needed, and failures
+still count towards the login rate limit. It belongs to one user, so another
+person logging in on the same browser still needs their own code.
+"""
+
+import hashlib
+import secrets
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session
+
+from app.login_policy import settings
+from app.models import SystemSettings, TrustedDevice
+
+DAY = 24 * 60 * 60
+DEVICE_COOKIE = "trusted_device"
+DEVICE_PATH = "/api/v1"  # login, and My account (to mark "this device")
+FOREVER_SECONDS = 10 * 365 * DAY  # the cookie needs some max-age
+LIMITS = {
+    "keep_logged_in_days": (1, 365),
+    "remember_me_days": (1, 3650),
+    "remember_device_days": (0, 3650),
+}
+
+
+def times_out(row: SystemSettings) -> dict[str, int]:
+    return {name: int(getattr(row, name)) for name in LIMITS}
+
+
+def keep_seconds(db: Session) -> int:
+    return int(settings(db).keep_logged_in_days) * DAY
+
+
+def remember_me_seconds(db: Session) -> int:
+    return int(settings(db).remember_me_days) * DAY
+
+
+def device_cookie_seconds(db: Session) -> int:
+    days = int(settings(db).remember_device_days)
+    return days * DAY if days else FOREVER_SECONDS
+
+
+def _hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
+
+
+def expires_at(db: Session, device: TrustedDevice) -> datetime | None:
+    days = int(settings(db).remember_device_days)
+    return _as_utc(device.created_at) + timedelta(days=days) if days else None
+
+
+def device_name(user_agent: str | None) -> str:
+    """A readable name such as "Chrome on Windows" (never the raw header)."""
+    ua = (user_agent or "").lower()
+    browser = next(
+        (
+            name
+            for key, name in (
+                ("edg/", "Edge"),
+                ("opr/", "Opera"),
+                ("firefox/", "Firefox"),
+                ("chrome/", "Chrome"),
+                ("crios/", "Chrome"),
+                ("safari/", "Safari"),
+            )
+            if key in ua
+        ),
+        "Browser",
+    )
+    system = next(
+        (
+            name
+            for key, name in (
+                ("iphone", "iPhone"),
+                ("ipad", "iPad"),
+                ("android", "Android"),
+                ("windows", "Windows"),
+                ("mac os", "Mac"),
+                ("cros", "ChromeOS"),
+                ("linux", "Linux"),
+            )
+            if key in ua
+        ),
+        "unknown system",
+    )
+    return f"{browser} on {system}"
+
+
+def remember(db: Session, user_id: str, user_agent: str | None, ip: str | None) -> str:
+    """Approve this browser for the user; returns the cookie's token."""
+    token = secrets.token_urlsafe(32)
+    db.add(
+        TrustedDevice(
+            user_id=user_id,
+            token_hash=_hash(token),
+            name=device_name(user_agent),
+            ip_address=ip,
+        )
+    )
+    db.commit()
+    return token
+
+
+def trusted(db: Session, user_id: str, token: str | None) -> TrustedDevice | None:
+    """The user's approved device for this cookie, if still valid. An
+    expired one is deleted."""
+    if not token or len(token) > 100:
+        return None
+    device = db.scalars(
+        select(TrustedDevice).where(TrustedDevice.token_hash == _hash(token))
+    ).first()
+    if device is None or device.user_id != user_id:
+        return None
+    ends = expires_at(db, device)
+    if ends is not None and datetime.now(UTC) >= ends:
+        db.delete(device)
+        db.commit()
+        return None
+    return device
+
+
+def is_current(device: TrustedDevice, token: str | None) -> bool:
+    return bool(token) and device.token_hash == _hash(str(token))
+
+
+def forget_all(db: Session, user_id: str) -> int:
+    """Remove every approved device of a user (password change, new
+    authenticator, account turned off). The caller commits."""
+    result = db.execute(delete(TrustedDevice).where(TrustedDevice.user_id == user_id))
+    return int(getattr(result, "rowcount", 0) or 0)
+
+
+def device_out(
+    db: Session, device: TrustedDevice, token: str | None = None
+) -> dict[str, Any]:
+    ends = expires_at(db, device)
+    return {
+        "id": device.id,
+        "name": device.name,
+        "ip_address": device.ip_address,
+        "created_at": _as_utc(device.created_at).isoformat(),
+        "last_used_at": _as_utc(device.last_used_at).isoformat()
+        if device.last_used_at
+        else None,
+        "expires_at": ends.isoformat() if ends else None,
+        "current": is_current(device, token),
+    }
