@@ -312,7 +312,7 @@ def test_ui_thermostat_tile(open_page, db, owner, make_device):
     page.reload()
     tile = card(page, "Hallway")
     expect(tile.get_by_test_id("thermo-eco")).to_be_visible()
-    expect(tile.get_by_test_id("temp-up")).to_be_disabled()
+    expect(tile.get_by_test_id("temp-up")).to_have_count(0)  # no set point in Eco
 
 
 def test_heater_running_value():

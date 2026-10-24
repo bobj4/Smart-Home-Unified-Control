@@ -168,7 +168,9 @@ class DevicesView {
         disabled: !device.controllable, onclick: () => this.remote.open(device),
       }));
     }
-    if (TEMPERATURE_TYPES.has(device.type)) card.append(this.dial(device, state));
+    // A thermostat's dial is its active set point; Off and Eco have none.
+    const dialInfo = device.type === 'thermostat' ? thermostatDialInfo(state) : { show: true, label: 'target' };
+    if (TEMPERATURE_TYPES.has(device.type) && dialInfo.show) card.append(this.dial(device, state, dialInfo.label));
     if (device.type === 'water_heater') card.append(...heaterExtras(this, device, state));
     if (device.type === 'thermostat') card.append(...thermostatExtras(this, device, state));
     if (device.type === 'sensor') card.append(this.readings(state));
@@ -188,7 +190,7 @@ class DevicesView {
     });
   }
 
-  dial(device, state) {
+  dial(device, state, label = 'target') {
     // The device's own limits narrow the home's limits for its type.
     const typeLimits = this.limits[device.type];
     const own = device.limits || {};
@@ -197,8 +199,7 @@ class DevicesView {
       min_temperature: own.min_temperature == null ? typeLimits.min_temperature : Math.max(typeLimits.min_temperature, own.min_temperature),
       max_temperature: own.max_temperature == null ? typeLimits.max_temperature : Math.min(typeLimits.max_temperature, own.max_temperature),
     };
-    // A Cync thermostat in Eco mode ignores set points.
-    const usable = Boolean(limits && limits.enabled) && device.controllable && state.mode !== 'eco';
+    const usable = Boolean(limits && limits.enabled) && device.controllable;
     const target = typeof state.target_temperature === 'number' ? state.target_temperature : null;
     const unit = (limits && limits.unit) || state.unit || '';
     const wrap = el('div', { className: 'dial' });
@@ -209,7 +210,7 @@ class DevicesView {
       gauge(fraction, device.type),
       el('div', { className: 'readout' }, [
         el('span', { className: 'target', testid: 'target-temp', text: target === null ? '--' : `${target} °${unit}` }),
-        el('span', { className: 'muted', text: 'target' }),
+        el('span', { className: 'muted', testid: 'target-label', text: label }),
       ]),
     ]));
     if (limits && limits.enabled) {
