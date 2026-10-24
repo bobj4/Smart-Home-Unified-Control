@@ -183,3 +183,78 @@ def week_from_settings(values: dict[str, Any]) -> dict[str, Any]:
         raw = setting_bytes(values.get(sensor_name(day)))
         week["sensors"][day] = parse_sensor_schedule(raw) if raw is not None else None
     return week
+
+
+MAX_PERIODS = {"heat": 6, "cool": 6, "auto": 6, "sensors": 10}
+
+
+def encode_sensor_schedule(periods: list[dict[str, Any]]) -> bytes:
+    """The bytes for one day of the sensor schedule: read "thermostat",
+    "all", or "sensor" with the remote sensor's 6-digit PIN."""
+    if not periods:
+        return EMPTY
+    out = bytearray()
+    last = -1
+    for period in periods:
+        hour, minute = _time(str(period.get("time", "")))
+        if hour * 60 + minute <= last:
+            raise ScheduleError("periods must be in time order, one per time")
+        last = hour * 60 + minute
+        read = period.get("read")
+        if read not in METHOD_CODES:
+            raise ScheduleError("read must be thermostat, all or sensor")
+        out += bytes([hour, minute, METHOD_CODES[read]])
+        if read == "sensor":
+            pin = str(period.get("pin") or "")
+            if len(pin) != 6 or not pin.isdigit():
+                raise ScheduleError("a remote sensor is chosen by its 6-digit PIN")
+            out += b"\x01" + pin.encode("ascii")
+        else:
+            out += bytes(7)
+    return bytes(out)
+
+
+def encode_day(kind: str, periods: list[dict[str, Any]], unit: str = "F") -> bytes:
+    if len(periods) > MAX_PERIODS[kind]:
+        raise ScheduleError(f"at most {MAX_PERIODS[kind]} periods a day")
+    if kind == "sensors":
+        return encode_sensor_schedule(periods)
+    return encode_schedule(kind, periods, unit)
+
+
+def day_index(kind: str, day: str) -> int:
+    return sensor_index(day) if kind == "sensors" else schedule_index(kind, day)
+
+
+def day_name(kind: str, day: str) -> str:
+    return sensor_name(day) if kind == "sensors" else schedule_name(kind, day)
+
+
+def same_day(kind: str, wanted: list[dict[str, Any]], held: Any) -> bool:
+    """Whether a read-back value holds the periods that were written."""
+    raw = setting_bytes(held)
+    if raw is None:
+        return not wanted
+    try:
+        got = (
+            parse_sensor_schedule(raw)
+            if kind == "sensors"
+            else parse_schedule(kind, raw)
+        )
+    except ScheduleError:
+        return False
+    if len(got) != len(wanted):
+        return False
+    for want, have in zip(wanted, got, strict=True):
+        if _time(str(want["time"])) != _time(have["time"]):
+            return False
+        if kind == "sensors":
+            if want["read"] != have["read"]:
+                return False
+            if want["read"] == "sensor" and str(want.get("pin")) != have.get("pin"):
+                return False
+            continue
+        for key in ("heat", "cool") if kind == "auto" else (kind,):
+            if abs(float(want[key]) - float(have[key])) > 0.15:  # 0.1 rounding in C
+                return False
+    return True
