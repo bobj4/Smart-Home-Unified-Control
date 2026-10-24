@@ -1,0 +1,17 @@
+# Only backend/ and web/ are copied into the image; keep everything else out
+# of the build context.
+.git
+.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/*.db
+**/*.db.old
+**/.env
+backend/tests
+app_files
+docs
+deploy
+scripts

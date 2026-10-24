@@ -1,0 +1,17 @@
+src = ["backend"]
+target-version = "py313"
+
+[lint]
+select = ["F", "B", "E", "W", "I"]
+ignore = ["B008", "E501"]
+
+[lint.isort]
+known-first-party = ["app"]
+
+[format]
+indent-style = "space"
+quote-style = "double"
+skip-magic-trailing-comma = false
+line-ending = "lf"
+docstring-code-format = false
+docstring-code-line-length = 79

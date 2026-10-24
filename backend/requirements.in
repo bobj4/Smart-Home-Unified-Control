@@ -1,0 +1,16 @@
+# Runtime dependencies. Edit this file, then regenerate requirements.txt:
+#   ..\.venv\Scripts\python.exe -m uv pip compile requirements.in --universal --python-version 3.13 --generate-hashes -o requirements.txt
+alembic
+argon2-cffi
+cryptography
+fastapi
+pydantic
+pydantic-settings
+pyeconet
+pycync
+pyotp
+requests
+samsungtvws[async,encrypted]
+segno
+sqlalchemy
+uvicorn

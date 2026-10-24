@@ -1,0 +1,8 @@
+[project]
+name = "smart-home-backend"
+version = "0.1.0"
+description = "Unified smart home control backend"
+requires-python = ">=3.13,<3.14"
+# Dependencies are not listed here. Direct dependencies are in requirements.in
+# and requirements-dev.in; requirements.txt and requirements-dev.txt are the
+# compiled, hashed pins. The compile command is at the top of each .in file.
