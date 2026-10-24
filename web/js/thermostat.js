@@ -103,6 +103,9 @@ function thermostatExtras(view, device, state) {
       ...sensors.map((s) => el('p', { className: 'muted', text: `${s.name}: ${sensorText(s)}` })),
     ]));
   }
+  if (device.integration === 'cync') {
+    parts.push(el('button', { type: 'button', className: 'secondary', testid: 'thermo-schedule-open', text: 'Schedule', onclick: () => thermostatSchedulePanel(view).open(device) }));
+  }
   parts.push(el('button', { type: 'button', className: 'secondary', testid: 'thermo-info-open', text: 'Info', onclick: () => thermostatPanel(view).open(device) }));
   return parts;
 }

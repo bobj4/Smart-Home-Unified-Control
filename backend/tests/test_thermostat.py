@@ -82,6 +82,7 @@ def test_decodes_the_real_probe_reply():
             "humidity": 45,
             "battery": None,
             "active": True,
+            "pin": None,
         },
         {
             "name": "Remote sensor",
@@ -89,6 +90,7 @@ def test_decodes_the_real_probe_reply():
             "humidity": 44,
             "battery": "2.89",
             "active": True,
+            "pin": "024944",
         },
     ]
     assert t.parse_probe_reply(bytes.fromhex("0018" + "0a")) is None  # offline
