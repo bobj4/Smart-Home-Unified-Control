@@ -7,7 +7,8 @@
 
 const THERMO_MODES = { off: 'Off', heat: 'Heat', cool: 'Cool', auto: 'Auto', eco: 'Eco', emergency: 'Emergency heat' };
 const THERMO_STATUS = { heating: 'Heating', cooling: 'Cooling', idle: 'Idle', off: 'Off' };
-const THERMO_HOLDS = { schedule: 'Following the schedule', permanent: 'Permanent hold', temporary: 'Temporary hold' };
+const THERMO_HOLDS = { schedule: 'Following schedule', temporary: 'Temporary hold', permanent: 'Permanent hold' };
+const HOLD_ORDER = ['schedule', 'temporary', 'permanent']; // the hold button cycles in this order
 const HEAT_MODES = new Set(['heat', 'auto', 'emergency']);
 const COOL_MODES = new Set(['cool', 'auto']);
 
@@ -76,6 +77,15 @@ function thermostatExtras(view, device, state) {
       ? el('p', { className: 'muted', testid: 'temp-limits', text: `Allowed ${limits.min_temperature}–${limits.max_temperature} °${limits.unit}` })
       : el('p', { className: 'warning', testid: 'limits-missing', text: 'Control is off until an admin sets safety limits.' }));
   }
+  if (THERMO_HOLDS[state.hold]) {
+    const next = HOLD_ORDER[(HOLD_ORDER.indexOf(state.hold) + 1) % HOLD_ORDER.length];
+    box.append(el('button', {
+      type: 'button', className: `toggle${state.hold === 'schedule' ? '' : ' on'}`, testid: 'thermo-hold', 'data-hold': state.hold,
+      disabled: !device.controllable, text: THERMO_HOLDS[state.hold], title: `Change to: ${THERMO_HOLDS[next]}`,
+      'aria-label': `${device.name}: ${THERMO_HOLDS[state.hold]}. Change to ${THERMO_HOLDS[next]}`,
+      onclick: () => view.command(device, 'set_hold', { hold: next }),
+    }));
+  }
   if (state.mode === 'eco') box.append(el('p', { className: 'muted', testid: 'thermo-eco', text: 'Eco mode: the thermostat keeps its own energy-saving range. Change the mode to set a temperature.' }));
   if (state.fan) {
     const fanOn = state.fan === 'on';
@@ -111,7 +121,6 @@ class ThermostatPanel {
     const s = device.state || {};
     const line = (label, value) => el('div', { className: 'info-line' }, [el('dt', { text: label }), el('dd', { text: value })]);
     const rows = [
-      ['Schedule', THERMO_HOLDS[s.hold]],
       ['System', s.system],
       ['Filter use', s.filter_hours != null ? `${s.filter_hours} h${s.filter_reset ? ` since ${s.filter_reset}` : ''}` : null],
       ['Firmware', s.firmware],

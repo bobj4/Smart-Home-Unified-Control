@@ -63,7 +63,8 @@ def test_ui_tile_layout(open_page, db, owner, make_device):
     text = info_text(page, tile)
     for shown_on_tile in ("Mode", "Heat to", "Cool to", "Humidity", "Fan", "Inside"):
         assert shown_on_tile not in text, shown_on_tile
-    assert "Permanent hold" in text and "V1.2.136" in text
+    assert "V1.2.136" in text and "984 h" in text
+    assert "hold" not in text  # the hold button is on the tile
 
 
 def test_ui_set_points_follow_the_mode(open_page, db, owner, make_device):

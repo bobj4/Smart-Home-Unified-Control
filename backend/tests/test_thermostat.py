@@ -299,9 +299,9 @@ def test_ui_thermostat_tile(open_page, db, owner, make_device):
     expect(tile.get_by_test_id("thermo-sensors")).to_contain_text(
         "Remote sensor: 67.8 °F · 44% · battery 2.89 V"
     )
+    expect(tile.get_by_test_id("thermo-hold")).to_have_text("Permanent hold")
     tile.get_by_test_id("thermo-info-open").click()
     panel = page.get_by_test_id("thermo-panel")
-    expect(panel).to_contain_text("Permanent hold")
     expect(panel).to_contain_text("984 h since 2026-06-17")
     panel.get_by_test_id("thermo-close").click()
     eco = {**json.loads(d.state), "mode": "eco"}

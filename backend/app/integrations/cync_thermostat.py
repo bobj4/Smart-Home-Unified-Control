@@ -24,13 +24,14 @@ REPLY_SECONDS = 10
 FIRMWARE, WIFI, TEMPERATURE, HUMIDITY, MODE, FAN = 0, 2, 4, 5, 6, 8
 HEAT_SETPOINT, HVAC_TYPE, RUN_MODE, SENSORS = 10, 12, 16, 87
 COOL_SETPOINT, WORK_STATUS, FILTER = 91, 96, 106
-MODE_SET, FAN_SET, HEAT_SET, COOL_SET = 7, 9, 11, 92
+MODE_SET, FAN_SET, HEAT_SET, COOL_SET, HOLD_SET = 7, 9, 11, 92, 17
 # A write and the point that reports it back.
 REPORTED_BY = {
     MODE_SET: MODE,
     FAN_SET: FAN,
     HEAT_SET: HEAT_SETPOINT,
     COOL_SET: COOL_SETPOINT,
+    HOLD_SET: RUN_MODE,
 }
 
 MODES = {0: "off", 1: "cool", 2: "heat", 3: "auto", 4: "eco", 5: "emergency"}
@@ -38,6 +39,7 @@ MODE_CODES = {name: code for code, name in MODES.items()}
 FANS = {0: "auto", 1: "on"}
 FAN_CODES = {name: code for code, name in FANS.items()}
 HOLDS = {0: "schedule", 1: "permanent", 2: "temporary"}
+HOLD_CODES = {name: code for code, name in HOLDS.items()}
 WORK = {0: "idle", 1: "cooling", 2: "heating"}
 SYSTEMS = {
     1: "Cool only (1 stage)",

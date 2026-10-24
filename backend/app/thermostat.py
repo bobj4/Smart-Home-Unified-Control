@@ -1,12 +1,14 @@
-"""Thermostat commands besides the dial: mode and fan, and which set point the
+"""Thermostat commands besides the dial: mode, fan and schedule hold, and which set point the
 dial changes. Validation and the resulting state; the device is told by
 device_io (Cync) or not at all (demo thermostats, which only have a target).
 Set points stay within the safety limits (checked by the caller)."""
 
 from typing import Any
 
-THERMOSTAT_COMMANDS = ("set_mode", "set_fan")
+THERMOSTAT_COMMANDS = ("set_mode", "set_fan", "set_hold")
 FANS = ("auto", "on")
+# Follow the schedule, hold until the next scheduled change, or hold for good.
+HOLDS = ("schedule", "temporary", "permanent")
 ECO_REFUSED = "leave Eco mode first: the thermostat ignores set points in Eco"
 
 
@@ -25,7 +27,7 @@ def _one(payload: dict[str, Any], key: str) -> Any:
 def thermostat_state(
     state: dict[str, Any], command: str, payload: dict[str, Any]
 ) -> dict[str, Any]:
-    """New state for set_mode or set_fan."""
+    """New state for set_mode, set_fan or set_hold."""
     if command == "set_mode":
         mode = _one(payload, "mode")
         if mode not in state.get("modes", []):
@@ -43,6 +45,15 @@ def thermostat_state(
         if fan not in FANS:
             raise ThermostatError(422, "fan must be auto or on")
         return {**state, "fan": fan}
+    if command == "set_hold":
+        hold = _one(payload, "hold")
+        if state.get("hold") is None:
+            raise ThermostatError(
+                422, "this thermostat does not report its schedule hold"
+            )
+        if hold not in HOLDS:
+            raise ThermostatError(422, "hold must be schedule, temporary or permanent")
+        return {**state, "hold": hold}
     raise ThermostatError(422, "unsupported command")
 
 
