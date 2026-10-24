@@ -126,3 +126,10 @@ arrives as a SYNC push of point 84 holding JSON `{"Sched_Heat_Mon": null}` (noth
 to 100 bytes). pycync cannot parse these pushes and drops them, so `cync_thermostat` reads raw
 packets before pycync does. A remote sensor in a sensor period is its type byte `01` followed by
 its 6-digit PIN code as text (`01 "024944"` for PinCode 24944 in SensorRawDataReport).
+
+Writing (app 6.24 encoders; not yet tried on the owner's thermostat when this was written): one set
+packet (type 3, `06` marker) with a bytes entry (header `0xA000 | length`) per day, holding the
+same period bytes as above, or `FF` to clear the day. The app (`app/thermostat_schedule.py`) then
+asks for each written day by name and only reports success when the answer holds exactly what
+was sent. Up to 6 set point periods a day are accepted here (the app's limit is not in the
+decompiled code; the sensor schedule answer is padded to 10 periods).

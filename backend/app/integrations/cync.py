@@ -350,6 +350,28 @@ def thermostat_settings_on_open(
     )
 
 
+def thermostat_write_settings_on_open(
+    api: Any,
+    loop: Any,
+    cloud_id: int,
+    entries: list[tuple[int, Any]],
+    names: list[str],
+) -> dict[str, Any]:
+    """Write thermostat settings (schedules), then read them back by name."""
+    link = getattr(api, "thermostat_link", None)
+    if link is None:
+        raise CyncError("the Cync connection is still starting; try again shortly")
+
+    async def limited() -> dict[str, Any]:
+        seconds = cync_thermostat.SETTING_SECONDS * len(names) + 15
+        work = link.write_settings(cloud_id, entries, names)
+        return dict(await asyncio.wait_for(work, seconds))
+
+    return dict(
+        _mapped(lambda: asyncio.run_coroutine_threadsafe(limited(), loop).result())
+    )
+
+
 # ------------------------------------------------------------ the interface
 
 

@@ -66,17 +66,21 @@ def probe_packet(device_id: int, msg_id: int) -> bytes:
     return packet(PROBE, struct.pack(">IH", device_id, msg_id) + b"\x00")
 
 
-def entry(index: int, value: int | str) -> bytes:
-    """One write entry: ints as 4 bytes (header 0x4004), text as UTF-8."""
+Value = int | str | bytes
+
+
+def entry(index: int, value: Value) -> bytes:
+    """One write entry: ints as 4 bytes (header 0x4004), text as UTF-8
+    (0x9000 | length), bytes as they are (0xA000 | length)."""
+    if isinstance(value, bytes):
+        return bytes([index]) + struct.pack(">H", 0xA000 | len(value)) + value
     if isinstance(value, str):
         raw = value.encode()
         return bytes([index]) + struct.pack(">H", 0x9000 | len(raw)) + raw
     return bytes([index]) + struct.pack(">Hi", 0x4004, value)
 
 
-def set_packet(
-    device_id: int, msg_id: int, entries: list[tuple[int, int | str]]
-) -> bytes:
+def set_packet(device_id: int, msg_id: int, entries: list[tuple[int, Value]]) -> bytes:
     body = struct.pack(">IH", device_id, msg_id) + b"\x06"
     return packet(SET, body + b"".join(entry(i, v) for i, v in entries))
 
@@ -314,6 +318,15 @@ class ThermostatLink:
                 self._settings.pop((device_id, name), None)
         return found
 
+    async def write_settings(
+        self, device_id: int, entries: list[tuple[int, Value]], names: list[str]
+    ) -> dict[str, Any]:
+        """Write settings (schedules) in one set packet, then read them back
+        by name: returns what the thermostat now holds."""
+        await self.tcp._send_request(set_packet(device_id, self._next(), entries))  # noqa: SLF001
+        await asyncio.sleep(2)
+        return await self.read_settings(device_id, names)
+
     def _next(self) -> int:
         self._msg = self._msg % 65000 + 1
         return self._msg
@@ -336,7 +349,7 @@ class ThermostatLink:
             await self.tcp._send_request(probe_packet(device_id, self._next()))  # noqa: SLF001
 
     async def write(
-        self, device_id: int, entries: list[tuple[int, int | str]]
+        self, device_id: int, entries: list[tuple[int, Value]]
     ) -> dict[int, Any]:
         """Send the entries, then probe; returns what the thermostat reports."""
         await self.tcp._send_request(set_packet(device_id, self._next(), entries))  # noqa: SLF001
