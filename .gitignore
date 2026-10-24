@@ -94,3 +94,9 @@ gate.txt
 *.pfx
 *.p12
 *probe*.txt
+
+# Keep the settings template (".env.*" above would hide it)
+!deploy/.env.example
+# Local helper files
+ReadMe.txt
+apply-*.ps1
