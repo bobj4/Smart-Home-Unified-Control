@@ -1,0 +1,225 @@
+#!/usr/bin/env bash
+# Smart Home Control on a headless Linux server (Docker).
+#
+#   deploy/linux/smarthome install [--secrets-key KEY] [--host-network]
+#   deploy/linux/smarthome update        pull the latest code, rebuild, restart
+#   deploy/linux/smarthome status | logs | start | stop | restart
+#   deploy/linux/smarthome backup        make a database backup now
+#   deploy/linux/smarthome backups       list the backups
+#   deploy/linux/smarthome restore FILE  restore one (a name from "backups")
+#   deploy/linux/smarthome copy-backups DIR   copy every backup off the volume
+#   deploy/linux/smarthome import-db FILE     bring in a database from another
+#                                             computer (replaces this one's)
+#
+# Run it from anywhere inside the checkout; it uses deploy/docker-compose.yml.
+# The database and backups live in the Docker volume "data". Settings are in
+# deploy/.env (SECRETS_KEY and the rest; see deploy/.env.example). This
+# script's own choices are in deploy/linux/local.conf. Neither is in git.
+# Full guide: docs/DEPLOY-LINUX.md
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ENV_FILE="$ROOT/deploy/.env"
+CONF="$ROOT/deploy/linux/local.conf"
+SERVICE="smart-home"
+MIN_COMPOSE="2.24.0"   # for the host-network file ("!reset")
+
+say() { printf '%s\n' "$*"; }
+die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
+
+compose() {
+    local files=(-f "$ROOT/deploy/docker-compose.yml")
+    if [[ -f "$CONF" ]] && grep -qx 'HOST_NETWORK=yes' "$CONF"; then
+        files+=(-f "$ROOT/deploy/docker-compose.host.yml")
+    fi
+    docker compose "${files[@]}" "$@"
+}
+
+need_docker() {
+    command -v docker >/dev/null 2>&1 || die "Docker is not installed. See docs/DEPLOY-LINUX.md, step 1."
+    docker compose version >/dev/null 2>&1 || die "The Docker Compose plugin is missing (docker compose). See docs/DEPLOY-LINUX.md, step 1."
+    docker info >/dev/null 2>&1 || die "Cannot reach Docker. Start it (sudo systemctl enable --now docker) or run this with sudo / as a member of the docker group."
+}
+
+version_at_least() {  # version_at_least 2.27.1 2.24.0
+    [[ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" == "$2" ]]
+}
+
+new_key() {  # a Fernet key: 32 random bytes, URL-safe base64
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())'
+    else
+        openssl rand -base64 32 | tr '+/' '-_'
+    fi
+}
+
+valid_key() {  # 44 characters of URL-safe base64 ending in "="
+    [[ "$1" =~ ^[A-Za-z0-9_-]{43}=$ ]]
+}
+
+set_env() {  # set_env NAME VALUE (replace or add the line, keep the rest)
+    local name="$1" value="$2" tmp
+    tmp="$(mktemp)"
+    if grep -q "^${name}=" "$ENV_FILE"; then
+        awk -v n="$name" -v v="$value" 'BEGIN{FS=OFS="="} $1==n {print n "=" v; next} {print}' "$ENV_FILE" > "$tmp"
+    else
+        cp "$ENV_FILE" "$tmp"
+        printf '%s=%s\n' "$name" "$value" >> "$tmp"
+    fi
+    cat "$tmp" > "$ENV_FILE"
+    rm -f "$tmp"
+}
+
+wait_healthy() {
+    say "Waiting for the server to answer..."
+    local id state i
+    id="$(compose ps -q "$SERVICE")"
+    for i in $(seq 1 60); do
+        state="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$id" 2>/dev/null || true)"
+        case "$state" in
+            healthy) say "Running."; return 0 ;;
+            unhealthy|exited|dead) break ;;
+        esac
+        sleep 2
+    done
+    compose logs --tail 40 "$SERVICE" >&2 || true
+    die "The server did not start (state: ${state:-unknown}). The log is above."
+}
+
+addresses() {  # this server's network addresses, not Docker's own
+    local ips
+    if command -v ip >/dev/null 2>&1; then
+        ips="$(ip -4 -o addr show scope global | awk '$2 !~ /^(docker|br-|veth)/ {split($4, a, "/"); print a[1]}')"
+    else
+        ips="$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -v ':' || true)"
+    fi
+    for ip in $ips; do
+        say "  http://$ip:8000   (https:// once HTTPS is turned on)"
+    done
+}
+
+cmd_install() {
+    local key="" host_network="no"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --secrets-key) key="${2:-}"; shift 2 ;;
+            --secrets-key=*) key="${1#*=}"; shift ;;
+            --host-network) host_network="yes"; shift ;;
+            *) die "Unknown option: $1" ;;
+        esac
+    done
+    need_docker
+    if [[ "$host_network" == "yes" ]]; then
+        local v
+        v="$(docker compose version --short 2>/dev/null | sed 's/^v//')"
+        version_at_least "$v" "$MIN_COMPOSE" || die "--host-network needs Docker Compose $MIN_COMPOSE or newer (this is $v)."
+    fi
+    printf 'HOST_NETWORK=%s\n' "$host_network" > "$CONF"
+
+    if [[ ! -f "$ENV_FILE" ]]; then
+        cp "$ROOT/deploy/.env.example" "$ENV_FILE"
+        say "Created deploy/.env from deploy/.env.example."
+    fi
+    chmod 600 "$ENV_FILE"
+    local current
+    current="$(grep -E '^SECRETS_KEY=' "$ENV_FILE" | head -n1 | cut -d= -f2- || true)"
+    if [[ -n "$key" ]]; then
+        valid_key "$key" || die "That SECRETS_KEY does not look like a key (44 characters ending in =)."
+        set_env SECRETS_KEY "$key"
+        say "Using the SECRETS_KEY you gave (saved logins from the old computer stay readable)."
+    elif [[ -z "$current" ]]; then
+        set_env SECRETS_KEY "$(new_key)"
+        say "Made a new SECRETS_KEY in deploy/.env. Keep a copy somewhere safe, off this server:"
+        say "  without it, saved integration logins and backups' logins cannot be read."
+    else
+        valid_key "$current" || die "deploy/.env has a SECRETS_KEY that does not look like a key."
+        say "Keeping the SECRETS_KEY already in deploy/.env."
+    fi
+
+    say "Building and starting (the first build takes a few minutes)..."
+    compose up -d --build
+    wait_healthy
+    say ""
+    say "Open it from a phone or computer on your network:"
+    addresses
+    say ""
+    say "A new database starts with username \"admin\", password \"admin\": log in and"
+    say "change it straight away (Settings > My account). To bring your existing"
+    say "database over instead, run: deploy/linux/smarthome import-db /path/to/smart_home.db"
+}
+
+cmd_update() {
+    need_docker
+    if git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+        say "Pulling the latest code..."
+        git -C "$ROOT" pull --ff-only
+    else
+        say "Not a git checkout: using the files as they are."
+    fi
+    say "Backing up the database first..."
+    compose exec -T "$SERVICE" python scripts/backup.py || say "(no backup: the server was not running)"
+    compose up -d --build
+    wait_healthy
+    docker image prune -f >/dev/null 2>&1 || true
+    say "Updated. Press Ctrl+F5 once in each browser."
+}
+
+cmd_import_db() {
+    local file="${1:-}"
+    [[ -n "$file" && -f "$file" ]] || die "Give the database file: import-db /path/to/smart_home.db"
+    need_docker
+    local dir name
+    dir="$(cd "$(dirname "$file")" && pwd)"
+    name="$(basename "$file")"
+    say "This replaces this server's database with $file."
+    read -r -p "Type yes to go on: " answer
+    [[ "$answer" == "yes" ]] || die "Nothing changed."
+    compose up -d --no-start
+    compose exec -T "$SERVICE" python scripts/backup.py >/dev/null 2>&1 || true
+    compose stop "$SERVICE"
+    compose run --rm --no-deps --user root -v "$dir:/import:ro" "$SERVICE" \
+        sh -c "cp '/import/$name' /app/data/smart_home.db && chown 10001:10001 /app/data/smart_home.db && rm -f /app/data/smart_home.db-wal /app/data/smart_home.db-shm"
+    compose start "$SERVICE"
+    wait_healthy
+    say "Imported. Log in with your usual account. The SECRETS_KEY in deploy/.env must be"
+    say "the one the old computer used, or re-enter the integration logins."
+}
+
+cmd_restore() {
+    local file="${1:-}"
+    [[ -n "$file" ]] || die "Give a backup name from: deploy/linux/smarthome backups"
+    [[ "$file" == */* ]] || file="/app/data/backups/$file"
+    need_docker
+    compose stop "$SERVICE"
+    compose run --rm --no-deps "$SERVICE" python scripts/backup.py --restore "$file"
+    compose start "$SERVICE"
+    wait_healthy
+}
+
+main() {
+    local cmd="${1:-help}"
+    shift || true
+    case "$cmd" in
+        install) cmd_install "$@" ;;
+        update) cmd_update ;;
+        status) need_docker; compose ps ;;
+        logs) need_docker; compose logs -f --tail 100 "$SERVICE" ;;
+        start) need_docker; compose up -d; wait_healthy ;;
+        stop) need_docker; compose stop ;;
+        restart) need_docker; compose restart "$SERVICE"; wait_healthy ;;
+        backup) need_docker; compose exec -T "$SERVICE" python scripts/backup.py ;;
+        backups) need_docker; compose exec -T "$SERVICE" python scripts/backup.py --list ;;
+        restore) cmd_restore "$@" ;;
+        copy-backups)
+            [[ -n "${1:-}" ]] || die "Give a folder: copy-backups /path/to/folder"
+            need_docker; mkdir -p "$1"
+            compose cp "$SERVICE:/app/data/backups/." "$1"
+            say "Copied to $1" ;;
+        import-db) cmd_import_db "$@" ;;
+        help|-h|--help) sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+        *) die "Unknown command: $cmd (try: deploy/linux/smarthome help)" ;;
+    esac
+}
+
+main "$@"

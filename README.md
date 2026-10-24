@@ -26,9 +26,11 @@ through the backend's permission checks and device safety limits.
 
 - One installable web app (PWA) for all devices, grouped by room, with
   device groups and live state.
-- Multiple homes and users, with admin and member roles.
-- Two-factor login (authenticator app), single-use recovery codes, and
-  "keep me logged in".
+- Multiple homes and users, with admin, operator and member roles, and
+  guests who get only what an admin ticks for them (lights, light settings,
+  cameras, the water heater, and chosen thermostats).
+- Two-factor login (authenticator app), single-use recovery codes,
+  "keep me logged in" and "remember this device" (times set by an admin).
 - Safety limits on thermostats and water heaters, enforced in the backend
   on every command path.
 - Audit log of logins, settings changes and device commands, with secrets
@@ -36,7 +38,18 @@ through the backend's permission checks and device safety limits.
 - Integration logins encrypted at rest; automatic daily database backups.
 - Optional HTTPS with your own certificate.
 
-## Quick start (Docker)
+## Headless Linux server
+
+The recommended way to run it: Docker on any 64-bit Linux, set up and kept
+up to date by one script:
+
+    deploy/linux/smarthome install
+    deploy/linux/smarthome update
+
+The full guide, including moving your database over from Windows, is
+[docs/DEPLOY-LINUX.md](docs/DEPLOY-LINUX.md).
+
+## Quick start (Docker, any system)
 
 1. Create a secrets key. It encrypts saved integration logins; keep it
    private and keep a copy, since a lost key means re-entering every login.

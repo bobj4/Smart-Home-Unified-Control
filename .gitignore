@@ -100,3 +100,5 @@ gate.txt
 # Local helper files
 ReadMe.txt
 apply-*.ps1
+# deploy/linux/smarthome's own choices
+deploy/linux/local.conf
