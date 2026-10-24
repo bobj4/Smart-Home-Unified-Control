@@ -20,6 +20,8 @@
                 <label for="totp">Authenticator code or recovery code (leave empty if two-factor is off)</label>
                 <input type="text" id="totp" data-testid="login-code" inputmode="numeric" autocomplete="one-time-code"
                        pattern="[0-9]{6}|[0-9]{8}" maxlength="8">
+                <label class="check"><input type="checkbox" id="login-remember" data-testid="login-remember"> Remember me</label>
+                <label class="check"><input type="checkbox" id="login-keep" data-testid="login-keep"> Keep me logged in for 30 days</label>
                 <button type="submit" data-testid="login-submit">Log in</button>
                 <p id="login-error" class="error" data-testid="login-error" role="alert"></p>
             </form>

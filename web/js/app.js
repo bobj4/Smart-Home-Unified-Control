@@ -101,11 +101,22 @@ class SmartHomeApp {
     try {
       this.loginOptions = await this.api.getLoginOptions();
       this.applyLoginOptions();
+      await this.fillRememberedLogin();
       await this.loadAccount();
     } catch (error) {
       if (!(error instanceof AuthError)) this.status.error(error.message);
     }
     this.route();
+  }
+
+  /** "Remember me": the server keeps the login name in an HttpOnly cookie. */
+  async fillRememberedLogin() {
+    let login = '';
+    try { ({ login } = await this.api.getRememberedLogin()); } catch (error) { return; }
+    if (login && !byTestId('login-email').value) {
+      byTestId('login-email').value = login;
+      byTestId('login-remember').checked = true;
+    }
   }
 
   /** Login-name label and the recovery link follow the admin's login rules. */
@@ -192,8 +203,12 @@ class SmartHomeApp {
     errorEl.textContent = '';
     const password = byTestId('login-password');
     const code = byTestId('login-code');
+    const name = byTestId('login-email').value.trim();
     try {
-      await this.api.login(byTestId('login-email').value.trim(), password.value, code.value.trim());
+      await this.api.login(name, password.value, code.value.trim(), {
+        keepLoggedIn: byTestId('login-keep').checked,
+        rememberMe: byTestId('login-remember').checked,
+      });
       password.value = '';
       code.value = '';
       await this.loadAccount();

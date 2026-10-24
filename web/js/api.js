@@ -54,15 +54,16 @@ class SmartHomeAPI {
   del(path) { return this.request(path, { method: 'DELETE' }); }
 
   // Login and logout
-  login(email, password, code) {
+  login(email, password, code, { keepLoggedIn = false, rememberMe = false } = {}) {
     // 6 digits: authenticator code. 8 digits: one of the recovery codes.
     // Empty: the account has two-factor login turned off.
-    const body = { email, password };
+    const body = { email, password, keep_logged_in: keepLoggedIn, remember_me: rememberMe };
     if (code.length === 8) body.recovery_code = code;
     else if (code) body.totp_code = code;
     return this.post('/auth/login', body);
   }
   logout() { return this.post('/auth/logout'); }
+  getRememberedLogin() { return this.get('/auth/remembered'); }
 
   // Devices
   getDevices(homeId) { return this.get(`/homes/${enc(homeId)}/devices`); }
