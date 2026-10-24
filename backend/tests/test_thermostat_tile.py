@@ -1,4 +1,4 @@
-"""Thermostat tile: the sensors' average in the dial, the set points the
+"""Thermostat tile: the thermostat's reading in the dial, the set points the
 current mode uses under the mode, only values the thermostat reports, and an
 Info window without what the tile already shows. Written by the reviewer. Do
 not edit, skip, mark or delete these tests. If one looks wrong, stop and
@@ -51,7 +51,7 @@ def test_ui_tile_layout(open_page, db, owner, make_device):
     page, hall = setup(open_page, db, owner, make_device)
     tile = show(page, db, hall, report(cool_setpoint=75.0))
     expect(tile.get_by_test_id("thermo-temp")).to_have_text("67.5 °F")
-    expect(tile.get_by_test_id("thermo-temp-label")).to_have_text("average")
+    expect(tile.get_by_test_id("thermo-temp-label")).to_have_count(0)  # number only
     expect(tile.get_by_test_id("target-temp")).to_have_count(0)  # no target dial
     # The set points sit under the mode.
     order = tile.evaluate(

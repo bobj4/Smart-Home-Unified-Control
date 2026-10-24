@@ -1,5 +1,5 @@
 /**
- * Cync thermostat tile: the average temperature of its sensors in the dial,
+ * Cync thermostat tile: the temperature it works from in the dial,
  * what the system is doing, the mode with the set points that mode uses
  * under it, the fan, the sensors, and an Info window with the rest. Demo
  * thermostats (no mode) keep the plain target dial from devices.js.
@@ -23,17 +23,16 @@ function sensorText(s) {
   return parts.join(' · ');
 }
 
-/** The dial: the temperature the thermostat works from (its sensors' average). */
+/** The dial: the temperature the thermostat works from (the sensors its schedule uses now). */
 function thermostatDial(state, limits) {
   const now = typeof state.current_temperature === 'number' ? state.current_temperature : null;
   const fraction = limits && now !== null ? (now - limits.min_temperature) / (limits.max_temperature - limits.min_temperature) : 0;
   const dial = gauge(fraction, 'thermostat');
-  dial.setAttribute('aria-label', 'Average temperature');
+  dial.setAttribute('aria-label', 'Temperature');
   return el('div', { className: 'dial' }, [el('div', { className: 'gauge-wrap' }, [
     dial,
     el('div', { className: 'readout' }, [
       el('span', { className: 'target', testid: 'thermo-temp', text: now === null ? '--' : degrees(now) }),
-      el('span', { className: 'muted', testid: 'thermo-temp-label', text: 'average' }),
     ]),
   ])]);
 }
