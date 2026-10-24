@@ -30,6 +30,7 @@ from app.routes import (
     rheem,
     safety_limits,
     samsung,
+    thermostat,
 )
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
@@ -100,6 +101,7 @@ app.include_router(audit_log.router)
 app.include_router(integrations.router)
 app.include_router(rheem.router)
 app.include_router(rheem.usage_router)
+app.include_router(thermostat.router)
 app.include_router(cync.router)
 app.include_router(home_security.router)
 app.include_router(samsung.router)

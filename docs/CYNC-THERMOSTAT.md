@@ -99,7 +99,7 @@ Device types: 122 (Gen 2), 224 (Gen 1), both data-point protocol. W = written by
 - Exact precision/range limits and the Eco-mode rule enforced by firmware vs only by the app.
 - Names/order of the six relay terminals, error code meanings, energy report layout.
 - Whether a second (home-shared) account avoids the one-session limit.
-## Schedules (from the Cync app 6.24, 2026-10-24; reading not yet confirmed on the device)
+## Schedules (from the Cync app 6.24; reading confirmed on the owner's thermostat 2026-10-24, writing not yet tried)
 Source: `com.gelighting.cbygekit.services.devices.datapoint` (ThermostatScheduleSetDataPoint,
 ThermostatScheduleDataPointsKt, TemperatureReadMethodScheduleDataPoint). Code: `app/integrations/cync_schedule.py`.
 
@@ -118,7 +118,11 @@ Days run Monday (+0) to Sunday (+6). Every value is bytes: a list of periods, or
   sensors, FF none), then 7 bytes naming the remote sensor for method 1 (zeros otherwise; the
   7-byte sensor format is in ExternalSensorDataPoints, not yet decoded).
 
-These points have the "setting" role: a probe does not return them. The app asks for each one by
-writing its name (for example `Sched_Heat_Mon`) to ReadSetting (point 84); how the value comes
-back (a ReadSetting JSON reply or a push of the point itself) is what
-`scripts/cync_thermostat_probe.py --schedules <thermostat id>` checks.
+These points have the "setting" role: a probe does not return them. Asking for one is a set
+packet writing its name (for example `Sched_Heat_Mon`) to ReadSetting (point 84). The set is
+acknowledged (code 0; a second ack with code 10 follows some seconds later), and the answer
+arrives as a SYNC push of point 84 holding JSON `{"Sched_Heat_Mon": null}` (nothing stored) or
+`{"Temp_Read_Schd_Mon": [7,0,2,0,...]}`: the bytes as numbers, padded with 255 (sensor schedules
+to 100 bytes). pycync cannot parse these pushes and drops them, so `cync_thermostat` reads raw
+packets before pycync does. A remote sensor in a sensor period is its type byte `01` followed by
+its 6-digit PIN code as text (`01 "024944"` for PinCode 24944 in SensorRawDataReport).

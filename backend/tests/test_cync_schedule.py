@@ -78,9 +78,9 @@ def test_sensor_schedule():
         + bytes(7)
     )
     assert s.parse_sensor_schedule(raw) == [
-        {"time": "06:00", "read": "thermostat", "sensor": None},
-        {"time": "09:00", "read": "sensor", "sensor": sensor.hex()},
-        {"time": "18:30", "read": "all", "sensor": None},
+        {"time": "06:00", "read": "thermostat", "sensor": None, "pin": None},
+        {"time": "09:00", "read": "sensor", "sensor": sensor.hex(), "pin": None},
+        {"time": "18:30", "read": "all", "sensor": None, "pin": None},
     ]
     assert s.parse_sensor_schedule(b"\xff") == []
 
@@ -103,3 +103,16 @@ def test_probe_asks_for_every_schedule_and_decodes_replies():
         "set reply" in line and "code 0" in line
         for line in probe.describe(3, True, ack)
     )
+
+
+def test_reply_values_padding_and_pins():
+    assert s.setting_bytes(None) is None
+    assert s.setting_bytes([1, 2, 255]) == b"\x01\x02\xff"
+    assert s.setting_bytes([1, 300]) is None
+    assert s.setting_bytes("0aff") == b"\x0a\xff"
+    heat = s.encode_schedule("heat", [{"time": "06:30", "heat": 68.0}])
+    assert s.parse_schedule("heat", heat + b"\xff" * 20) == [
+        {"time": "06:30", "heat": 68.0}
+    ]
+    assert s.sensor_pin(bytes([1]) + b"024944") == "024944"
+    assert s.sensor_pin(bytes(7)) is None
