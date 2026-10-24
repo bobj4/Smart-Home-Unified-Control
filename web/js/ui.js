@@ -4,7 +4,7 @@
  */
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const ROLE_RANK = { member: 1, operator: 2, admin: 3 };
+const ROLE_RANK = { guest: 0, member: 1, operator: 2, admin: 3 };
 
 /** el('button', { testid: 'x', text: 'Go', onclick: fn }, [children]) */
 function el(tag, attrs = {}, children = []) {

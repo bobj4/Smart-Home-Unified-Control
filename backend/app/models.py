@@ -465,3 +465,45 @@ class RoomLayout(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
+
+
+GUEST_ROLE = "guest"  # below member; not in Role, so require_role refuses it
+
+
+class GuestAccess(Base):
+    """What one guest may do in one home (Settings > Admin > Users, the
+    guest's Access window). Guests reach devices only through the guest
+    routes (app/guest_access.py); every other home route refuses them."""
+
+    __tablename__ = "guest_access"
+    __table_args__ = (
+        UniqueConstraint("home_id", "user_id", name="uq_guest_access_home_user"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    home_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("homes.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    light_power: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
+    light_settings: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
+    cameras: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
+    water_heater: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
+    # Devices they may not use: shown greyed out (True) or hidden (False).
+    show_blocked: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
+    thermostat_ids: Mapped[str] = mapped_column(Text, default="[]")  # JSON list
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )

@@ -53,12 +53,12 @@ class EnrollmentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     email: str = Field(min_length=3, max_length=255)  # email, or a username if allowed
     name: str | None = Field(default=None, max_length=100)
-    role: Literal["admin", "operator", "member"]
+    role: Literal["admin", "operator", "member", "guest"]
 
 
 class RoleChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    role: Literal["admin", "operator", "member"]
+    role: Literal["admin", "operator", "member", "guest"]
 
 
 def _membership(db: Session, home_id: str, user_id: str) -> HomeMembership:

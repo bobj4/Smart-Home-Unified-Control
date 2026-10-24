@@ -32,6 +32,7 @@ from app.frigate_home import (
     client_for_home,
     server_out,
 )
+from app.guest_access import require_camera_viewer
 from app.integrations import frigate
 from app.models import Role, User
 from app.vault import VaultError
@@ -164,7 +165,7 @@ def remove_server(
 def list_cameras(
     home_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> list[str]:
-    require_role(db, user.id, home_id, Role.OPERATOR)  # members: devices only
+    require_camera_viewer(db, user, home_id)  # operators, or guests allowed
     try:
         client = client_for_home(db, home_id)
         result: list[str] = call(client.cameras)
@@ -181,7 +182,7 @@ def list_events(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
-    require_role(db, user.id, home_id, Role.OPERATOR)  # members: devices only
+    require_camera_viewer(db, user, home_id)  # operators, or guests allowed
     try:
         client = client_for_home(db, home_id)
         result: list[dict[str, Any]] = call(lambda: client.events(limit, camera))
@@ -206,7 +207,7 @@ def event_thumbnail(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    require_role(db, user.id, home_id, Role.OPERATOR)  # members: devices only
+    require_camera_viewer(db, user, home_id)  # operators, or guests allowed
     try:
         client = client_for_home(db, home_id)
         media: frigate.Media = call(lambda: client.thumbnail(event_id))
@@ -226,7 +227,7 @@ def event_clip(
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """The event's video, passing Range through so the player can seek."""
-    require_role(db, user.id, home_id, Role.OPERATOR)  # members: devices only
+    require_camera_viewer(db, user, home_id)  # operators, or guests allowed
     try:
         client = client_for_home(db, home_id)
         media: frigate.Media = call(lambda: client.clip(event_id, range_header))

@@ -74,6 +74,9 @@ class SmartHomeAPI {
   forgetAnyDevice(id) { return this.del(`/admin/trusted-devices/${enc(id)}`); }
   getVerbose() { return this.get('/admin/verbose-logging'); }
   setVerbose(enabled) { return this.put('/admin/verbose-logging', { enabled }); }
+  getGuestPage(homeId) { return this.get(`/homes/${enc(homeId)}/guest`); }
+  getGuestAccess(homeId, userId) { return this.get(`/homes/${enc(homeId)}/members/${enc(userId)}/guest-access`); }
+  setGuestAccess(homeId, userId, body) { return this.put(`/homes/${enc(homeId)}/members/${enc(userId)}/guest-access`, body); }
   getLayout(homeId) { return this.get(`/homes/${enc(homeId)}/layout`); }
   setLayout(homeId, roomOrder) { return this.put(`/homes/${enc(homeId)}/layout`, { room_order: roomOrder }); }
 
@@ -95,7 +98,9 @@ class SmartHomeAPI {
   updateDevice(homeId, deviceId, changes) {
     return this.patch(`/homes/${enc(homeId)}/devices/${enc(deviceId)}`, changes);
   }
+  /** Guests send through the guest route, which checks their access. */
   sendCommand(homeId, deviceId, command, payload = {}) {
+    if (this.guest) return this.post(`/homes/${enc(homeId)}/guest/devices/${enc(deviceId)}/command`, { command, payload });
     return this.post(`/homes/${enc(homeId)}/devices/${enc(deviceId)}/command`, { command, payload });
   }
 

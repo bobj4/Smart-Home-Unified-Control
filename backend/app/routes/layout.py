@@ -21,7 +21,8 @@ from app.audit import record_event
 from app.authorization import require_role
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
-from app.models import Role, RoomLayout, User
+from app.guest_access import membership, require_guest
+from app.models import GUEST_ROLE, Role, RoomLayout, User
 
 router = APIRouter(prefix="/api/v1/homes/{home_id}/layout", tags=["layout"])
 THERMOSTATS_ROOM = "Thermostats"
@@ -31,6 +32,15 @@ DEFAULT_ORDER = [THERMOSTATS_ROOM]
 class Layout(BaseModel):
     model_config = ConfigDict(extra="forbid")
     room_order: list[str] = Field(max_length=200)
+
+
+def _require_member_or_guest(db: Session, user: User, home_id: str) -> None:
+    """Anyone in the home, guests included (it is only their own order)."""
+    member = membership(db, user.id, home_id)
+    if member is not None and member.role == GUEST_ROLE:
+        require_guest(db, user, home_id)
+    else:
+        require_role(db, user.id, home_id, Role.MEMBER)
 
 
 def _row(db: Session, user_id: str, home_id: str) -> RoomLayout | None:
@@ -45,7 +55,7 @@ def _row(db: Session, user_id: str, home_id: str) -> RoomLayout | None:
 def get_layout(
     home_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> dict[str, Any]:
-    require_role(db, user.id, home_id, Role.MEMBER)
+    _require_member_or_guest(db, user, home_id)
     row = _row(db, user.id, home_id)
     order = json.loads(row.room_order) if row else DEFAULT_ORDER
     return {"room_order": order, "thermostats_room": THERMOSTATS_ROOM}
@@ -59,7 +69,7 @@ def set_layout(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    require_role(db, user.id, home_id, Role.MEMBER)
+    _require_member_or_guest(db, user, home_id)
     order = []
     for name in body.room_order:
         if not isinstance(name, str) or len(name) > 50:

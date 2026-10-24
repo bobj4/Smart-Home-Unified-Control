@@ -164,3 +164,42 @@ def test_ui_room_order_per_user(open_page, db, owner, make_user, make_device):
     expect(page.get_by_test_id("room").first).to_have_attribute(
         "data-room", "Thermostats"
     )
+
+
+def test_ui_guest_access(open_page, db, owner, make_user, make_device):
+    apply_recommended(db, owner.home_id, None, None)
+    make_device(owner.home_id, name="Lamp")
+    make_device(owner.home_id, device_type="thermostat", name="Hall")
+    make_device(owner.home_id, device_type="thermostat", name="Den")
+    make_device(owner.home_id, device_type="tv", name="TV")
+    guest = make_user(owner.home_id, role="member")
+    admin = open_page()
+    ui_login(admin, owner)
+    go_settings(admin, "members")
+    row = admin.locator(f'[data-testid="member-row"][data-user-id="{guest.id}"]')
+    row.get_by_test_id("member-role").select_option("guest")
+    expect(admin.get_by_test_id("status")).to_contain_text("is now guest")
+    row = admin.locator(f'[data-testid="member-row"][data-user-id="{guest.id}"]')
+    row.get_by_test_id("guest-access-open").click()
+    dialog = admin.get_by_test_id("guest-access")
+    dialog.get_by_test_id("guest-light_power").check()
+    dialog.get_by_test_id("guest-show_blocked").check()
+    hall = db.query(Device).filter_by(name="Hall").one().id
+    dialog.locator(f'[data-testid="guest-thermostat"][data-device-id="{hall}"]').check()
+    dialog.get_by_test_id("guest-access-save").click()
+    expect(admin.get_by_test_id("status")).to_contain_text("Saved what")
+
+    page = open_page()
+    ui_login(page, guest)
+    lamp = card(page, "Lamp")
+    expect(lamp.get_by_test_id("power-toggle")).to_be_enabled()
+    expect(lamp.get_by_test_id("light-settings-open")).to_have_count(0)
+    expect(card(page, "Hall").get_by_test_id("thermo-schedule-open")).to_have_count(0)
+    for blocked in ("Den", "TV"):
+        expect(card(page, blocked).get_by_test_id("device-blocked")).to_be_visible()
+    lamp.get_by_test_id("power-toggle").click()
+    expect(card(page, "Lamp")).to_have_class("device-card on")
+    # Settings: only their own account.
+    page.get_by_test_id("nav-settings").click()
+    links = page.get_by_test_id("settings-menu").locator("a")
+    expect(links).to_have_count(1)

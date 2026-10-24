@@ -4,11 +4,12 @@
  * The owner never sees or sets another person's password or authenticator.
  */
 
-const ROLES = ['admin', 'operator', 'member'];
+const ROLES = ['admin', 'operator', 'member', 'guest'];
 const ROLE_HELP = {
   admin: 'Admin: everything, including users, safety limits and integrations',
   operator: 'Operator: add, edit and remove devices',
   member: 'Member: use devices',
+  guest: 'Guest: only what you allow with Access',
 };
 
 class MembersSection {
@@ -115,6 +116,12 @@ class MembersSection {
       }),
     });
     row.append(toggle, actions);
+    if (member.role === 'guest') {
+      row.append(el('button', {
+        type: 'button', className: 'secondary', testid: 'guest-access-open', text: 'Access',
+        'aria-label': `What ${member.email} can use`, onclick: () => this.app.run(() => guestAccessDialog(this.app).open(member)),
+      }));
+    }
     const setPassword = this.passwordControl(member);
     if (setPassword) row.append(setPassword);
     return row;
@@ -123,7 +130,7 @@ class MembersSection {
   /** Admins set passwords for members and operators (not other admins). */
   passwordControl(member) {
     if (!this.app.can('admin') || member.user_id === this.app.account.id) return null;
-    if (!['member', 'operator'].includes(member.role)) return null;
+    if (!['member', 'operator', 'guest'].includes(member.role)) return null;
     const box = el('div', { className: 'row' });
     const open = el('button', {
       type: 'button', className: 'secondary', testid: 'member-set-password', text: 'Set password',
@@ -149,7 +156,7 @@ class MembersSection {
     const options = this.app.loginOptions || { require_email: true };
     const login = el('input', { type: 'text', testid: 'create-login', autocomplete: 'off', required: true });
     const name = el('input', { type: 'text', testid: 'create-name', maxlength: '100', autocomplete: 'off' });
-    const role = el('select', { testid: 'create-role' }, ['member', 'operator', 'admin'].map((r) => el('option', { value: r, text: r })));
+    const role = el('select', { testid: 'create-role' }, ['member', 'operator', 'admin', 'guest'].map((r) => el('option', { value: r, text: r })));
     const password = el('input', { type: 'password', testid: 'create-password', autocomplete: 'new-password' });
     const form = el('form', { className: 'subpanel' }, [
       el('h3', { text: 'Create a user' }),
@@ -181,7 +188,7 @@ class MembersSection {
   inviteForm() {
     const email = el('input', { type: 'text', testid: 'invite-email', required: true, autocomplete: 'off' });
     const name = el('input', { type: 'text', testid: 'invite-name', maxlength: '100', autocomplete: 'off' });
-    const role = el('select', { testid: 'invite-role' }, ['member', 'operator', 'admin'].map((r) => el('option', { value: r, text: r })));
+    const role = el('select', { testid: 'invite-role' }, ['member', 'operator', 'admin', 'guest'].map((r) => el('option', { value: r, text: r })));
     const result = el('div');
     const form = el('form', { className: 'subpanel' }, [
       el('h3', { text: 'Add a person' }),

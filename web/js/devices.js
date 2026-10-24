@@ -62,7 +62,7 @@ class DevicesView {
 
   async load() {
     const homeId = this.app.home.id;
-    const [devices, limits, integrations, groups, display] = await Promise.all([
+    const [devices, limits, integrations, groups, display] = this.app.isGuest() ? await guestDevicesData(this.app, homeId) : await Promise.all([
       this.app.api.getDevices(homeId),
       this.app.api.getSafetyLimits(homeId),
       this.app.api.getIntegrations(homeId),
@@ -82,7 +82,7 @@ class DevicesView {
     this.integrationsOn = new Set(integrations.filter((i) => i.enabled).map((i) => i.id));
     for (const device of devices) {
       device.integrationOn = this.integrationsOn.has(device.integration);
-      device.controllable = Boolean(device.online) && device.integrationOn;
+      device.controllable = Boolean(device.online) && device.integrationOn && !device.blocked;
     }
     this.remote.refresh(devices);
     this.lastDevices = devices;
@@ -149,6 +149,7 @@ class DevicesView {
   }
 
   card(device) {
+    if (device.blocked) return blockedCard(device);
     // A disconnected device is drawn off (and dimmed by .offline) until it is
     // back online; then its real state shows again on the next refresh.
     const state = device.online ? (device.state || {}) : { ...(device.state || {}), on: false, status: 'off' };
@@ -171,8 +172,8 @@ class DevicesView {
     if (!device.integrationOn) {
       card.append(el('p', { className: 'warning', testid: 'integration-off', text: 'This brand is turned off in Settings > Integrations.' }));
     }
-    if (POWER_TYPES.has(device.type)) card.append(this.powerToggle(device, on));
-    if (device.type === 'light') {
+    if (POWER_TYPES.has(device.type) && guestMay(this.app, 'light_power')) card.append(this.powerToggle(device, on));
+    if (device.type === 'light' && guestMay(this.app, 'light_settings')) {
       card.append(el('button', {
         type: 'button', className: 'secondary', testid: 'light-settings-open', text: 'Light settings',
         disabled: !device.controllable, onclick: () => this.lightPanel.open(device),

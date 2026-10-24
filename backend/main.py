@@ -22,6 +22,7 @@ from app.routes import (
     email_admin,
     frigate,
     groups,
+    guest,
     home_security,
     homes,
     https_admin,
@@ -112,6 +113,7 @@ app.include_router(thermostat.router)
 app.include_router(login_times.router)
 app.include_router(verbose.router)
 app.include_router(layout.router)
+app.include_router(guest.router)
 app.include_router(cync.router)
 app.include_router(home_security.router)
 app.include_router(samsung.router)
