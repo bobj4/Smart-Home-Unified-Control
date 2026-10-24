@@ -48,7 +48,7 @@ class SmartHomeApp {
         await this.devices.load();
       } else if (view === 'settings' && sub === 'integrations' && !this.settings.dirty) {
         this.settings.shown = null; // redraw the device lists, unless someone is editing
-        await this.settings.load('integrations');
+        await this.settings.load('integrations', { live: true });
       } else if (view === 'cameras' && this.cameras.grid && this.cameras.player.hidden) {
         await this.cameras.fillEvents();
       }
@@ -146,7 +146,10 @@ class SmartHomeApp {
   }
 
   async route() {
-    if (!this.account || this.currentRoute()[0] !== 'settings') this.settings.shown = null;
+    if (!this.account || this.currentRoute()[0] !== 'settings') {
+      this.settings.shown = null;
+      this.settings.drawn = null; // coming back draws afresh, not over the old page
+    }
     if (!this.account) {
       const hash = window.location.hash;
       if (hash === '#/recover' && this.loginOptions && this.loginOptions.allow_recovery) {

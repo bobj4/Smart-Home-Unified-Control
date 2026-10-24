@@ -27,7 +27,9 @@ class SettingsView {
     return SETTINGS_SECTIONS.filter((s) => !s.role || this.app.can(s.role));
   }
 
-  async load(sectionId) {
+  /** `live`: the background refresh, which never replaces what someone is
+   * typing into, and swaps the page in only once it is built. */
+  async load(sectionId, { live = false } = {}) {
     const sections = this.visibleSections();
     const current = sections.find((s) => s.id === sectionId) || sections[0];
     // "#/settings" and "#/settings/account" show the same page: draw it once,
@@ -47,8 +49,33 @@ class SettingsView {
     // Live refresh redraws Integrations only while nothing has been typed.
     this.dirty = false;
     panel.addEventListener('input', () => { this.dirty = true; });
-    this.root.replaceChildren(menu, el('div', { className: 'settings-content' }, [panel]));
-    await this.renderSection(current.id, panel);
+    const page = [menu, el('div', { className: 'settings-content' }, [panel])];
+    const redraw = key === this.drawn;
+    this.drawn = key;
+    const token = (this.drawToken || 0) + 1;
+    this.drawToken = token;
+    const { scrollX, scrollY } = window;
+    if (redraw && live) {
+      // Built off screen and swapped in whole: no blank page, no jump. Not
+      // swapped if someone typed meanwhile or a newer draw started.
+      await this.renderSection(current.id, panel);
+      if (token !== this.drawToken || this.dirty) {
+        if (token === this.drawToken) this.shown = null; // try again next tick
+        return;
+      }
+      this.root.replaceChildren(...page);
+      window.scrollTo(scrollX, scrollY);
+      return;
+    }
+    // Redrawing after a change (a switch, a new room): hold the page's height
+    // while it reloads, so the browser does not scroll back to the top.
+    if (redraw) this.root.style.minHeight = `${this.root.offsetHeight}px`;
+    this.root.replaceChildren(...page);
+    try {
+      await this.renderSection(current.id, panel);
+    } finally {
+      if (redraw && token === this.drawToken) this.root.style.minHeight = '';
+    }
   }
 
   /** Admin: Users first, then the home and login settings. */
