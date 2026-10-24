@@ -141,6 +141,10 @@ class Session(Base):
         DateTime(timezone=True), default=utcnow
     )
     ip_address: Mapped[str | None] = mapped_column(String(45))
+    # "Keep me logged in": lasts KEEP_LOGGED_IN_SECONDS with no idle timeout.
+    keep: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
 
     user: Mapped[User] = relationship(back_populates="sessions")
 
