@@ -54,28 +54,35 @@ class MembersSection {
     role.addEventListener('change', () => this.app.run(async () => {
       try {
         await this.app.api.changeRole(this.app.home.id, member.user_id, role.value);
-        this.app.status.success(`${member.email} is now ${role.value}.`);
       } finally {
-        await this.loadMembers();
+        await this.loadMembers(); // redraw first, so "success" means the list is up to date
       }
+      this.app.status.success(`${member.email} is now ${role.value}.`);
     }));
     const actions = el('div', { className: 'row' });
-    const remove = el('button', {
-      type: 'button', className: 'danger', testid: 'member-remove', text: 'Remove',
-      onclick: () => actions.replaceChildren(
+    // The confirmation is remembered, so a redraw of the list keeps it open.
+    const confirmRemove = () => {
+      this.confirming = member.user_id;
+      actions.replaceChildren(
         el('span', { text: 'Remove from this home?' }),
         el('button', {
           type: 'button', className: 'danger', testid: 'member-remove-confirm', text: 'Yes, remove',
           onclick: () => this.app.run(async () => {
             await this.app.api.removeMember(this.app.home.id, member.user_id);
+            this.confirming = null;
             await this.loadMembers();
             this.app.status.success(`${member.email} was removed.`);
           }),
         }),
-        el('button', { type: 'button', className: 'secondary', text: 'Cancel', onclick: () => actions.replaceChildren(role, remove) }),
-      ),
-    });
+        el('button', {
+          type: 'button', className: 'secondary', testid: 'member-remove-cancel', text: 'Cancel',
+          onclick: () => { this.confirming = null; actions.replaceChildren(role, remove); },
+        }),
+      );
+    };
+    const remove = el('button', { type: 'button', className: 'danger', testid: 'member-remove', text: 'Remove', onclick: confirmRemove });
     actions.append(role, remove);
+    if (this.confirming === member.user_id) confirmRemove();
     const options = this.app.loginOptions;
     if (options && options.allow_recovery && member.role !== 'admin') {
       const resetOut = el('span', { className: 'secret', testid: 'member-reset-code', hidden: true });
