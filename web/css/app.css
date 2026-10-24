@@ -251,5 +251,5 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 
 /* Thermostat tile */
 .heater-status.cooling { color: var(--accent); }
-.thermo-cool { display: flex; align-items: center; gap: 8px; }
-.thermo-cool span { flex: 1; }
+.thermo-setpoint { display: flex; align-items: center; gap: 8px; }
+.thermo-setpoint span { flex: 1; font-weight: 600; }
