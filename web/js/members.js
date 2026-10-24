@@ -31,12 +31,17 @@ class MembersSection {
 
   async loadMembers() {
     const owner = this.app.can('admin');
-    const members = await this.app.api.getMembers(this.app.home.id);
+    const [members, states] = await Promise.all([
+      this.app.api.getMembers(this.app.home.id),
+      owner ? this.app.api.getMemberStatus(this.app.home.id) : {},
+    ]);
+    members.forEach((m) => { m.active = states[m.user_id] !== false; });
     this.list.replaceChildren(...members.map((m) => this.memberRow(m, owner && m.user_id !== this.app.account.id)));
   }
 
   memberRow(member, manage) {
-    const row = el('div', { className: 'member-row', testid: 'member-row', 'data-user-id': member.user_id, 'data-role': member.role }, [
+    const active = member.active !== false;
+    const row = el('div', { className: `member-row${active ? '' : ' inactive'}`, testid: 'member-row', 'data-user-id': member.user_id, 'data-role': member.role, 'data-active': String(active) }, [
       el('div', {}, [
         el('strong', { text: member.name || member.email }),
         el('p', { className: 'muted', text: member.name ? member.email : '' }),
@@ -44,6 +49,7 @@ class MembersSection {
     ]);
     if (!manage) {
       row.append(el('span', { className: `badge ${member.role}`, title: ROLE_HELP[member.role], text: member.role }));
+      if (!active) row.append(el('span', { className: 'badge', testid: 'member-inactive', text: 'inactive' }));
       const setPassword = this.passwordControl(member);
       if (setPassword) row.append(setPassword);
       return row;
@@ -97,7 +103,18 @@ class MembersSection {
       });
       actions.append(reset, resetOut);
     }
-    row.append(actions);
+    // On or off: an inactive account cannot log in, and is logged out now.
+    const toggle = el('button', {
+      type: 'button', className: `toggle${active ? ' on' : ''}`, testid: 'member-active', 'aria-pressed': String(active),
+      text: active ? 'Active' : 'Inactive', title: active ? 'Turn this account off' : 'Turn this account on',
+      'aria-label': `${member.email}: ${active ? 'active' : 'inactive'}`,
+      onclick: () => this.app.run(async () => {
+        await this.app.api.setMemberActive(this.app.home.id, member.user_id, !active);
+        await this.loadMembers();
+        this.app.status.success(`${member.email} is now ${active ? 'inactive: logged out and unable to log in' : 'active'}.`);
+      }),
+    });
+    row.append(toggle, actions);
     const setPassword = this.passwordControl(member);
     if (setPassword) row.append(setPassword);
     return row;

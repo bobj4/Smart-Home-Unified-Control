@@ -26,6 +26,7 @@ from app.routes import (
     homes,
     https_admin,
     integrations,
+    member_access,
     members,
     rheem,
     safety_limits,
@@ -97,6 +98,7 @@ app.include_router(email_admin.router)
 app.include_router(email_admin.public_router)
 app.include_router(members.router)
 app.include_router(members.enroll_router)
+app.include_router(member_access.router)
 app.include_router(audit_log.router)
 app.include_router(integrations.router)
 app.include_router(rheem.router)

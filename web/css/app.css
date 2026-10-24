@@ -271,3 +271,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 .sched-days { display: flex; flex-wrap: wrap; gap: 6px 12px; }
 .sched-day { display: inline-flex; align-items: center; gap: 4px; }
 .sched-row .ghost { color: #e8eaed; border-color: #5d6470; }
+
+/* Members: an inactive account */
+.member-row.inactive > div:first-child { opacity: 0.55; }

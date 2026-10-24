@@ -164,6 +164,8 @@ class SmartHomeAPI {
   getMembers(homeId) { return this.get(`/homes/${enc(homeId)}/members`); }
   changeRole(homeId, userId, role) { return this.patch(`/homes/${enc(homeId)}/members/${enc(userId)}`, { role }); }
   removeMember(homeId, userId) { return this.del(`/homes/${enc(homeId)}/members/${enc(userId)}`); }
+  getMemberStatus(homeId) { return this.get(`/homes/${enc(homeId)}/members/status`); }
+  setMemberActive(homeId, userId, active) { return this.put(`/homes/${enc(homeId)}/members/${enc(userId)}/active`, { active }); }
   createEnrollment(homeId, invite) { return this.post(`/homes/${enc(homeId)}/members/enrollments`, invite); }
   getEnrollments(homeId) { return this.get(`/homes/${enc(homeId)}/members/enrollments`); }
   cancelEnrollment(homeId, id) { return this.del(`/homes/${enc(homeId)}/members/enrollments/${enc(id)}`); }

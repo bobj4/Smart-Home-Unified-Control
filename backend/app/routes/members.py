@@ -83,7 +83,12 @@ def list_members(
         .order_by(User.email)
     )
     return [
-        {"user_id": u.id, "email": u.email, "name": u.name, "role": role}
+        {
+            "user_id": u.id,
+            "email": u.email,
+            "name": u.name,
+            "role": role,
+        }
         for u, role in rows
     ]
 
