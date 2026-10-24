@@ -25,6 +25,7 @@ from app.authorization import require_role
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
 from app.login_policy import check_password, normalize_login
+from app.login_times import forget_all
 from app.models import Enrollment, HomeMembership, Role, User
 from app.models import Session as SessionModel
 from app.rate_limiter import check_login_allowed, record_login_failure
@@ -52,12 +53,12 @@ class EnrollmentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     email: str = Field(min_length=3, max_length=255)  # email, or a username if allowed
     name: str | None = Field(default=None, max_length=100)
-    role: Literal["admin", "operator", "member"]
+    role: Literal["admin", "operator", "member", "guest"]
 
 
 class RoleChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    role: Literal["admin", "operator", "member"]
+    role: Literal["admin", "operator", "member", "guest"]
 
 
 def _membership(db: Session, home_id: str, user_id: str) -> HomeMembership:
@@ -83,7 +84,12 @@ def list_members(
         .order_by(User.email)
     )
     return [
-        {"user_id": u.id, "email": u.email, "name": u.name, "role": role}
+        {
+            "user_id": u.id,
+            "email": u.email,
+            "name": u.name,
+            "role": role,
+        }
         for u, role in rows
     ]
 
@@ -138,6 +144,7 @@ def remove_member(
         # the same email or username can be used again. Kept (deactivated)
         # so the activity log still shows who did what.
         db.execute(delete(SessionModel).where(SessionModel.user_id == user_id))
+        forget_all(db, user_id)
         gone = db.get(User, user_id)
         if gone is not None:
             gone.email = f"deleted:{gone.id}"

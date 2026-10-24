@@ -1,7 +1,8 @@
-"""Thermostat tile: only the set points the current mode uses, and only the
-values the thermostat reports. Written by the reviewer. Do not edit, skip,
-mark or delete these tests. If one looks wrong, stop and report the test name
-and its full failure output instead of changing it."""
+"""Thermostat tile: the thermostat's reading in the dial, the set points the
+current mode uses under the mode, only values the thermostat reports, and an
+Info window without what the tile already shows. Written by the reviewer. Do
+not edit, skip, mark or delete these tests. If one looks wrong, stop and
+report the test name and its full failure output instead of changing it."""
 
 import json
 
@@ -29,58 +30,92 @@ def show(page, db, device_id, state):
     return card(page, "Hallway")
 
 
-def panel_text(page, tile):
-    tile.get_by_test_id("thermo-settings-open").click()
+def info_text(page, tile):
+    tile.get_by_test_id("thermo-info-open").click()
     panel = page.get_by_test_id("thermo-panel")
-    text = panel.locator("dl").inner_text()
+    expect(panel.locator("h2")).to_have_text("Hallway info")
+    text = panel.inner_text()
     panel.get_by_test_id("thermo-close").click()
     return text
 
 
-def test_ui_tile_shows_the_active_set_points(open_page, db, owner, make_device):
+def setup(open_page, db, owner, make_device):
     hall = make_device(owner.home_id, device_type="thermostat", name="Hallway")
     apply_recommended(db, owner.home_id, None, None)
     page = open_page()
     ui_login(page, owner)
+    return page, hall
 
-    # Heat: only the heating set point.
+
+def test_ui_tile_layout(open_page, db, owner, make_device):
+    page, hall = setup(open_page, db, owner, make_device)
     tile = show(page, db, hall, report(cool_setpoint=75.0))
-    expect(tile.get_by_test_id("target-label")).to_have_text("heat to")
-    expect(tile.get_by_test_id("target-temp")).to_have_text("68 °F")
-    expect(tile.get_by_test_id("thermo-cool")).to_have_count(0)
-    text = panel_text(page, tile)
-    assert "Heat to" in text and "Cool to" not in text
-
-    # Auto: heating on the dial and cooling below it.
-    tile = show(page, db, hall, report(mode="auto", cool_setpoint=75.0))
-    expect(tile.get_by_test_id("target-label")).to_have_text("heat to")
-    expect(tile.get_by_test_id("thermo-cool")).to_have_text("Cool to 75 °F")
-    text = panel_text(page, tile)
-    assert "Heat to" in text and "Cool to" in text
-
-    # Cool: only the cooling set point, on the dial.
-    tile = show(
-        page, db, hall, report(mode="cool", cool_setpoint=75.0, target_temperature=75.0)
+    expect(tile.get_by_test_id("thermo-temp")).to_have_text("67.5 °F")
+    expect(tile.get_by_test_id("thermo-temp-label")).to_have_count(0)  # number only
+    expect(tile.get_by_test_id("target-temp")).to_have_count(0)  # no target dial
+    # The set points sit under the mode.
+    order = tile.evaluate(
+        """t => ['thermo-temp', 'thermo-mode', 'thermo-heat', 'temp-limits']
+        .map(id => [...t.querySelectorAll('[data-testid]')]
+        .findIndex(n => n.dataset.testid === id))"""
     )
-    expect(tile.get_by_test_id("target-label")).to_have_text("cool to")
-    expect(tile.get_by_test_id("target-temp")).to_have_text("75 °F")
+    assert order == sorted(order) and -1 not in order, order
+    text = info_text(page, tile)
+    for shown_on_tile in ("Mode", "Heat to", "Cool to", "Humidity", "Fan", "Inside"):
+        assert shown_on_tile not in text, shown_on_tile
+    assert "V1.2.136" in text and "984 h" in text
+    assert "hold" not in text  # the hold button is on the tile
+
+
+def test_ui_set_points_follow_the_mode(open_page, db, owner, make_device):
+    page, hall = setup(open_page, db, owner, make_device)
+    tile = show(page, db, hall, report(cool_setpoint=75.0))  # Heat
+    expect(tile.get_by_test_id("thermo-heat-value")).to_have_text("Heat to 68 °F")
     expect(tile.get_by_test_id("thermo-cool")).to_have_count(0)
-    text = panel_text(page, tile)
-    assert "Cool to" in text and "Heat to" not in text
 
-    # Off: no set point at all.
-    tile = show(page, db, hall, report(mode="off", status="off"))
-    expect(tile.get_by_test_id("thermo-status")).to_have_text("Off")
-    expect(tile.get_by_test_id("temp-gauge")).to_have_count(0)
-    text = panel_text(page, tile)
-    assert "Heat to" not in text and "Cool to" not in text
+    tile = show(page, db, hall, report(mode="auto", cool_setpoint=75.0))
+    expect(tile.get_by_test_id("thermo-heat-value")).to_have_text("Heat to 68 °F")
+    expect(tile.get_by_test_id("thermo-cool-value")).to_have_text("Cool to 75 °F")
+
+    tile = show(page, db, hall, report(mode="cool", cool_setpoint=75.0))
+    expect(tile.get_by_test_id("thermo-cool-value")).to_have_text("Cool to 75 °F")
+    expect(tile.get_by_test_id("thermo-heat")).to_have_count(0)
+
+    for mode in ("off", "eco"):
+        tile = show(page, db, hall, report(mode=mode, status="off"))
+        expect(tile.get_by_test_id("thermo-heat")).to_have_count(0)
+        expect(tile.get_by_test_id("thermo-cool")).to_have_count(0)
+        expect(tile.get_by_test_id("temp-limits")).to_have_count(0)
+        expect(tile.get_by_test_id("thermo-temp")).to_have_text("67.5 °F")
 
 
-def test_ui_tile_hides_values_not_reported(open_page, db, owner, make_device):
-    hall = make_device(owner.home_id, device_type="thermostat", name="Hallway")
-    apply_recommended(db, owner.home_id, None, None)
-    page = open_page()
-    ui_login(page, owner)
+def test_ui_set_point_buttons_send_commands(open_page, db, owner, make_device):
+    page, hall = setup(open_page, db, owner, make_device)
+    show(page, db, hall, report(mode="auto", cool_setpoint=75.0))
+
+    def click(testid):
+        with page.expect_request(
+            lambda r: r.method == "POST" and r.url.endswith("/command")
+        ) as request:
+            card(page, "Hallway").get_by_test_id(testid).click()
+        expect(page.get_by_test_id("status")).to_have_attribute("data-kind", "success")
+        return request.value.post_data_json
+
+    assert click("thermo-cool-up") == {
+        "command": "set_cool_temperature",
+        "payload": {"temperature": 76},
+    }
+    assert click("thermo-heat-down") == {
+        "command": "set_temperature",
+        "payload": {"temperature": 67},
+    }
+    db.expire_all()
+    state = json.loads(db.get(Device, hall).state)
+    assert (state["heat_setpoint"], state["cool_setpoint"]) == (67, 76)
+
+
+def test_ui_hides_values_not_reported(open_page, db, owner, make_device):
+    page, hall = setup(open_page, db, owner, make_device)
     bare = report(
         humidity=None,
         fan=None,
@@ -92,18 +127,8 @@ def test_ui_tile_hides_values_not_reported(open_page, db, owner, make_device):
         filter_hours=None,
     )
     tile = show(page, db, hall, bare)
-    expect(tile.get_by_test_id("thermo-now")).to_have_text("Inside 67.5 °F")
+    expect(tile.get_by_test_id("thermo-humidity")).to_have_count(0)
     expect(tile.get_by_test_id("thermo-fan")).to_have_count(0)
     expect(tile.get_by_test_id("thermo-sensors")).to_have_count(0)
-    text = panel_text(page, tile)
-    for hidden in (
-        "Humidity",
-        "Fan",
-        "Schedule",
-        "System",
-        "Filter",
-        "Firmware",
-        "Wi-Fi",
-    ):
-        assert hidden not in text, hidden
-    assert "not reported" not in text
+    text = info_text(page, tile)
+    assert "reports nothing more" in text and "not reported" not in text

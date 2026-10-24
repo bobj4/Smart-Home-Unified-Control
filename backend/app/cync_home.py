@@ -213,6 +213,8 @@ def _thermostat_entries(
         return [(t.MODE_SET, t.MODE_CODES[state["mode"]])]
     if command == "set_fan":
         return [(t.FAN_SET, t.FAN_CODES[state["fan"]])]
+    if command == "set_hold":
+        return [(t.HOLD_SET, t.HOLD_CODES[state["hold"]])]
     if command == "set_temperature" and state.get("mode") == "cool":
         return [(t.COOL_SET, t.format_temperature(state["cool_setpoint"], unit))]
     if command == "set_temperature":

@@ -39,7 +39,8 @@ function heaterExtras(view, device, state) {
     }
     parts.push(box);
   }
-  if (device.integration === 'rheem_econet' || typeof state.energy_today === 'number' || typeof state.water_today === 'number') {
+  const usage = device.integration === 'rheem_econet' || typeof state.energy_today === 'number' || typeof state.water_today === 'number';
+  if (usage && !view.app.isGuest()) { // the usage history: members and up
     const today = [];
     if (typeof state.energy_today === 'number') today.push(`${state.energy_today.toFixed(2)} ${energyUnit(state.energy_unit)}`);
     if (typeof state.water_today === 'number') today.push(`${Math.round(state.water_today)} gal`);

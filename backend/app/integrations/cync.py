@@ -331,6 +331,47 @@ def thermostat_write_on_open(
     )
 
 
+def thermostat_settings_on_open(
+    api: Any, loop: Any, cloud_id: int, names: list[str]
+) -> dict[str, Any]:
+    """Read thermostat settings (schedules) by name over the live connection."""
+    link = getattr(api, "thermostat_link", None)
+    if link is None:
+        raise CyncError("the Cync connection is still starting; try again shortly")
+
+    async def limited() -> dict[str, Any]:
+        seconds = cync_thermostat.SETTING_SECONDS * len(names) + 10
+        return dict(
+            await asyncio.wait_for(link.read_settings(cloud_id, names), seconds)
+        )
+
+    return dict(
+        _mapped(lambda: asyncio.run_coroutine_threadsafe(limited(), loop).result())
+    )
+
+
+def thermostat_write_settings_on_open(
+    api: Any,
+    loop: Any,
+    cloud_id: int,
+    entries: list[tuple[int, Any]],
+    names: list[str],
+) -> dict[str, Any]:
+    """Write thermostat settings (schedules), then read them back by name."""
+    link = getattr(api, "thermostat_link", None)
+    if link is None:
+        raise CyncError("the Cync connection is still starting; try again shortly")
+
+    async def limited() -> dict[str, Any]:
+        seconds = cync_thermostat.SETTING_SECONDS * len(names) + 15
+        work = link.write_settings(cloud_id, entries, names)
+        return dict(await asyncio.wait_for(work, seconds))
+
+    return dict(
+        _mapped(lambda: asyncio.run_coroutine_threadsafe(limited(), loop).result())
+    )
+
+
 # ------------------------------------------------------------ the interface
 
 
@@ -421,5 +462,6 @@ async def listen(
                     await asyncio.wait_for(link.probe_all(), TIMEOUT_SECONDS)
                 await asyncio.sleep(poll_seconds)
         finally:
+            cync_thermostat.detach(api)
             with contextlib.suppress(Exception):
                 await asyncio.wait_for(api.shut_down(), 5)

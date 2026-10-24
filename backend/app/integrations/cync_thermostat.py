@@ -17,20 +17,23 @@ import struct
 from collections.abc import Callable
 from typing import Any
 
-PROBE, SET = 10, 3
+PROBE, SET, SYNC = 10, 3, 4
 REPLY_SECONDS = 10
+SETTING_SECONDS = 5  # for each ReadSetting answer
+READ_SETTING = 84
 
 # Data points (index): what the thermostat reports, and what the app writes.
 FIRMWARE, WIFI, TEMPERATURE, HUMIDITY, MODE, FAN = 0, 2, 4, 5, 6, 8
 HEAT_SETPOINT, HVAC_TYPE, RUN_MODE, SENSORS = 10, 12, 16, 87
 COOL_SETPOINT, WORK_STATUS, FILTER = 91, 96, 106
-MODE_SET, FAN_SET, HEAT_SET, COOL_SET = 7, 9, 11, 92
+MODE_SET, FAN_SET, HEAT_SET, COOL_SET, HOLD_SET = 7, 9, 11, 92, 17
 # A write and the point that reports it back.
 REPORTED_BY = {
     MODE_SET: MODE,
     FAN_SET: FAN,
     HEAT_SET: HEAT_SETPOINT,
     COOL_SET: COOL_SETPOINT,
+    HOLD_SET: RUN_MODE,
 }
 
 MODES = {0: "off", 1: "cool", 2: "heat", 3: "auto", 4: "eco", 5: "emergency"}
@@ -38,6 +41,7 @@ MODE_CODES = {name: code for code, name in MODES.items()}
 FANS = {0: "auto", 1: "on"}
 FAN_CODES = {name: code for code, name in FANS.items()}
 HOLDS = {0: "schedule", 1: "permanent", 2: "temporary"}
+HOLD_CODES = {name: code for code, name in HOLDS.items()}
 WORK = {0: "idle", 1: "cooling", 2: "heating"}
 SYSTEMS = {
     1: "Cool only (1 stage)",
@@ -62,17 +66,21 @@ def probe_packet(device_id: int, msg_id: int) -> bytes:
     return packet(PROBE, struct.pack(">IH", device_id, msg_id) + b"\x00")
 
 
-def entry(index: int, value: int | str) -> bytes:
-    """One write entry: ints as 4 bytes (header 0x4004), text as UTF-8."""
+Value = int | str | bytes
+
+
+def entry(index: int, value: Value) -> bytes:
+    """One write entry: ints as 4 bytes (header 0x4004), text as UTF-8
+    (0x9000 | length), bytes as they are (0xA000 | length)."""
+    if isinstance(value, bytes):
+        return bytes([index]) + struct.pack(">H", 0xA000 | len(value)) + value
     if isinstance(value, str):
         raw = value.encode()
         return bytes([index]) + struct.pack(">H", 0x9000 | len(raw)) + raw
     return bytes([index]) + struct.pack(">Hi", 0x4004, value)
 
 
-def set_packet(
-    device_id: int, msg_id: int, entries: list[tuple[int, int | str]]
-) -> bytes:
+def set_packet(device_id: int, msg_id: int, entries: list[tuple[int, Value]]) -> bytes:
     body = struct.pack(">IH", device_id, msg_id) + b"\x06"
     return packet(SET, body + b"".join(entry(i, v) for i, v in entries))
 
@@ -142,6 +150,13 @@ def format_temperature(value_f: float, unit: str) -> str:
     return f"{value_f:.1f}F"
 
 
+def _pin(value: Any) -> str | None:
+    """A remote sensor's PIN code as the 6 digits schedules refer to it by."""
+    if isinstance(value, int) and not isinstance(value, bool) and 0 <= value < 10**6:
+        return f"{value:06d}"
+    return None
+
+
 def _sensors(text: Any) -> list[dict[str, Any]]:
     if not isinstance(text, str) or ":" not in text:
         return []
@@ -162,6 +177,7 @@ def _sensors(text: Any) -> list[dict[str, Any]]:
                 "humidity": raw.get("Humidity"),
                 "battery": raw.get("Batt"),
                 "active": bool(raw.get("Active")),
+                "pin": _pin(raw.get("PinCode")),
             }
         )
     return sensors
@@ -214,8 +230,45 @@ def thermostat_state(points: dict[int, Any]) -> dict[str, Any]:
     }
 
 
+def parse_push(body: bytes) -> tuple[int, dict[int, Any]] | None:
+    """A device push (SYNC, no response bit): deviceId(4) msgId(2) flags(1),
+    an optional name (flag bit 0: 2-byte length, name), then data points."""
+    if len(body) < 7:
+        return None
+    device_id = struct.unpack(">I", body[:4])[0]
+    flags, rest = body[6], bytes(body[7:])
+    if flags & 1:
+        if len(rest) < 2:
+            return None
+        rest = rest[2 + int.from_bytes(rest[:2], "big") :]
+    return device_id, parse_entries(rest)
+
+
+# Links whose thermostats' raw packets are watched (see _watch_raw_packets).
+_raw_links: list["ThermostatLink"] = []
+
+
+def _watch_raw_packets() -> None:
+    """pycync drops the thermostat's pushes (it cannot parse them), so look
+    at every packet before pycync parses it. Installed once per process."""
+    from pycync.tcp import packet_parser
+
+    original = packet_parser.parse_packet
+    if getattr(original, "thermostat_watch", False):
+        return
+
+    def parse_packet(packet: Any, user_id: int) -> Any:
+        for link in list(_raw_links):
+            with contextlib.suppress(Exception):  # never break pycync
+                link.raw(bytes(packet))
+        return original(packet, user_id)
+
+    parse_packet.thermostat_watch = True  # type: ignore[attr-defined]
+    packet_parser.parse_packet = parse_packet
+
+
 class ThermostatLink:
-    """Probes and writes over one open pycync connection."""
+    """Probes, writes and setting reads over one open pycync connection."""
 
     def __init__(self, api: Any, on_points: Callable[[int, dict[int, Any]], None]):
         self.tcp = api._command_client._tcp_manager  # noqa: SLF001 - no public way in
@@ -223,6 +276,56 @@ class ThermostatLink:
         self.ids: set[int] = set()
         self._msg = 1000
         self._waiting: dict[int, list[asyncio.Future[dict[int, Any]]]] = {}
+        # (device id, setting name) -> futures waiting for its ReadSetting answer
+        self._settings: dict[tuple[int, str], list[asyncio.Future[Any]]] = {}
+
+    def raw(self, packet: bytes) -> None:
+        """A whole packet as it arrived: answers to ReadSetting requests."""
+        if len(packet) < 5 or packet[0] >> 4 != SYNC or packet[0] & 8:
+            return
+        found = parse_push(packet[5:])
+        if found is None or found[0] not in self.ids:
+            return
+        device_id, points = found
+        reply = points.get(READ_SETTING)
+        if not isinstance(reply, str):
+            return
+        try:
+            answer = json.loads(reply)
+        except ValueError:
+            return
+        if not isinstance(answer, dict):
+            return
+        for name, value in answer.items():
+            for future in self._settings.pop((device_id, str(name)), []):
+                if not future.done():
+                    future.set_result(value)
+
+    async def read_settings(self, device_id: int, names: list[str]) -> dict[str, Any]:
+        """Ask for each setting by name (a write of the name to ReadSetting,
+        which changes nothing) and collect the answers. A setting that is not
+        answered in time is left out."""
+        loop = asyncio.get_running_loop()
+        found: dict[str, Any] = {}
+        for name in names:
+            future: asyncio.Future[Any] = loop.create_future()
+            self._settings.setdefault((device_id, name), []).append(future)
+            request = set_packet(device_id, self._next(), [(READ_SETTING, name)])
+            await self.tcp._send_request(request)  # noqa: SLF001
+            try:
+                found[name] = await asyncio.wait_for(future, SETTING_SECONDS)
+            except TimeoutError:
+                self._settings.pop((device_id, name), None)
+        return found
+
+    async def write_settings(
+        self, device_id: int, entries: list[tuple[int, Value]], names: list[str]
+    ) -> dict[str, Any]:
+        """Write settings (schedules) in one set packet, then read them back
+        by name: returns what the thermostat now holds."""
+        await self.tcp._send_request(set_packet(device_id, self._next(), entries))  # noqa: SLF001
+        await asyncio.sleep(2)
+        return await self.read_settings(device_id, names)
 
     def _next(self) -> int:
         self._msg = self._msg % 65000 + 1
@@ -246,7 +349,7 @@ class ThermostatLink:
             await self.tcp._send_request(probe_packet(device_id, self._next()))  # noqa: SLF001
 
     async def write(
-        self, device_id: int, entries: list[tuple[int, int | str]]
+        self, device_id: int, entries: list[tuple[int, Value]]
     ) -> dict[int, Any]:
         """Send the entries, then probe; returns what the thermostat reports."""
         await self.tcp._send_request(set_packet(device_id, self._next(), entries))  # noqa: SLF001
@@ -275,8 +378,20 @@ def attach(
 
     hook.original = original  # type: ignore[attr-defined]
     tcp._client_callback = hook  # noqa: SLF001
+    old = getattr(api, "thermostat_link", None)
+    if old in _raw_links:
+        _raw_links.remove(old)
+    _raw_links.append(link)
+    _watch_raw_packets()
     api.thermostat_link = link
     return link
+
+
+def detach(api: Any) -> None:
+    """Stop watching a closed connection's packets."""
+    link = getattr(api, "thermostat_link", None)
+    if link in _raw_links:
+        _raw_links.remove(link)
 
 
 def confirmed(entries: list[tuple[int, int | str]], points: dict[int, Any]) -> bool:

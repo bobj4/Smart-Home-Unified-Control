@@ -2,8 +2,9 @@
 
 The browser holds a random token in an HttpOnly cookie; the database holds
 only its SHA-256 hash. A session ends after IDLE_TIMEOUT_SECONDS without
-activity or TOTAL_TIMEOUT_SECONDS after login, whichever comes first.
-Logout deletes the row.
+activity or TOTAL_TIMEOUT_SECONDS after login, whichever comes first. A
+"keep me logged in" session lasts the lifetime it was made with (the admin's
+Login times setting) with no idle timeout. Logout, a password change or turning the account off deletes it.
 """
 
 import hashlib
@@ -31,9 +32,17 @@ def hash_token(token: str) -> str:
 
 
 def create_session(
-    db: Session, user_id: str, ip_address: str | None
+    db: Session,
+    user_id: str,
+    ip_address: str | None,
+    keep: bool = False,
+    keep_seconds: int = 0,
 ) -> tuple[str, str]:
-    """Store a new session and return (session_token, csrf_token)."""
+    """Store a new session and return (session_token, csrf_token). A kept
+    session lasts keep_seconds; any other TOTAL_TIMEOUT_SECONDS."""
+    lifetime = (
+        keep_seconds if keep and keep_seconds > 0 else settings.TOTAL_TIMEOUT_SECONDS
+    )
     token = secrets.token_urlsafe(32)
     csrf = secrets.token_urlsafe(32)
     now = datetime.now(UTC)
@@ -43,9 +52,10 @@ def create_session(
             hash_token=hash_token(token),
             csrf_token=csrf,
             created_at=now,
-            expires_at=now + timedelta(seconds=settings.TOTAL_TIMEOUT_SECONDS),
+            expires_at=now + timedelta(seconds=lifetime),
             last_activity=now,
             ip_address=ip_address,
+            keep=keep,
         )
     )
     db.commit()
@@ -66,7 +76,8 @@ def get_valid_session(db: Session, token: str | None) -> SessionModel | None:
         return None
     now = datetime.now(UTC)
     idle = timedelta(seconds=settings.IDLE_TIMEOUT_SECONDS)
-    if now >= as_utc(session.expires_at) or now - as_utc(session.last_activity) > idle:
+    idle_out = not session.keep and now - as_utc(session.last_activity) > idle
+    if now >= as_utc(session.expires_at) or idle_out:
         db.delete(session)
         db.commit()
         return None

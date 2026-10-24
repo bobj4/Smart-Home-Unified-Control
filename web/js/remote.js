@@ -60,8 +60,12 @@ class TvRemote {
       this.close();
       return;
     }
+    const same = JSON.stringify(fresh.state || {}) === JSON.stringify(this.device.state)
+      && fresh.name === this.device.name;
     this.device = { ...fresh, state: { ...(fresh.state || {}) } };
-    this.render();
+    // Redraw only when something changed, so the open remote keeps its
+    // buttons (and focus) between the 5-second refreshes.
+    if (!same) this.render();
   }
 
   send(command, payload = {}) {

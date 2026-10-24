@@ -54,15 +54,31 @@ class SmartHomeAPI {
   del(path) { return this.request(path, { method: 'DELETE' }); }
 
   // Login and logout
-  login(email, password, code) {
+  login(email, password, code, { keepLoggedIn = false, rememberMe = false, rememberDevice = false } = {}) {
     // 6 digits: authenticator code. 8 digits: one of the recovery codes.
     // Empty: the account has two-factor login turned off.
-    const body = { email, password };
+    const body = {
+      email, password, keep_logged_in: keepLoggedIn, remember_me: rememberMe, remember_device: rememberDevice,
+    };
     if (code.length === 8) body.recovery_code = code;
     else if (code) body.totp_code = code;
     return this.post('/auth/login', body);
   }
   logout() { return this.post('/auth/logout'); }
+  getRememberedLogin() { return this.get('/auth/remembered'); }
+  getLoginTimes() { return this.get('/admin/login-times'); }
+  setLoginTimes(body) { return this.put('/admin/login-times', body); }
+  getMyDevices() { return this.get('/account/trusted-devices'); }
+  forgetMyDevice(id) { return this.del(`/account/trusted-devices/${enc(id)}`); }
+  getAllDevices() { return this.get('/admin/trusted-devices'); }
+  forgetAnyDevice(id) { return this.del(`/admin/trusted-devices/${enc(id)}`); }
+  getVerbose() { return this.get('/admin/verbose-logging'); }
+  setVerbose(enabled) { return this.put('/admin/verbose-logging', { enabled }); }
+  getGuestPage(homeId) { return this.get(`/homes/${enc(homeId)}/guest`); }
+  getGuestAccess(homeId, userId) { return this.get(`/homes/${enc(homeId)}/members/${enc(userId)}/guest-access`); }
+  setGuestAccess(homeId, userId, body) { return this.put(`/homes/${enc(homeId)}/members/${enc(userId)}/guest-access`, body); }
+  getLayout(homeId) { return this.get(`/homes/${enc(homeId)}/layout`); }
+  setLayout(homeId, roomOrder) { return this.put(`/homes/${enc(homeId)}/layout`, { room_order: roomOrder }); }
 
   // Devices
   getDevices(homeId) { return this.get(`/homes/${enc(homeId)}/devices`); }
@@ -82,7 +98,9 @@ class SmartHomeAPI {
   updateDevice(homeId, deviceId, changes) {
     return this.patch(`/homes/${enc(homeId)}/devices/${enc(deviceId)}`, changes);
   }
+  /** Guests send through the guest route, which checks their access. */
   sendCommand(homeId, deviceId, command, payload = {}) {
+    if (this.guest) return this.post(`/homes/${enc(homeId)}/guest/devices/${enc(deviceId)}/command`, { command, payload });
     return this.post(`/homes/${enc(homeId)}/devices/${enc(deviceId)}/command`, { command, payload });
   }
 
@@ -164,6 +182,8 @@ class SmartHomeAPI {
   getMembers(homeId) { return this.get(`/homes/${enc(homeId)}/members`); }
   changeRole(homeId, userId, role) { return this.patch(`/homes/${enc(homeId)}/members/${enc(userId)}`, { role }); }
   removeMember(homeId, userId) { return this.del(`/homes/${enc(homeId)}/members/${enc(userId)}`); }
+  getMemberStatus(homeId) { return this.get(`/homes/${enc(homeId)}/members/status`); }
+  setMemberActive(homeId, userId, active) { return this.put(`/homes/${enc(homeId)}/members/${enc(userId)}/active`, { active }); }
   createEnrollment(homeId, invite) { return this.post(`/homes/${enc(homeId)}/members/enrollments`, invite); }
   getEnrollments(homeId) { return this.get(`/homes/${enc(homeId)}/members/enrollments`); }
   cancelEnrollment(homeId, id) { return this.del(`/homes/${enc(homeId)}/members/enrollments/${enc(id)}`); }

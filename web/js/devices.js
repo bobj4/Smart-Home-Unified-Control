@@ -62,7 +62,7 @@ class DevicesView {
 
   async load() {
     const homeId = this.app.home.id;
-    const [devices, limits, integrations, groups, display] = await Promise.all([
+    const [devices, limits, integrations, groups, display] = this.app.isGuest() ? await guestDevicesData(this.app, homeId) : await Promise.all([
       this.app.api.getDevices(homeId),
       this.app.api.getSafetyLimits(homeId),
       this.app.api.getIntegrations(homeId),
@@ -70,11 +70,19 @@ class DevicesView {
       this.app.api.getDisplay(homeId),
     ]);
     this.display = display;
+    if (this.layoutHome !== homeId) { // each user's room order, read once per home
+      try {
+        this.roomOrder = (await this.app.api.getLayout(homeId)).room_order;
+      } catch (error) {
+        this.roomOrder = null; // the default order
+      }
+      this.layoutHome = homeId;
+    }
     this.limits = Object.fromEntries(limits.map((l) => [l.device_type, l]));
     this.integrationsOn = new Set(integrations.filter((i) => i.enabled).map((i) => i.id));
     for (const device of devices) {
       device.integrationOn = this.integrationsOn.has(device.integration);
-      device.controllable = Boolean(device.online) && device.integrationOn;
+      device.controllable = Boolean(device.online) && device.integrationOn && !device.blocked;
     }
     this.remote.refresh(devices);
     this.lastDevices = devices;
@@ -100,10 +108,17 @@ class DevicesView {
       rooms.get(room).push(tile);
     };
     if (!apart) groupList.forEach((g) => add(g.room || '', this.groupTile(g)));
-    devices.filter((d) => !grouped.has(d.id)).forEach((d) => add(d.room || '', this.card(d)));
-    const names = [...rooms.keys()].sort((a, b) => (a === '') - (b === '') || a.localeCompare(b));
+    devices.filter((d) => !grouped.has(d.id)).forEach((d) => add(displayRoom(d), this.card(d)));
+    const names = orderRooms([...rooms.keys()], this.roomOrder);
     const top = apart ? this.groups.section(groupList) : this.groups.hint(groupList);
-    this.root.replaceChildren(...[top].filter(Boolean), ...names.map((room) => el('section', { className: 'room', testid: 'room', 'data-room': room }, [
+    const layout = el('button', {
+      type: 'button', className: 'secondary layout-open', testid: 'layout-open', text: 'Edit layout',
+      onclick: () => {
+        if (!this.layoutEditor) this.layoutEditor = new RoomLayoutEditor(this);
+        this.layoutEditor.open(names);
+      },
+    });
+    this.root.replaceChildren(el('div', { className: 'devices-top' }, [top, layout].filter(Boolean)), ...names.map((room) => el('section', { className: 'room', testid: 'room', 'data-room': room }, [
       el('h2', { text: room || 'No room' }),
       el('div', { className: 'device-grid' }, rooms.get(room)),
     ])));
@@ -134,7 +149,10 @@ class DevicesView {
   }
 
   card(device) {
-    const state = device.state || {};
+    if (device.blocked) return blockedCard(device);
+    // A disconnected device is drawn off (and dimmed by .offline) until it is
+    // back online; then its real state shows again on the next refresh.
+    const state = device.online ? (device.state || {}) : { ...(device.state || {}), on: false, status: 'off' };
     const on = Boolean(state.on);
     const card = el('article', {
       className: `device-card${on ? ' on' : ''}${device.online ? '' : ' offline'}`,
@@ -154,8 +172,8 @@ class DevicesView {
     if (!device.integrationOn) {
       card.append(el('p', { className: 'warning', testid: 'integration-off', text: 'This brand is turned off in Settings > Integrations.' }));
     }
-    if (POWER_TYPES.has(device.type)) card.append(this.powerToggle(device, on));
-    if (device.type === 'light') {
+    if (POWER_TYPES.has(device.type) && guestMay(this.app, 'light_power')) card.append(this.powerToggle(device, on));
+    if (device.type === 'light' && guestMay(this.app, 'light_settings')) {
       card.append(el('button', {
         type: 'button', className: 'secondary', testid: 'light-settings-open', text: 'Light settings',
         disabled: !device.controllable, onclick: () => this.lightPanel.open(device),
@@ -168,9 +186,9 @@ class DevicesView {
         disabled: !device.controllable, onclick: () => this.remote.open(device),
       }));
     }
-    // A thermostat's dial is its active set point; Off and Eco have none.
-    const dialInfo = device.type === 'thermostat' ? thermostatDialInfo(state) : { show: true, label: 'target' };
-    if (TEMPERATURE_TYPES.has(device.type) && dialInfo.show) card.append(this.dial(device, state, dialInfo.label));
+    // A Cync thermostat (it reports a mode) draws its own dial: see thermostat.js.
+    const ownDial = device.type === 'thermostat' && Boolean(state.mode);
+    if (TEMPERATURE_TYPES.has(device.type) && !ownDial) card.append(this.dial(device, state));
     if (device.type === 'water_heater') card.append(...heaterExtras(this, device, state));
     if (device.type === 'thermostat') card.append(...thermostatExtras(this, device, state));
     if (device.type === 'sensor') card.append(this.readings(state));
@@ -190,15 +208,19 @@ class DevicesView {
     });
   }
 
-  dial(device, state, label = 'target') {
-    // The device's own limits narrow the home's limits for its type.
+  /** The home's limits for the device's type, narrowed by the device's own. */
+  limitsFor(device) {
     const typeLimits = this.limits[device.type];
     const own = device.limits || {};
-    const limits = typeLimits && {
+    return typeLimits && {
       ...typeLimits,
       min_temperature: own.min_temperature == null ? typeLimits.min_temperature : Math.max(typeLimits.min_temperature, own.min_temperature),
       max_temperature: own.max_temperature == null ? typeLimits.max_temperature : Math.min(typeLimits.max_temperature, own.max_temperature),
     };
+  }
+
+  dial(device, state) {
+    const limits = this.limitsFor(device);
     const usable = Boolean(limits && limits.enabled) && device.controllable;
     const target = typeof state.target_temperature === 'number' ? state.target_temperature : null;
     const unit = (limits && limits.unit) || state.unit || '';
@@ -210,7 +232,7 @@ class DevicesView {
       gauge(fraction, device.type),
       el('div', { className: 'readout' }, [
         el('span', { className: 'target', testid: 'target-temp', text: target === null ? '--' : `${target} °${unit}` }),
-        el('span', { className: 'muted', testid: 'target-label', text: label }),
+        el('span', { className: 'muted', testid: 'target-label', text: 'target' }),
       ]),
     ]));
     if (limits && limits.enabled) {

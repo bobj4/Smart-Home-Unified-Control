@@ -82,6 +82,7 @@ def test_decodes_the_real_probe_reply():
             "humidity": 45,
             "battery": None,
             "active": True,
+            "pin": None,
         },
         {
             "name": "Remote sensor",
@@ -89,6 +90,7 @@ def test_decodes_the_real_probe_reply():
             "humidity": 44,
             "battery": "2.89",
             "active": True,
+            "pin": "024944",
         },
     ]
     assert t.parse_probe_reply(bytes.fromhex("0018" + "0a")) is None  # offline
@@ -290,19 +292,18 @@ def test_ui_thermostat_tile(open_page, db, owner, make_device):
     page = open_page()
     ui_login(page, owner)
     tile = card(page, "Hallway")
-    expect(tile.get_by_test_id("target-temp")).to_have_text("68 °F")
+    expect(tile.get_by_test_id("thermo-temp")).to_have_text("67.5 °F")
+    expect(tile.get_by_test_id("thermo-heat-value")).to_have_text("Heat to 68 °F")
     expect(tile.get_by_test_id("thermo-status")).to_have_text("Idle")
-    expect(tile.get_by_test_id("thermo-now")).to_have_text(
-        "Inside 67.5 °F · 44% humidity"
-    )
+    expect(tile.get_by_test_id("thermo-humidity")).to_have_text("44% humidity")
     expect(tile.get_by_test_id("thermo-mode")).to_have_value("heat")
     expect(tile.get_by_test_id("thermo-fan")).to_have_text("Fan: auto")
     expect(tile.get_by_test_id("thermo-sensors")).to_contain_text(
         "Remote sensor: 67.8 °F · 44% · battery 2.89 V"
     )
-    tile.get_by_test_id("thermo-settings-open").click()
+    expect(tile.get_by_test_id("thermo-hold")).to_have_text("Permanent hold")
+    tile.get_by_test_id("thermo-info-open").click()
     panel = page.get_by_test_id("thermo-panel")
-    expect(panel).to_contain_text("Permanent hold")
     expect(panel).to_contain_text("984 h since 2026-06-17")
     panel.get_by_test_id("thermo-close").click()
     eco = {**json.loads(d.state), "mode": "eco"}
@@ -312,7 +313,7 @@ def test_ui_thermostat_tile(open_page, db, owner, make_device):
     page.reload()
     tile = card(page, "Hallway")
     expect(tile.get_by_test_id("thermo-eco")).to_be_visible()
-    expect(tile.get_by_test_id("temp-up")).to_have_count(0)  # no set point in Eco
+    expect(tile.get_by_test_id("thermo-heat-up")).to_have_count(0)  # none in Eco
 
 
 def test_heater_running_value():

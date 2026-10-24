@@ -18,8 +18,9 @@ from app.authorization import require_role
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
 from app.login_policy import check_password, normalize_login, settings, settings_out
+from app.login_times import forget_all
 from app.mailer import configured
-from app.models import Home, HomeMembership, PasswordReset, Role, User
+from app.models import GUEST_ROLE, Home, HomeMembership, PasswordReset, Role, User
 from app.models import Session as SessionModel
 from app.rate_limiter import check_login_allowed, record_login_failure
 from app.sessions import as_utc
@@ -155,7 +156,7 @@ class NewUser(BaseModel):
     model_config = ConfigDict(extra="forbid")
     login: str = Field(min_length=3, max_length=255)
     name: str | None = Field(default=None, max_length=100)
-    role: Literal["admin", "operator", "member"]
+    role: Literal["admin", "operator", "member", "guest"]
     password: str = Field(default="", max_length=1024)  # "" if the rules allow it
 
 
@@ -293,13 +294,14 @@ def set_member_password(
     target = db.get(User, user_id)
     if membership is None or target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
-    if membership.role not in (Role.MEMBER.value, Role.OPERATOR.value):
+    if membership.role not in (Role.MEMBER.value, Role.OPERATOR.value, GUEST_ROLE):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "Admins' passwords can only be changed by them"
         )
     check_password(db, body.password)
     target.hashed_password = hash_password(body.password)
     db.execute(delete(SessionModel).where(SessionModel.user_id == user_id))
+    forget_all(db, user_id)
     db.commit()
     record_event(
         db,
@@ -355,6 +357,7 @@ def recover(
     target.totp_last_step = None
     reset.used_at = datetime.now(UTC)
     db.execute(delete(SessionModel).where(SessionModel.user_id == target.id))
+    forget_all(db, target.id)
     db.commit()
     record_event(db, "password_recovered", user_id=target.id, ip_address=ip)
     return {"detail": "Password changed. Log in with the new password."}

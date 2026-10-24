@@ -48,7 +48,7 @@ class SmartHomeApp {
         await this.devices.load();
       } else if (view === 'settings' && sub === 'integrations' && !this.settings.dirty) {
         this.settings.shown = null; // redraw the device lists, unless someone is editing
-        await this.settings.load('integrations');
+        await this.settings.load('integrations', { live: true });
       } else if (view === 'cameras' && this.cameras.grid && this.cameras.player.hidden) {
         await this.cameras.fillEvents();
       }
@@ -101,11 +101,25 @@ class SmartHomeApp {
     try {
       this.loginOptions = await this.api.getLoginOptions();
       this.applyLoginOptions();
+      await this.fillRememberedLogin();
       await this.loadAccount();
     } catch (error) {
       if (!(error instanceof AuthError)) this.status.error(error.message);
     }
     this.route();
+  }
+
+  /** "Remember me": the server keeps the login name in an HttpOnly cookie. */
+  async fillRememberedLogin() {
+    let remembered;
+    try { remembered = await this.api.getRememberedLogin(); } catch (error) { return; }
+    const { login, device, keep_days: keepDays } = remembered;
+    byTestId('login-device-known').hidden = !device;
+    if (keepDays) byTestId('login-keep-label').textContent = `Keep me logged in for ${keepDays} day${keepDays === 1 ? '' : 's'}`;
+    if (login && !byTestId('login-email').value) {
+      byTestId('login-email').value = login;
+      byTestId('login-remember').checked = true;
+    }
   }
 
   /** Login-name label and the recovery link follow the admin's login rules. */
@@ -135,7 +149,10 @@ class SmartHomeApp {
   }
 
   async route() {
-    if (!this.account || this.currentRoute()[0] !== 'settings') this.settings.shown = null;
+    if (!this.account || this.currentRoute()[0] !== 'settings') {
+      this.settings.shown = null;
+      this.settings.drawn = null; // coming back draws afresh, not over the old page
+    }
     if (!this.account) {
       const hash = window.location.hash;
       if (hash === '#/recover' && this.loginOptions && this.loginOptions.allow_recovery) {
@@ -156,6 +173,7 @@ class SmartHomeApp {
     }
     byTestId('home-name').textContent = this.home ? this.home.name : 'No home yet';
     if (!this.home) return;
+    this.api.guest = this.isGuest(); // guests use the guest routes
     if (view === 'cameras' && !(await this.camerasAvailable())) {
       window.location.hash = '#/devices';
       return;
@@ -165,10 +183,22 @@ class SmartHomeApp {
     this.run(loaders[view]);
   }
 
-  /** Cameras is shown to operators and up, and only while Frigate is on. */
+  isGuest() {
+    return Boolean(this.home) && this.home.role === 'guest';
+  }
+
+  /** Cameras is shown to operators and up (and guests allowed to see them),
+   * and only while Frigate is on. */
   async camerasAvailable() {
     let on = false;
-    if (this.can('operator')) {
+    if (this.isGuest()) {
+      try {
+        const page = await this.api.getGuestPage(this.home.id);
+        on = page.access.cameras && page.integrations_on.includes('frigate');
+      } catch (error) {
+        on = false;
+      }
+    } else if (this.can('operator')) {
       try {
         const integrations = await this.api.getIntegrations(this.home.id);
         on = integrations.some((i) => i.id === 'frigate' && i.enabled);
@@ -192,8 +222,13 @@ class SmartHomeApp {
     errorEl.textContent = '';
     const password = byTestId('login-password');
     const code = byTestId('login-code');
+    const name = byTestId('login-email').value.trim();
     try {
-      await this.api.login(byTestId('login-email').value.trim(), password.value, code.value.trim());
+      await this.api.login(name, password.value, code.value.trim(), {
+        keepLoggedIn: byTestId('login-keep').checked,
+        rememberMe: byTestId('login-remember').checked,
+        rememberDevice: byTestId('login-remember-device').checked,
+      });
       password.value = '';
       code.value = '';
       await this.loadAccount();
@@ -216,6 +251,7 @@ class SmartHomeApp {
     this.home = null;
     this.applyTheme('system');
     this.route();
+    await this.fillRememberedLogin(); // a device approved at this login
   }
 }
 

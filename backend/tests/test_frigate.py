@@ -512,9 +512,15 @@ def test_ui_frigate_setup_and_events(open_page, owner, frigate_fake, secrets_key
     expect(first).to_contain_text("91%")
     thumb = first.get_by_test_id("event-thumb")
     expect(thumb).to_be_visible()
-    page.wait_for_function(
-        "document.querySelector('[data-testid=event-thumb]').naturalWidth > 0"
-    )
+    # Poll from Python: wait_for_function evaluates a string in the page, which
+    # the app's Content-Security-Policy (no unsafe-eval) blocks once it has to
+    # retry, so it failed whenever the image was not loaded at the first look.
+    for _ in range(100):
+        if thumb.evaluate("img => img.complete && img.naturalWidth > 0"):
+            break
+        page.wait_for_timeout(100)
+    else:
+        raise AssertionError("the event thumbnail did not load")
     expect(events.nth(1).get_by_test_id("event-play")).to_have_count(0)  # no clip
 
     first.get_by_test_id("event-play").click()

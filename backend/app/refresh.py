@@ -14,7 +14,7 @@ import time
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import cync_home, rheem_home, samsung_home
+from app import cync_home, rheem_home, samsung_home, verbose
 from app.db_config import SessionLocal
 from app.features import integration_enabled
 from app.integrations import samsung
@@ -67,6 +67,16 @@ def refresh_rheem(db: Session, home_id: str, now: float | None = None) -> bool:
     except rheem_home.RheemUnavailable as error:
         db.rollback()
         log.info("Rheem refresh skipped for a home: %s", error.reason)
+        verbose.note(
+            db,
+            "refresh",
+            home_id=home_id,
+            details={
+                "integration": "rheem_econet",
+                "result": "failed",
+                "reason": error.reason,
+            },
+        )
         return False
     return True
 
@@ -86,18 +96,54 @@ def refresh_cync(db: Session, home_id: str, now: float | None = None) -> bool:
     except cync_home.CyncUnavailable as error:
         db.rollback()
         log.info("Cync refresh skipped for a home: %s", error.reason)
+        verbose.note(
+            db,
+            "refresh",
+            home_id=home_id,
+            details={"integration": "cync", "result": "failed", "reason": error.reason},
+        )
         return False
     return True
 
 
 def refresh_all(db: Session) -> None:
     for home_id in db.scalars(select(Home.id)).all():
-        for step in (refresh_tvs, refresh_rheem, refresh_cync):
+        steps = (
+            (refresh_tvs, "samsung_tv"),
+            (refresh_rheem, "rheem_econet"),
+            (refresh_cync, "cync"),
+        )
+        for step, integration in steps:
+            start = time.monotonic()
             try:
-                step(db, home_id)
-            except Exception:  # one broken home must not stop the others
+                result = step(db, home_id)
+            except Exception as error:  # one broken home must not stop the others
                 db.rollback()
                 log.exception("live refresh failed (%s)", step.__name__)
+                verbose.note(
+                    db,
+                    "refresh",
+                    home_id=home_id,
+                    details={
+                        "integration": integration,
+                        "result": "error",
+                        "reason": type(error).__name__,
+                        "ms": verbose.ms_since(start),
+                    },
+                )
+                continue
+            if result:  # it really read the integration (not skipped as recent)
+                verbose.note(
+                    db,
+                    "refresh",
+                    home_id=home_id,
+                    details={
+                        "integration": integration,
+                        "result": "ok",
+                        "changed": result if result is not True else None,
+                        "ms": verbose.ms_since(start),
+                    },
+                )
 
 
 def _pass() -> None:

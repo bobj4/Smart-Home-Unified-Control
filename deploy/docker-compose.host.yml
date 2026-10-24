@@ -1,0 +1,11 @@
+# Optional, Linux only: share the host's network, so Wake-on-LAN broadcasts
+# reach the TVs (they do not leave Docker's own network). Used by
+#   deploy/linux/smarthome install --host-network
+# or by hand:
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.host.yml up -d
+# The server then listens on the host's port 8000 directly. Needs Docker
+# Compose 2.24 or newer (for !reset).
+services:
+  smart-home:
+    network_mode: host
+    ports: !reset []
