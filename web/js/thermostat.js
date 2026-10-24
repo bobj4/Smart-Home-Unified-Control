@@ -20,16 +20,25 @@ function sensorText(s) {
   return parts.join(' · ');
 }
 
+const HEAT_MODES = new Set(['heat', 'auto', 'emergency']);
+const COOL_MODES = new Set(['cool', 'auto']);
+
+/** Whether the dial shows, and what it sets: Off and Eco have no set point to change. */
+function thermostatDialInfo(state) {
+  if (!state.mode) return { show: true, label: 'target' }; // demo thermostat
+  if (state.mode === 'cool') return { show: true, label: 'cool to' };
+  return { show: HEAT_MODES.has(state.mode), label: 'heat to' };
+}
+
 function thermostatExtras(view, device, state) {
   if (!state.mode) return [];
   const status = state.status || 'idle';
-  const now = [`Inside ${degrees(state.current_temperature)}`];
+  const parts = [el('p', { className: `heater-status ${status}`, testid: 'thermo-status', 'data-status': status, text: THERMO_STATUS[status] || status })];
+  const now = [];
+  if (typeof state.current_temperature === 'number') now.push(`Inside ${degrees(state.current_temperature)}`);
   if (typeof state.humidity === 'number') now.push(`${state.humidity}% humidity`);
-  const parts = [
-    el('p', { className: `heater-status ${status}`, testid: 'thermo-status', 'data-status': status, text: THERMO_STATUS[status] || status }),
-    el('p', { className: 'muted', testid: 'thermo-now', text: now.join(' · ') }),
-  ];
-  if (state.mode === 'eco') parts.push(el('p', { className: 'muted', testid: 'thermo-eco', text: 'Eco mode: set points are locked until you change the mode.' }));
+  if (now.length) parts.push(el('p', { className: 'muted', testid: 'thermo-now', text: now.join(' · ') }));
+  if (state.mode === 'eco') parts.push(el('p', { className: 'muted', testid: 'thermo-eco', text: 'Eco mode: the thermostat keeps its own energy-saving range. Change the mode to set a temperature.' }));
 
   const mode = el('select', { testid: 'thermo-mode', disabled: !device.controllable, 'aria-label': `${device.name} mode` },
     (state.modes || []).map((m) => el('option', { value: m, text: THERMO_MODES[m] || m })));
@@ -54,7 +63,7 @@ function thermostatExtras(view, device, state) {
     }));
   }
   parts.push(box);
-  const sensors = state.sensors || [];
+  const sensors = (state.sensors || []).filter((s) => typeof s.temperature === 'number');
   if (sensors.length) {
     parts.push(el('div', { className: 'heater-box', testid: 'thermo-sensors' }, [
       el('strong', { text: 'Sensors' }),
@@ -77,23 +86,26 @@ class ThermostatPanel {
   open(device) {
     const s = device.state || {};
     const line = (label, value) => el('div', { className: 'info-line' }, [el('dt', { text: label }), el('dd', { text: value })]);
-    const filter = s.filter_hours != null ? `${s.filter_hours} h${s.filter_reset ? ` since ${s.filter_reset}` : ''}` : 'not reported';
+    const rows = [
+      ['Mode', THERMO_MODES[s.mode]],
+      ['Doing now', THERMO_STATUS[s.status]],
+      ['Heat to', HEAT_MODES.has(s.mode) && typeof s.heat_setpoint === 'number' ? degrees(s.heat_setpoint) : null],
+      ['Cool to', COOL_MODES.has(s.mode) && typeof s.cool_setpoint === 'number' ? degrees(s.cool_setpoint) : null],
+      ['Inside', typeof s.current_temperature === 'number' ? degrees(s.current_temperature) : null],
+      ['Humidity', typeof s.humidity === 'number' ? `${s.humidity}%` : null],
+      ['Fan', s.fan ? (s.fan === 'on' ? 'On' : 'Auto') : null],
+      ['Schedule', THERMO_HOLDS[s.hold]],
+      ['System', s.system],
+      ['Filter use', s.filter_hours != null ? `${s.filter_hours} h${s.filter_reset ? ` since ${s.filter_reset}` : ''}` : null],
+      ['Firmware', s.firmware],
+      ['Wi-Fi signal', s.wifi],
+    ].filter(([, value]) => value);  // only what the thermostat reports and uses now
     this.overlay.replaceChildren(el('div', { className: 'remote info-panel', testid: 'thermo-panel', role: 'dialog', 'aria-label': `${device.name} settings` }, [
       el('div', { className: 'remote-head' }, [
         el('h2', { text: device.name }),
         el('button', { type: 'button', className: 'ghost', testid: 'thermo-close', text: '✕', 'aria-label': 'Close', onclick: () => this.close() }),
       ]),
-      el('dl', {}, [
-        line('Mode', THERMO_MODES[s.mode] || '—'),
-        line('Doing now', THERMO_STATUS[s.status] || '—'),
-        line('Heat to', degrees(s.heat_setpoint)),
-        line('Cool to', degrees(s.cool_setpoint)),
-        line('Schedule', THERMO_HOLDS[s.hold] || 'not reported'),
-        line('System', s.system || 'not reported'),
-        line('Filter use', filter),
-        line('Firmware', s.firmware || 'not reported'),
-        line('Wi-Fi signal', s.wifi || 'not reported'),
-      ]),
+      el('dl', {}, rows.map(([label, value]) => line(label, value))),
       el('p', { className: 'muted', text: 'Schedules and installer settings are changed in the Cync app.' }),
     ]));
     this.overlay.hidden = false;
@@ -111,3 +123,4 @@ function thermostatPanel(view) {
 }
 
 window.thermostatExtras = thermostatExtras;
+window.thermostatDialInfo = thermostatDialInfo;
