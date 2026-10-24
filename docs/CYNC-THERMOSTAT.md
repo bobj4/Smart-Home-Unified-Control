@@ -99,3 +99,26 @@ Device types: 122 (Gen 2), 224 (Gen 1), both data-point protocol. W = written by
 - Exact precision/range limits and the Eco-mode rule enforced by firmware vs only by the app.
 - Names/order of the six relay terminals, error code meanings, energy report layout.
 - Whether a second (home-shared) account avoids the one-session limit.
+## Schedules (from the Cync app 6.24, 2026-10-24; reading not yet confirmed on the device)
+Source: `com.gelighting.cbygekit.services.devices.datapoint` (ThermostatScheduleSetDataPoint,
+ThermostatScheduleDataPointsKt, TemperatureReadMethodScheduleDataPoint). Code: `app/integrations/cync_schedule.py`.
+
+| Idx | Name | Value |
+|---|---|---|
+| 37-43 | Temp_Read_Schd_Mon ... Sun | which sensors are read, by time of day |
+| 63-69 | Sched_Heat_Mon ... Sun | heating set point schedule |
+| 70-76 | Sched_Cool_Mon ... Sun | cooling set point schedule |
+| 77-83 | Sched_Auto_Mon ... Sun | auto (heat and cool) schedule |
+
+Days run Monday (+0) to Sunday (+6). Every value is bytes: a list of periods, or the single byte
+`FF` for a day with none.
+- Heat/Cool period (5 bytes): hour, minute, unit (0 F, 1 C), temperature x100 (2 bytes, big-endian).
+- Auto period (7 bytes): hour, minute, unit, heat x100 (2), cool x100 (2).
+- Sensor period (10 bytes): hour, minute, method (0 thermostat, 1 one remote sensor, 2 all
+  sensors, FF none), then 7 bytes naming the remote sensor for method 1 (zeros otherwise; the
+  7-byte sensor format is in ExternalSensorDataPoints, not yet decoded).
+
+These points have the "setting" role: a probe does not return them. The app asks for each one by
+writing its name (for example `Sched_Heat_Mon`) to ReadSetting (point 84); how the value comes
+back (a ReadSetting JSON reply or a push of the point itself) is what
+`scripts/cync_thermostat_probe.py --schedules <thermostat id>` checks.

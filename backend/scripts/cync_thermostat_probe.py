@@ -1,12 +1,18 @@
 """Read-only probe of the Cync thermostat (step 2 of the thermostat notes).
 
     python scripts/cync_thermostat_probe.py [--seconds 30]
+    python scripts/cync_thermostat_probe.py --schedules 556336025 [--seconds 60]
 
 Uses the Cync login saved in Settings > Integrations (SECRETS_KEY must be
 set). Lists every device on the account, then connects to Cync's server,
 asks each one that is not a light or plug to report ("probe") and prints
 every reply, decoding the data points from the protocol notes. It sends no
 settings: nothing on the thermostat changes.
+
+--schedules <thermostat id> instead asks that thermostat for its weekly
+heat/cool/auto schedules and its sensor schedule, the way the Cync app does:
+it writes each setting's name to ReadSetting (point 84), which is a read
+request, and prints what comes back. No setting is changed.
 
 Cync allows one connection per account, so the server's live connection
 drops while this runs and reconnects within about 30 seconds afterwards.
@@ -33,6 +39,7 @@ from sqlalchemy import select  # noqa: E402
 
 from app import credentials, init_db  # noqa: E402
 from app.db_config import SessionLocal  # noqa: E402
+from app.integrations import cync_schedule  # noqa: E402
 from app.models import Home  # noqa: E402
 
 HOST, PORT = "cm-sec.gelighting.com", 23779
@@ -163,10 +170,92 @@ def describe(kind: int, response: bool, body: bytes) -> list[str]:
                 )
                 rest = rest[2 + name_len :]
         lines += decode_entries(rest)
+        lines += decode_schedules(rest)
+    elif kind == 3 and response and len(body) >= 7:
+        device_id, msg_id, code = struct.unpack(">IHB", body[:7])
+        lines.append(f"   set reply: device {device_id} msg {msg_id} code {code}")
     return lines
 
 
-async def run(seconds: int) -> None:
+def schedule_requests() -> list[str]:
+    """Every schedule setting name, in the order the requests are sent."""
+    names = [
+        cync_schedule.schedule_name(kind, day)
+        for kind in cync_schedule.KINDS
+        for day in cync_schedule.DAYS
+    ]
+    return names + [cync_schedule.sensor_name(day) for day in cync_schedule.DAYS]
+
+
+def _schedule_kind(index: int) -> tuple[str, str] | None:
+    for kind, base in cync_schedule.KINDS.items():
+        if base <= index < base + 7:
+            return kind, cync_schedule.DAYS[index - base]
+    if cync_schedule.SENSOR_BASE <= index < cync_schedule.SENSOR_BASE + 7:
+        return "sensors", cync_schedule.DAYS[index - cync_schedule.SENSOR_BASE]
+    return None
+
+
+def _show_schedule(label: str, kind: str, raw: bytes) -> str:
+    try:
+        if kind == "sensors":
+            periods = cync_schedule.parse_sensor_schedule(raw)
+        else:
+            periods = cync_schedule.parse_schedule(kind, raw)
+    except cync_schedule.ScheduleError as error:
+        return f"   {label}: could not decode ({error}) raw {raw.hex()}"
+    return f"   {label}: {json.dumps(periods)}"
+
+
+def _as_bytes(value: object) -> bytes | None:
+    """A ReadSetting reply value: a hex string, a list of numbers or text."""
+    if isinstance(value, list) and all(isinstance(v, int) for v in value):
+        return bytes(v & 0xFF for v in value)
+    if isinstance(value, str):
+        try:
+            return bytes.fromhex(value)
+        except ValueError:
+            return None
+    return None
+
+
+def decode_schedules(data: bytes) -> list[str]:
+    """Schedule data points and ReadSetting replies among the entries."""
+    out, i = [], 0
+    while i + 3 <= len(data):
+        index = data[i]
+        length = struct.unpack(">H", data[i + 1 : i + 3])[0] & 0x0FFF
+        raw = data[i + 3 : i + 3 + length]
+        found = _schedule_kind(index)
+        if found:
+            label = f"schedule {found[0]} {found[1]}"
+            out.append(_show_schedule(label, found[0], raw))
+        elif index == cync_schedule.READ_SETTING:
+            try:
+                reply = json.loads(raw.decode("utf-8"))
+            except ValueError:
+                reply = None
+            if isinstance(reply, dict):
+                for name, value in reply.items():
+                    out.append(f"   setting {name} = {value!r}")
+                    raw_value = _as_bytes(value)
+                    kind = _setting_kind(name)
+                    if raw_value is not None and kind:
+                        out.append(_show_schedule(f"  decoded {name}", kind, raw_value))
+        i += 3 + length
+    return out
+
+
+def _setting_kind(name: str) -> str | None:
+    if name.startswith("Temp_Read_Schd_"):
+        return "sensors"
+    for kind in cync_schedule.KINDS:
+        if name.startswith(f"Sched_{kind.capitalize()}_"):
+            return kind
+    return None
+
+
+async def run(seconds: int, schedules_of: int | None = None) -> None:
     init_db()
     with SessionLocal() as db:
         saved = None
@@ -225,12 +314,27 @@ async def run(seconds: int) -> None:
 
     async def probes() -> None:
         await asyncio.sleep(2)
+        if schedules_of is not None:
+            await ask_schedules(schedules_of)
+            return
         for n, device_id in enumerate(probe_ids, start=1):
             body = struct.pack(">IH", device_id, n) + b"\x00"
             print(f"-> PROBE device {device_id}: {packet(10, body).hex()}")
             writer.write(packet(10, body))
             await writer.drain()
             await asyncio.sleep(1)
+
+    async def ask_schedules(device_id: int) -> None:
+        """ReadSetting requests (a set packet writing a name to point 84)."""
+        for n, name in enumerate(schedule_requests(), start=100):
+            raw = name.encode()
+            entry = bytes([cync_schedule.READ_SETTING])
+            entry += struct.pack(">H", 0x9000 | len(raw)) + raw
+            body = struct.pack(">IH", device_id, n) + b"\x06" + entry
+            print(f"-> READ SETTING {name}: {packet(3, body).hex()}")
+            writer.write(packet(3, body))
+            await writer.drain()
+            await asyncio.sleep(0.7)
 
     sender = asyncio.create_task(probes())
     deadline = time.monotonic() + seconds
@@ -258,7 +362,14 @@ async def run(seconds: int) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Read-only Cync thermostat probe.")
     parser.add_argument("--seconds", type=int, default=30, help="how long to listen")
-    asyncio.run(run(parser.parse_args().seconds))
+    parser.add_argument(
+        "--schedules",
+        type=int,
+        metavar="THERMOSTAT_ID",
+        help="ask this thermostat for its schedules instead of probing",
+    )
+    args = parser.parse_args()
+    asyncio.run(run(args.seconds, args.schedules))
     return 0
 
 
