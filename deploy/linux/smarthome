@@ -176,6 +176,14 @@ new_key() {  # a Fernet key: 32 random bytes, URL-safe base64
     fi
 }
 
+new_password() {  # 20 letters and digits
+    local out=""
+    while [[ ${#out} -lt 20 ]]; do
+        out+="$(head -c 64 /dev/urandom | tr -dc 'A-HJ-NP-Za-km-z2-9')"
+    done
+    printf '%s' "${out:0:20}"
+}
+
 valid_key() {  # 44 characters of URL-safe base64 ending in "="
     [[ "$1" =~ ^[A-Za-z0-9_-]{43}=$ ]]
 }
@@ -391,6 +399,10 @@ cmd_install() {
         valid_key "$current" || die "deploy/.env has a SECRETS_KEY that does not look like a key."
         say "Keeping the SECRETS_KEY already in deploy/.env."
     fi
+    if [[ -z "$(env_get FIRST_ADMIN_PASSWORD)" ]]; then
+        # Used only if the database is new: then not admin/admin.
+        set_env FIRST_ADMIN_PASSWORD "$(new_password)"
+    fi
 
     if [[ "$access" == "proxy" ]]; then
         set_env BIND_ADDRESS 127.0.0.1
@@ -417,9 +429,16 @@ cmd_install() {
         say "It shares this server's network: limit port 8000 to your home network in"
         say "the server's firewall (docs/DEPLOY-LINUX.md, section 5)."
     fi
-    say "A new database starts with username \"admin\", password \"admin\": log in and"
-    say "change it straight away (Settings > My account), or bring your database"
-    say "over: $SELF import-db FILE"
+    if compose logs "$SERVICE" 2>/dev/null | grep -q "created the account \"admin\" with the password in"; then
+        say "First login, on this new database:"
+        say "  username: admin"
+        say "  password: $(env_get FIRST_ADMIN_PASSWORD)"
+        say "Change it after logging in (Settings > My account). It is also in deploy/.env"
+        say "(FIRST_ADMIN_PASSWORD), which is used only while the database has no accounts."
+    else
+        say "Log in with your existing account."
+    fi
+    say "To bring a database over from another computer: $SELF import-db FILE"
     say "Check the setup any time with: $SELF doctor"
 }
 

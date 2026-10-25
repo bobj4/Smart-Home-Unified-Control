@@ -78,7 +78,7 @@ choice, whether you turn TVs on with Wake-on-LAN. Then it:
   minutes), and waits until it answers.
 - installs and enables the systemd service `smarthome.service`, so the app
   starts at every boot (uses `sudo`; skip it with `--no-service`).
-- prints the address to open.
+- prints the address to open and, on a new database, the first login.
 
 Everything can be given up front, for scripts: `--access lan|proxy`,
 `--host-network`, `--secrets-key KEY`, `--no-service`, and `--yes` to ask
@@ -90,8 +90,11 @@ Then bring the database in, if you copied one:
 
 Open the address it printed, then press Ctrl+F5 once.
 
-**First login.** A new database starts with username `admin`, password
-`admin`: log in and change it at once (Settings > My account). Locked out?
+**First login.** On a new database the installer creates the account
+`admin` with a random password and shows it once at the end (it stays in
+`deploy/.env` as `FIRST_ADMIN_PASSWORD`, used only while the database has no
+accounts). Log in and change it (Settings > My account). Without the
+installer, the first password is `admin`. Locked out?
 `deploy/linux/smarthome reset-login`.
 
 **TVs and Wake-on-LAN.** Turning a TV *on* sends a network broadcast, which
@@ -166,7 +169,7 @@ Then set up the proxy, with HTTPS at the proxy (leave the app's own HTTPS off):
 4. A web application firewall (ModSecurity with the OWASP rules) allows only
    GET, HEAD, POST and OPTIONS and answers 403 to the app's PUT, PATCH and
    DELETE. The Apache example removes that rule (911100) for this site.
-5. Before the site is public: change the `admin` password, and turn on
+5. Before the site is public: change the first `admin` password, and turn on
    Settings > Admin > Two-factor login > "Require two-factor login" for each
    home. Everyone then sets up an authenticator app at their next login,
    before they can see anything.

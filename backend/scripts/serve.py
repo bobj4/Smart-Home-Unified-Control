@@ -8,6 +8,7 @@ SECRETS_KEY must be set (the certificate's key is stored encrypted).
 """
 
 import argparse
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -29,10 +30,18 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
     init_db()
+    first_password = os.environ.get("FIRST_ADMIN_PASSWORD", "").strip() or None
     with SessionLocal() as db:
-        if ensure_default_admin(db):
-            print('First start: log in with username "admin" and password "admin",')
-            print("then change the password in Settings > My account.")
+        if ensure_default_admin(db, first_password):
+            # The password itself never goes in the log.
+            if first_password:
+                print('First start: created the account "admin" with the password in')
+                print(
+                    "FIRST_ADMIN_PASSWORD (deploy/.env); change it in Settings > My account."
+                )
+            else:
+                print('First start: log in with username "admin" and password "admin",')
+                print("then change the password in Settings > My account.")
     with SessionLocal() as db:
         try:
             files = tls.server_files(db)
