@@ -71,6 +71,28 @@ function codeList(codes, testid) {
   return el('ol', { className: 'codes', testid }, codes.map((c) => el('li', { text: c })));
 }
 
+/** A message line under a form, for what is happening and what went wrong. */
+function formNote(testid) {
+  return el('p', { className: 'form-note', testid, role: 'status', 'aria-live': 'polite' });
+}
+
+/** Run a form's action: `pending` under the form while it runs, then the
+ * error there in plain words (and in the status bar), or nothing. */
+async function runWithNote(app, note, pending, action) {
+  note.dataset.kind = 'info';
+  note.textContent = pending;
+  await app.run(async () => {
+    try {
+      await action();
+      note.textContent = '';
+    } catch (error) {
+      note.dataset.kind = 'error';
+      note.textContent = error.message;
+      throw error;
+    }
+  });
+}
+
 /** One place for success and error messages in the app shell. */
 class StatusBar {
   constructor(node) {

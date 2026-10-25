@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, StrictBool
 from sqlalchemy.orm import Session
 
+from app import integration_status
 from app.authorization import require_role
 from app.db_config import get_db
 from app.demo import add_demo_devices, remove_demo_devices
@@ -27,6 +28,16 @@ def get_integrations(
 ) -> list[dict[str, Any]]:
     require_role(db, user.id, home_id)
     return list_integrations(db, home_id)
+
+
+@router.get("/problems")
+def get_problems(
+    home_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict[str, dict[str, Any]]:
+    """The last connection problem per integration, if its latest background
+    read failed (cleared by the next one that works, or a new login)."""
+    require_role(db, user.id, home_id, Role.OPERATOR)
+    return integration_status.for_home(home_id)
 
 
 @router.put("/{integration_id}", dependencies=[Depends(require_csrf)])
