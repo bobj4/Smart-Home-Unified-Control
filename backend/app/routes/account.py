@@ -83,13 +83,16 @@ def get_account(
         .order_by(Home.name)
     )
     homes = list(rows)
+    required = any(h.require_two_factor for h, _ in homes)
     return {
         "id": user.id,
         "email": user.email,
         "name": user.name,
         "homes": [{"id": h.id, "name": h.name, "role": role} for h, role in homes],
         "two_factor": bool(user.is_totp_enabled),
-        "two_factor_required": any(h.require_two_factor for h, _ in homes),
+        "two_factor_required": required,
+        # A home requires it and it is off: the app shows only the setup page.
+        "two_factor_setup_required": required and not user.is_totp_enabled,
         "theme": user.theme or "system",
     }
 
@@ -167,19 +170,35 @@ def confirm_totp_reset(
     request: Request,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-) -> dict[str, str]:
+) -> dict[str, Any]:
+    """Make the new authenticator the active one. Turning two-factor on for
+    the first time also makes recovery codes, returned once."""
     if not user.pending_totp_secret:
         raise HTTPException(status.HTTP_409_CONFLICT, "No authenticator reset started")
     step = verify_totp_code(body.totp_code, user.pending_totp_secret)
     if step is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Code does not match")
+    first_time = not user.is_totp_enabled
     user.totp_secret = user.pending_totp_secret
     user.pending_totp_secret = None
     user.totp_last_step = step
     user.is_totp_enabled = True
+    codes = generate_recovery_codes() if first_time else []
+    if codes:
+        user.recovery_codes = json.dumps([hashed for _, hashed in codes])
     forget_all(db, user.id)  # remembered devices need the new code once
     db.commit()
-    record_event(db, "totp_reset", user_id=user.id, ip_address=client_ip(request))
+    record_event(
+        db,
+        "totp_enabled" if first_time else "totp_reset",
+        user_id=user.id,
+        ip_address=client_ip(request),
+    )
+    if first_time:
+        return {
+            "detail": "Two-factor login turned on",
+            "recovery_codes": [plain for plain, _ in codes],
+        }
     return {"detail": "Authenticator replaced"}
 
 

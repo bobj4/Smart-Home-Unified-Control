@@ -17,6 +17,7 @@ class SmartHomeApp {
     this.cameras = new CamerasView(this, byTestId('view-cameras'));
     this.enroll = new EnrollView(this);
     this.recover = new RecoverView(this);
+    this.twoFactorGate = new TwoFactorGate(this);
     this.loginOptions = null;
     this.homeSelect = byTestId('home-select');
 
@@ -40,6 +41,7 @@ class SmartHomeApp {
   /** Re-read the open page, unless the user is in the middle of something. */
   async liveTick() {
     if (document.hidden || !this.account || !this.home || this.working > 0) return;
+    if (this.account.two_factor_setup_required) return;
     const active = document.activeElement;
     if (active && active.matches('input, select, textarea')) return;
     const [view, sub] = this.currentRoute();
@@ -88,6 +90,7 @@ class SmartHomeApp {
     byTestId('login-page').hidden = name !== 'login';
     byTestId('enroll-page').hidden = name !== 'enroll';
     byTestId('recover-page').hidden = name !== 'recover';
+    byTestId('twofactor-page').hidden = name !== 'twofactor';
     byTestId('app-shell').hidden = name !== 'app';
   }
 
@@ -163,6 +166,12 @@ class SmartHomeApp {
       const enrolling = hash === '#/enroll';
       if (enrolling && byTestId('enroll-page').hidden) this.enroll.reset();
       this.showPage(enrolling ? 'enroll' : 'login');
+      return;
+    }
+    if (this.account.two_factor_setup_required) {
+      // A home requires two-factor and it is off: nothing else until it is on.
+      if (byTestId('twofactor-page').hidden) this.twoFactorGate.show();
+      this.showPage('twofactor');
       return;
     }
     this.showPage('app');

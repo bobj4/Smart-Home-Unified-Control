@@ -160,11 +160,17 @@ class AccountSection {
     const password = passwordInput('totp-password', 'current-password');
     const code = el('input', { type: 'text', testid: 'totp-code', inputmode: 'numeric', maxlength: '6', autocomplete: 'one-time-code' });
     const step2 = el('div', { hidden: true });
+    const on = this.app.account.two_factor;
     const start = el('form', { className: 'subpanel' }, [
       el('h3', { text: 'Authenticator app' }),
-      el('p', { className: 'muted', text: 'Move your login codes to a new phone or app. The old app keeps working until you confirm.' }),
+      el('p', {
+        className: 'muted',
+        text: on
+          ? 'Move your login codes to a new phone or app. The old app keeps working until you confirm.'
+          : 'Set up an authenticator app to turn two-factor login on.',
+      }),
       field('Password', password),
-      el('button', { type: 'submit', testid: 'totp-start', text: 'Set up a new authenticator' }),
+      el('button', { type: 'submit', testid: 'totp-start', text: on ? 'Set up a new authenticator' : 'Set up an authenticator' }),
       step2,
     ]);
     start.addEventListener('submit', (event) => {
@@ -175,10 +181,17 @@ class AccountSection {
         const confirm = el('button', {
           type: 'button', testid: 'totp-confirm', text: 'Confirm',
           onclick: () => this.app.run(async () => {
-            await this.app.api.confirmTotpReset(code.value.trim());
+            const done = await this.app.api.confirmTotpReset(code.value.trim());
             code.value = '';
-            step2.hidden = true;
             step2.replaceChildren();
+            step2.hidden = !done.recovery_codes;
+            if (done.recovery_codes) {
+              // Two-factor was off: these are the first recovery codes.
+              step2.append(
+                el('p', { className: 'note', text: 'Save these recovery codes somewhere safe. Each works once; they are not shown again.' }),
+                codeList(done.recovery_codes, 'totp-recovery-codes'),
+              );
+            }
             await this.refreshTwoFactor();
             this.app.status.success('Authenticator set up. Logging in now needs its code.');
           }),
