@@ -1,7 +1,8 @@
 # Running the smart home server in Docker
 
 Docker Desktop (Windows) or Docker Engine (Linux). All commands run from the
-project folder (`C:\Users\oracn\Downloads\Application`).
+project folder (the checkout). On a Linux server, `deploy/linux/smarthome`
+does all of this for you: see [DEPLOY-LINUX.md](DEPLOY-LINUX.md).
 
 ## First start
 

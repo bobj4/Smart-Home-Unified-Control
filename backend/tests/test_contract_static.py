@@ -125,7 +125,12 @@ def test_compose_publishes_only_the_app_port():
         if not path.is_file():
             continue
         for mapping in compose_port_mappings(path.read_text(encoding="utf-8")):
-            assert mapping in ("8000:8000", "127.0.0.1:8000:8000"), f"{path}: {mapping}"
+            assert mapping in (
+                "8000:8000",
+                "127.0.0.1:8000:8000",
+                # BIND_ADDRESS in deploy/.env: empty = every address.
+                "${BIND_ADDRESS:+${BIND_ADDRESS}:}8000:8000",
+            ), f"{path}: {mapping}"
 
 
 def test_dockerfiles_run_as_non_root():
