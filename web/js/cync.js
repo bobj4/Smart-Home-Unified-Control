@@ -43,10 +43,11 @@ class CyncPanel {
     const codeField = field('Code Cync emailed you', code);
     codeField.hidden = true;
     const submit = el('button', { type: 'submit', testid: 'cync-save', text: account.configured ? 'Log in again' : 'Log in' });
-    const form = el('form', { className: 'grid-fields' }, [field('Cync email', email), field('Cync password', password), codeField, submit]);
+    const note = formNote('cync-note');
+    const form = el('form', { className: 'grid-fields' }, [field('Cync email', email), field('Cync password', password), codeField, submit, note]);
     form.addEventListener('submit', (event) => {
       event.preventDefault();
-      this.app.run(async () => {
+      runWithNote(this.app, note, 'Logging in to Cync…', async () => {
         const result = await this.app.api.saveCyncAccount(this.app.home.id, email.value.trim(), password.value, codeField.hidden ? null : code.value.trim());
         if (result.code_sent) {
           codeField.hidden = false;

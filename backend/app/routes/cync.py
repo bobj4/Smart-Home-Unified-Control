@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from app import credentials
+from app import credentials, integration_status
 from app.audit import record_event
 from app.authorization import require_role
 from app.cync_home import INTEGRATION, CyncUnavailable, log_in, sync
@@ -70,6 +70,7 @@ def save_account(
     if not saved:
         return {**_account_out(db, home_id), "code_sent": True}
     _audit(db, request, user, home_id, "integration_account_saved", email=email)
+    integration_status.worked(home_id, INTEGRATION)  # a new login that works
     return {**_account_out(db, home_id), "code_sent": False}
 
 
@@ -81,6 +82,7 @@ def remove_account(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     require_role(db, user.id, home_id, Role.ADMIN)
+    integration_status.worked(home_id, INTEGRATION)
     if credentials.remove(db, home_id, INTEGRATION):
         _audit(db, request, user, home_id, "integration_account_removed")
     return _account_out(db, home_id)

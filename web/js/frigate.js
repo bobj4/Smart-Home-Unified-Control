@@ -17,7 +17,7 @@ class FrigatePanel {
 
   async fill(box) {
     const server = await this.app.api.getFrigateServer(this.app.home.id);
-    const url = el('input', { type: 'url', testid: 'frigate-url', required: true, placeholder: 'https://192.168.1.20:8971', value: server.url || '' });
+    const url = el('input', { type: 'text', inputmode: 'url', autocomplete: 'off', testid: 'frigate-url', required: true, placeholder: 'https://192.168.1.20:8971', value: server.url || '' });
     const username = el('input', { type: 'text', testid: 'frigate-username', autocomplete: 'off', value: server.username || '' });
     const password = el('input', { type: 'password', testid: 'frigate-password', autocomplete: 'new-password' });
     const verify = el('input', { type: 'checkbox', testid: 'frigate-verify', checked: server.verify_tls });
@@ -27,10 +27,12 @@ class FrigatePanel {
       ]),
       el('label', { className: 'check' }, [verify, el('span', { text: 'Check its HTTPS certificate (untick for Frigate\'s own self-signed certificate)' })]),
       el('button', { type: 'submit', testid: 'frigate-save', text: 'Save and test' }),
+      formNote('frigate-note'),
     ]);
+    const note = form.lastChild;
     form.addEventListener('submit', (event) => {
       event.preventDefault();
-      this.app.run(async () => {
+      runWithNote(this.app, note, `Connecting to ${url.value.trim()}…`, async () => {
         const body = { url: url.value.trim(), verify_tls: verify.checked };
         if (username.value.trim()) {
           body.username = username.value.trim();

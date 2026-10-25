@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import credentials
+from app import credentials, integration_status
 from app.audit import record_event
 from app.authorization import require_role
 from app.db_config import get_db
@@ -73,6 +73,7 @@ def save_account(
         ip_address=client_ip(request),
         details={"integration": INTEGRATION, "email": email},
     )
+    integration_status.worked(home_id, INTEGRATION)  # a new login that works
     return _account_out(db, home_id)
 
 
@@ -84,6 +85,7 @@ def remove_account(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     require_role(db, user.id, home_id, Role.ADMIN)
+    integration_status.worked(home_id, INTEGRATION)
     if credentials.remove(db, home_id, INTEGRATION):
         record_event(
             db,

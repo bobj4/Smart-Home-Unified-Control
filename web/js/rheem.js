@@ -44,10 +44,12 @@ class RheemPanel {
       field('EcoNet email', email),
       field('EcoNet password', password),
       el('button', { type: 'submit', testid: 'rheem-save', text: account.configured ? 'Replace login' : 'Save and test' }),
+      formNote('rheem-note'),
     ]);
+    const note = form.lastChild;
     form.addEventListener('submit', (event) => {
       event.preventDefault();
-      this.app.run(async () => {
+      runWithNote(this.app, note, 'Logging in to EcoNet…', async () => {
         try {
           await this.app.api.saveRheemAccount(this.app.home.id, email.value.trim(), password.value);
         } finally {
