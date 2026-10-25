@@ -14,7 +14,7 @@ import time
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import cync_home, rheem_home, samsung_home, verbose
+from app import cync_home, integration_status, rheem_home, samsung_home, verbose
 from app.db_config import SessionLocal
 from app.features import integration_enabled
 from app.integrations import samsung
@@ -66,6 +66,7 @@ def refresh_rheem(db: Session, home_id: str, now: float | None = None) -> bool:
         rheem_home.sync(db, home_id)
     except rheem_home.RheemUnavailable as error:
         db.rollback()
+        integration_status.failed(home_id, rheem_home.INTEGRATION, error.reason)
         log.info("Rheem refresh skipped for a home: %s", error.reason)
         verbose.note(
             db,
@@ -78,6 +79,7 @@ def refresh_rheem(db: Session, home_id: str, now: float | None = None) -> bool:
             },
         )
         return False
+    integration_status.worked(home_id, rheem_home.INTEGRATION)
     return True
 
 
@@ -95,6 +97,7 @@ def refresh_cync(db: Session, home_id: str, now: float | None = None) -> bool:
         cync_home.sync(db, home_id)
     except cync_home.CyncUnavailable as error:
         db.rollback()
+        integration_status.failed(home_id, cync_home.INTEGRATION, error.reason)
         log.info("Cync refresh skipped for a home: %s", error.reason)
         verbose.note(
             db,
@@ -103,6 +106,7 @@ def refresh_cync(db: Session, home_id: str, now: float | None = None) -> bool:
             details={"integration": "cync", "result": "failed", "reason": error.reason},
         )
         return False
+    integration_status.worked(home_id, cync_home.INTEGRATION)
     return True
 
 

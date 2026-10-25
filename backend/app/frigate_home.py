@@ -35,6 +35,32 @@ def server_out(db: Session, home_id: str) -> dict[str, Any]:
     }
 
 
+# "could not reach Frigate: <requests error>" in plain words.
+_UNREACHABLE = {
+    "ConnectionError": "Could not connect to Frigate. Check the address and port, "
+    "and that Frigate is running.",
+    "ConnectTimeout": "Frigate did not answer within 10 seconds. Check the address, "
+    "and that this server can reach it.",
+    "ReadTimeout": "Frigate did not answer within 10 seconds. Check the address, "
+    "and that this server can reach it.",
+    "Timeout": "Frigate did not answer within 10 seconds. Check the address, "
+    "and that this server can reach it.",
+    "SSLError": "The HTTPS connection to Frigate failed. If Frigate uses its own "
+    'self-signed certificate, untick "Check its HTTPS certificate"; if that port '
+    "has no HTTPS, start the address with http://.",
+    "InvalidURL": "That address is not valid.",
+}
+
+
+def plain_reason(reason: str) -> str:
+    """The adapter's error, as a person setting Frigate up can act on it."""
+    prefix = "could not reach Frigate: "
+    if reason.startswith(prefix):
+        kind = reason[len(prefix) :]
+        return _UNREACHABLE.get(kind, f"Could not connect to Frigate ({kind}).")
+    return reason
+
+
 def call(action: Any) -> Any:
     """Run one Frigate call, turning its errors into FrigateUnavailable."""
     try:
@@ -44,7 +70,7 @@ def call(action: Any) -> Any:
     except frigate.FrigateLoginError as error:
         raise FrigateUnavailable(502, str(error)) from None
     except frigate.FrigateError as error:
-        raise FrigateUnavailable(502, str(error)) from None
+        raise FrigateUnavailable(502, plain_reason(str(error))) from None
 
 
 def client_for_home(db: Session, home_id: str) -> frigate.FrigateClient:

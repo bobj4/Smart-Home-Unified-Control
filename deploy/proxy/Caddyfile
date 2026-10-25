@@ -1,0 +1,12 @@
+# Caddy in front of Smart Home Control, on the same server. Caddy gets and
+# renews the HTTPS certificate by itself (ports 80 and 443 must reach it).
+#   deploy/linux/smarthome install --access proxy
+#   deploy/linux/smarthome proxy-example caddy your.domain  > /etc/caddy/Caddyfile
+# SELinux (Rocky/RHEL): setsebool -P httpd_can_network_connect 1
+#
+# Caddy always sends X-Forwarded-Proto, so Settings > Admin > HTTPS reads as
+# if the app's own HTTPS were on; leave that setting off behind Caddy.
+
+smarthome.example.com {
+    reverse_proxy 127.0.0.1:8000
+}

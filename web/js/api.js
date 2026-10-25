@@ -40,7 +40,7 @@ class SmartHomeAPI {
     if (response.status === 401) throw new AuthError(data.detail || 'Not logged in');
     if (!response.ok) {
       const detail = Array.isArray(data.detail)
-        ? data.detail.map((d) => d.msg).join('; ')
+        ? data.detail.map((d) => String(d.msg).replace(/^Value error, /, '')).join('; ')
         : data.detail;
       throw new ApiError(detail || `Request failed (${response.status})`, response.status);
     }
@@ -113,6 +113,7 @@ class SmartHomeAPI {
 
   // Integrations (device brands)
   getIntegrations(homeId) { return this.get(`/homes/${enc(homeId)}/integrations`); }
+  getIntegrationProblems(homeId) { return this.get(`/homes/${enc(homeId)}/integrations/problems`); }
   setIntegration(homeId, id, enabled) { return this.put(`/homes/${enc(homeId)}/integrations/${enc(id)}`, { enabled }); }
 
   // Rheem EcoNet account (owner) and water-heater discovery (admin)

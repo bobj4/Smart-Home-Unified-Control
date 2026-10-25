@@ -1,15 +1,28 @@
 #!/usr/bin/env bash
 # Smart Home Control on a headless Linux server (Docker).
 #
-#   deploy/linux/smarthome install [--secrets-key KEY] [--host-network]
+#   deploy/linux/smarthome install [options]   set up, start, and start at boot
+#       --access lan       reached on this network only (the default)
+#       --access proxy     reached through a reverse proxy on this server
+#                          (Apache, nginx, Caddy): port 8000 on 127.0.0.1 only
+#       --host-network     share the server's network (TV Wake-on-LAN)
+#       --secrets-key KEY  use the key from your old computer
+#       --no-service       do not install the systemd service
+#       --yes              ask nothing; take the defaults and the options given
 #   deploy/linux/smarthome update        pull the latest code, rebuild, restart
 #   deploy/linux/smarthome status | logs | start | stop | restart
+#   deploy/linux/smarthome doctor        check the setup and say what to fix
 #   deploy/linux/smarthome backup        make a database backup now
 #   deploy/linux/smarthome backups       list the backups
 #   deploy/linux/smarthome restore FILE  restore one (a name from "backups")
 #   deploy/linux/smarthome copy-backups DIR   copy every backup off the volume
 #   deploy/linux/smarthome import-db FILE     bring in a database from another
 #                                             computer (replaces this one's)
+#   deploy/linux/smarthome reset-login   new password for a locked-out account
+#   deploy/linux/smarthome proxy-example apache|nginx|caddy NAME
+#                                        print a reverse-proxy config for NAME
+#   deploy/linux/smarthome install-service | remove-service
+#   deploy/linux/smarthome make-key      print a new SECRETS_KEY
 #
 # Run it from anywhere inside the checkout; it uses deploy/docker-compose.yml.
 # The database and backups live in the Docker volume "data". Settings are in
@@ -23,39 +36,51 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENV_FILE="$ROOT/deploy/.env"
 CONF="$ROOT/deploy/linux/local.conf"
 SERVICE="smart-home"
+UNIT_NAME="smarthome.service"
+UNIT_FILE="${SMARTHOME_UNIT_FILE:-/etc/systemd/system/$UNIT_NAME}"
 MIN_COMPOSE="2.24.0"   # for the host-network file ("!reset")
+SELF="deploy/linux/smarthome"
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
+interactive() { [[ -t 0 && -t 1 && "${ASSUME_YES:-no}" != "yes" ]]; }
 
-compose() {
-    local files=(-f "$ROOT/deploy/docker-compose.yml")
-    if [[ -f "$CONF" ]] && grep -qx 'HOST_NETWORK=yes' "$CONF"; then
-        files+=(-f "$ROOT/deploy/docker-compose.host.yml")
-    fi
-    docker compose "${files[@]}" "$@"
+# ask "Question?" default(y|n): yes or no. With --yes, the default; with
+# nobody to answer (no terminal, no --yes), no.
+ask() {
+    local answer hint="[y/N]"
+    [[ "$2" == "y" ]] && hint="[Y/n]"
+    if [[ "${ASSUME_YES:-no}" == "yes" ]]; then [[ "$2" == "y" ]]; return; fi
+    if ! interactive; then return 1; fi
+    read -r -p "$1 $hint " answer
+    answer="${answer:-$2}"
+    [[ "$answer" =~ ^[Yy] ]]
 }
 
-need_docker() {
-    command -v docker >/dev/null 2>&1 || die "Docker is not installed. See docs/DEPLOY-LINUX.md, step 1."
-    docker compose version >/dev/null 2>&1 || die "The Docker Compose plugin is missing (docker compose). See docs/DEPLOY-LINUX.md, step 1."
-    docker info >/dev/null 2>&1 || die "Cannot reach Docker. Start it (sudo systemctl enable --now docker) or run this with sudo / as a member of the docker group."
+as_root() {  # as_root command...: run it as root (sudo when needed)
+    if [[ "$(id -u)" -eq 0 ]]; then "$@"; return; fi
+    command -v sudo >/dev/null 2>&1 || die "This step needs root: run it again with sudo, as root."
+    sudo "$@"
 }
 
-version_at_least() {  # version_at_least 2.27.1 2.24.0
-    [[ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" == "$2" ]]
+conf_get() {  # conf_get NAME DEFAULT
+    local value=""
+    [[ -f "$CONF" ]] && value="$(grep -E "^$1=" "$CONF" | tail -n1 | cut -d= -f2- || true)"
+    printf '%s' "${value:-$2}"
 }
 
-new_key() {  # a Fernet key: 32 random bytes, URL-safe base64
-    if command -v python3 >/dev/null 2>&1; then
-        python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())'
-    else
-        openssl rand -base64 32 | tr '+/' '-_'
-    fi
+conf_set() {  # conf_set NAME VALUE (keeps the other lines)
+    local tmp
+    tmp="$(mktemp)"
+    [[ -f "$CONF" ]] && grep -vE "^$1=" "$CONF" > "$tmp" || true
+    printf '%s=%s\n' "$1" "$2" >> "$tmp"
+    cat "$tmp" > "$CONF"
+    rm -f "$tmp"
 }
 
-valid_key() {  # 44 characters of URL-safe base64 ending in "="
-    [[ "$1" =~ ^[A-Za-z0-9_-]{43}=$ ]]
+env_get() {  # env_get NAME: the value in deploy/.env, without quotes
+    [[ -f "$ENV_FILE" ]] || return 0
+    grep -E "^$1=" "$ENV_FILE" | tail -n1 | cut -d= -f2- | tr -d "\"'" || true
 }
 
 set_env() {  # set_env NAME VALUE (replace or add the line, keep the rest)
@@ -71,11 +96,105 @@ set_env() {  # set_env NAME VALUE (replace or add the line, keep the rest)
     rm -f "$tmp"
 }
 
+compose_files() {  # the -f options, one per line
+    printf '%s\n' -f "$ROOT/deploy/docker-compose.yml"
+    if [[ "$(conf_get HOST_NETWORK no)" == "yes" ]]; then
+        printf '%s\n' -f "$ROOT/deploy/docker-compose.host.yml"
+    fi
+}
+
+compose() {
+    local files=()
+    mapfile -t files < <(compose_files)
+    docker compose "${files[@]}" "$@"
+}
+
+os_id() { (. /etc/os-release 2>/dev/null && printf '%s %s' "${ID:-}" "${ID_LIKE:-}") || true; }
+
+docker_install_hint() {
+    case " $(os_id) " in
+        *" rhel "*|*" fedora "*|*" centos "*|*" rocky "*|*" almalinux "*)
+            say "  sudo dnf -y install dnf-plugins-core git"
+            say "  sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo"
+            say "  sudo dnf install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"
+            say "  sudo systemctl enable --now docker" ;;
+        *" debian "*|*" ubuntu "*)
+            say "  sudo apt update && sudo apt install -y docker.io docker-compose-v2 git"
+            say "  sudo systemctl enable --now docker" ;;
+        *) say "  See https://docs.docker.com/engine/install/ for this system." ;;
+    esac
+    say "Then run this again. More in docs/DEPLOY-LINUX.md, step 1."
+}
+
+need_docker() {
+    if ! command -v docker >/dev/null 2>&1; then
+        say "Docker is not installed. On this system:" >&2
+        docker_install_hint >&2
+        exit 1
+    fi
+    if ! docker compose version >/dev/null 2>&1; then
+        say "Docker is installed, but not its Compose plugin (docker compose). On this system:" >&2
+        docker_install_hint >&2
+        exit 1
+    fi
+    docker info >/dev/null 2>&1 && return 0
+    if command -v systemctl >/dev/null 2>&1 && ! systemctl is-active --quiet docker; then
+        say "Docker is installed but not running."
+        if ask "Start it now, and at every boot (sudo systemctl enable --now docker)?" y; then
+            as_root systemctl enable --now docker || die "Docker did not start. See: sudo systemctl status docker"
+            docker info >/dev/null 2>&1 && return 0
+        else
+            die "Start it with: sudo systemctl enable --now docker"
+        fi
+    fi
+    if docker info 2>&1 | grep -qi "permission denied"; then
+        die "Docker is running, but $(id -un) may not use it. Either run this with sudo, or once:
+  sudo usermod -aG docker $(id -un)
+and then log out and back in."
+    fi
+    die "Cannot reach Docker. Check: sudo systemctl status docker"
+}
+
+warn_docker_boot() {
+    if command -v systemctl >/dev/null 2>&1 && ! systemctl is-enabled --quiet docker 2>/dev/null; then
+        say "Docker does not start at boot, so the app would not either."
+        if ask "Turn that on (sudo systemctl enable docker)?" y; then
+            as_root systemctl enable docker || say "Could not: run sudo systemctl enable docker yourself."
+        fi
+    fi
+}
+
+version_at_least() {  # version_at_least 2.27.1 2.24.0
+    [[ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" == "$2" ]]
+}
+
+new_key() {  # a Fernet key: 32 random bytes, URL-safe base64
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())'
+    else
+        openssl rand -base64 32 | tr '+/' '-_'
+    fi
+}
+
+new_password() {  # 20 letters and digits
+    local out=""
+    while [[ ${#out} -lt 20 ]]; do
+        out+="$(head -c 64 /dev/urandom | tr -dc 'A-HJ-NP-Za-km-z2-9')"
+    done
+    printf '%s' "${out:0:20}"
+}
+
+valid_key() {  # 44 characters of URL-safe base64 ending in "="
+    [[ "$1" =~ ^[A-Za-z0-9_-]{43}=$ ]]
+}
+
+container_id() { compose ps -q "$SERVICE" 2>/dev/null || true; }
+
 wait_healthy() {
     say "Waiting for the server to answer..."
-    local id state i
-    id="$(compose ps -q "$SERVICE")"
-    for i in $(seq 1 60); do
+    local id state _
+    id="$(container_id)"
+    for _ in $(seq 1 60); do
         state="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$id" 2>/dev/null || true)"
         case "$state" in
             healthy) say "Running."; return 0 ;;
@@ -87,8 +206,37 @@ wait_healthy() {
     die "The server did not start (state: ${state:-unknown}). The log is above."
 }
 
-addresses() {  # this server's network addresses, not Docker's own
-    local ips
+# Behind a reverse proxy on this server, the app sees the proxy's requests
+# coming from the Docker network's gateway. Trust that address (and only it)
+# for X-Forwarded-For, so login limits and the audit log use each visitor's
+# own address (SEC-26). The gateway can change when the network is made
+# again, so this runs on every install, start and update.
+sync_forwarded() {
+    [[ "$(conf_get ACCESS lan)" == "proxy" ]] || return 0
+    [[ "$(conf_get HOST_NETWORK no)" == "yes" ]] && return 0  # the proxy is 127.0.0.1 then
+    local id gateway want
+    id="$(container_id)"
+    [[ -n "$id" ]] || return 0
+    gateway="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.Gateway}} {{end}}' "$id" | awk '{print $1}')"
+    [[ -n "$gateway" ]] || { say "Could not read the Docker network's gateway; FORWARDED_ALLOW_IPS left as it is."; return 0; }
+    want="127.0.0.1,$gateway"
+    [[ "$(env_get FORWARDED_ALLOW_IPS)" == "$want" ]] && return 0
+    set_env FORWARDED_ALLOW_IPS "$want"
+    say "Trusting the reverse proxy's forwarded addresses (FORWARDED_ALLOW_IPS=$want)."
+    compose up -d   # recreate with the new setting
+    wait_healthy
+}
+
+addresses() {  # where the server can be reached
+    local ips bind
+    bind="$(env_get BIND_ADDRESS)"
+    if [[ "$(conf_get HOST_NETWORK no)" != "yes" && -n "$bind" ]]; then
+        say "  http://$bind:8000   (only there: BIND_ADDRESS in deploy/.env)"
+        if [[ "$bind" == 127.* ]]; then
+            say "  From outside: through your reverse proxy, or ssh -L 8000:$bind:8000 <this server>"
+        fi
+        return 0
+    fi
     if command -v ip >/dev/null 2>&1; then
         ips="$(ip -4 -o addr show scope global | awk '$2 !~ /^(docker|br-|veth)/ {split($4, a, "/"); print a[1]}')"
     else
@@ -99,54 +247,199 @@ addresses() {  # this server's network addresses, not Docker's own
     done
 }
 
+# ------------------------------------------------------------------ service
+
+unit_text() {
+    local docker files=() line f
+    docker="$(command -v docker)"
+    mapfile -t files < <(compose_files)
+    line="$docker compose"
+    for f in "${files[@]}"; do
+        if [[ "$f" == -* ]]; then line+=" $f"; else line+=" \"$f\""; fi
+    done
+    cat <<EOF
+# Written by $SELF install-service. Starts Smart Home Control at boot.
+[Unit]
+Description=Smart Home Control (Docker)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=$ROOT
+ExecStart=$line up -d --wait
+ExecStop=$line stop
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+service_installed() { [[ -f "$UNIT_FILE" ]]; }
+
+cmd_install_service() {
+    command -v systemctl >/dev/null 2>&1 || { say "No systemd here: Docker's restart policy still restarts the app after a reboot."; return 0; }
+    local tmp
+    tmp="$(mktemp)"
+    unit_text > "$tmp"
+    if service_installed && cmp -s "$tmp" "$UNIT_FILE"; then
+        rm -f "$tmp"
+        return 0
+    fi
+    as_root install -m 644 "$tmp" "$UNIT_FILE"
+    rm -f "$tmp"
+    as_root systemctl daemon-reload
+    as_root systemctl enable --now "$UNIT_NAME" >/dev/null 2>&1
+    say "Service $UNIT_NAME installed and enabled: the app starts at every boot."
+}
+
+cmd_remove_service() {
+    service_installed || { say "No $UNIT_NAME installed."; return 0; }
+    as_root systemctl disable "$UNIT_NAME" >/dev/null 2>&1 || true
+    as_root rm -f "$UNIT_FILE"
+    as_root systemctl daemon-reload
+    say "Removed $UNIT_NAME. The app keeps running; Docker still restarts it after a reboot."
+}
+
+refresh_service() {  # the unit names the compose files: keep it current
+    if service_installed; then cmd_install_service; fi
+}
+
+# ------------------------------------------------------------------ install
+
+choose_access() {  # asks; prints lan or proxy. The last choice is the default.
+    local last
+    last="$(conf_get ACCESS lan)"
+    say "" >&2
+    say "How will people reach it?" >&2
+    say "  1) Only on this home network, or over a VPN such as Tailscale (recommended)" >&2
+    say "  2) From the internet, through a reverse proxy on this server (Apache, nginx, Caddy)" >&2
+    local answer
+    local default=1
+    [[ "$last" == "proxy" ]] && default=2
+    read -r -p "Choose 1 or 2 [$default]: " answer
+    case "${answer:-$default}" in
+        2) printf 'proxy' ;;
+        *) printf 'lan' ;;
+    esac
+}
+
+confirm_key_saved() {
+    local key="$1" answer
+    say ""
+    say "  SECRETS_KEY=$key"
+    say ""
+    say "Save this key in a password manager now, off this server. Without it the"
+    say "saved integration logins, in this database and in every backup, cannot be read."
+    interactive || return 0
+    while true; do
+        read -r -p "Type saved once you have copied it: " answer
+        [[ "$answer" == "saved" ]] && return 0
+    done
+}
+
 cmd_install() {
-    local key="" host_network="no"
+    local key="" host_network="" access="" service="yes"
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --secrets-key) key="${2:-}"; shift 2 ;;
             --secrets-key=*) key="${1#*=}"; shift ;;
             --host-network) host_network="yes"; shift ;;
+            --access) access="${2:-}"; shift 2 ;;
+            --access=*) access="${1#*=}"; shift ;;
+            --no-service) service="no"; shift ;;
+            --yes|-y) ASSUME_YES="yes"; shift ;;
             *) die "Unknown option: $1" ;;
         esac
     done
+    [[ -z "$access" || "$access" == "lan" || "$access" == "proxy" ]] || die "--access is lan or proxy."
     need_docker
+    warn_docker_boot
+
+    if [[ -z "$access" ]]; then
+        # (asked here: inside $(...) the terminal test would fail)
+        if interactive; then access="$(choose_access)"; else access="$(conf_get ACCESS lan)"; fi
+    fi
+    if [[ -z "$host_network" ]]; then
+        host_network="$(conf_get HOST_NETWORK no)"   # the last choice
+        if [[ "$access" == "lan" ]] && interactive; then
+            local last="${host_network:0:1}"
+            host_network="no"
+            if ask "Turn TVs on with Wake-on-LAN (shares the server's network with the app)?" "$last"; then
+                host_network="yes"
+            fi
+        fi
+    fi
     if [[ "$host_network" == "yes" ]]; then
         local v
         v="$(docker compose version --short 2>/dev/null | sed 's/^v//')"
         version_at_least "$v" "$MIN_COMPOSE" || die "--host-network needs Docker Compose $MIN_COMPOSE or newer (this is $v)."
     fi
-    printf 'HOST_NETWORK=%s\n' "$host_network" > "$CONF"
+    conf_set HOST_NETWORK "$host_network"
+    conf_set ACCESS "$access"
 
     if [[ ! -f "$ENV_FILE" ]]; then
         cp "$ROOT/deploy/.env.example" "$ENV_FILE"
         say "Created deploy/.env from deploy/.env.example."
     fi
     chmod 600 "$ENV_FILE"
-    local current
-    current="$(grep -E '^SECRETS_KEY=' "$ENV_FILE" | head -n1 | cut -d= -f2- || true)"
+    local current new=""
+    current="$(env_get SECRETS_KEY)"
     if [[ -n "$key" ]]; then
         valid_key "$key" || die "That SECRETS_KEY does not look like a key (44 characters ending in =)."
         set_env SECRETS_KEY "$key"
         say "Using the SECRETS_KEY you gave (saved logins from the old computer stay readable)."
     elif [[ -z "$current" ]]; then
-        set_env SECRETS_KEY "$(new_key)"
-        say "Made a new SECRETS_KEY in deploy/.env. Keep a copy somewhere safe, off this server:"
-        say "  without it, saved integration logins and backups' logins cannot be read."
+        new="$(new_key)"
+        set_env SECRETS_KEY "$new"
     else
         valid_key "$current" || die "deploy/.env has a SECRETS_KEY that does not look like a key."
         say "Keeping the SECRETS_KEY already in deploy/.env."
+    fi
+    if [[ -z "$(env_get FIRST_ADMIN_PASSWORD)" ]]; then
+        # Used only if the database is new: then not admin/admin.
+        set_env FIRST_ADMIN_PASSWORD "$(new_password)"
+    fi
+
+    if [[ "$access" == "proxy" ]]; then
+        set_env BIND_ADDRESS 127.0.0.1
+    elif [[ "$(env_get BIND_ADDRESS)" == "127.0.0.1" ]]; then
+        set_env BIND_ADDRESS ""   # was proxy-only before: every address again
     fi
 
     say "Building and starting (the first build takes a few minutes)..."
     compose up -d --build
     wait_healthy
+    sync_forwarded
+    if [[ "$service" == "yes" ]]; then cmd_install_service; fi
+    [[ -n "$new" ]] && confirm_key_saved "$new"
+
     say ""
-    say "Open it from a phone or computer on your network:"
+    say "Smart Home Control is running:"
     addresses
     say ""
-    say "A new database starts with username \"admin\", password \"admin\": log in and"
-    say "change it straight away (Settings > My account). To bring your existing"
-    say "database over instead, run: deploy/linux/smarthome import-db /path/to/smart_home.db"
+    if [[ "$access" == "proxy" ]]; then
+        say "Next, point your reverse proxy at http://127.0.0.1:8000. A ready-made config:"
+        say "  $SELF proxy-example apache|nginx|caddy your.domain.example"
+        say "See docs/DEPLOY-LINUX.md, section 5."
+    elif [[ "$host_network" == "yes" ]]; then
+        say "It shares this server's network: limit port 8000 to your home network in"
+        say "the server's firewall (docs/DEPLOY-LINUX.md, section 5)."
+    fi
+    if compose logs "$SERVICE" 2>/dev/null | grep -q "created the account \"admin\" with the password in"; then
+        say "First login, on this new database:"
+        say "  username: admin"
+        say "  password: $(env_get FIRST_ADMIN_PASSWORD)"
+        say "Change it after logging in (Settings > My account). It is also in deploy/.env"
+        say "(FIRST_ADMIN_PASSWORD), which is used only while the database has no accounts."
+    else
+        say "Log in with your existing account."
+    fi
+    say "To bring a database over from another computer: $SELF import-db FILE"
+    say "Check the setup any time with: $SELF doctor"
 }
 
 cmd_update() {
@@ -161,8 +454,17 @@ cmd_update() {
     compose exec -T "$SERVICE" python scripts/backup.py || say "(no backup: the server was not running)"
     compose up -d --build
     wait_healthy
+    sync_forwarded
+    refresh_service
     docker image prune -f >/dev/null 2>&1 || true
     say "Updated. Press Ctrl+F5 once in each browser."
+}
+
+cmd_start() {
+    need_docker
+    compose up -d
+    wait_healthy
+    sync_forwarded
 }
 
 cmd_import_db() {
@@ -188,13 +490,97 @@ cmd_import_db() {
 
 cmd_restore() {
     local file="${1:-}"
-    [[ -n "$file" ]] || die "Give a backup name from: deploy/linux/smarthome backups"
+    [[ -n "$file" ]] || die "Give a backup name from: $SELF backups"
     [[ "$file" == */* ]] || file="/app/data/backups/$file"
     need_docker
     compose stop "$SERVICE"
     compose run --rm --no-deps "$SERVICE" python scripts/backup.py --restore "$file"
     compose start "$SERVICE"
     wait_healthy
+}
+
+cmd_reset_login() {
+    need_docker
+    say "This stops the app, asks for the account and a new password, turns that"
+    say "account's two-factor login off, and starts the app again."
+    compose stop "$SERVICE"
+    compose run --rm --no-deps "$SERVICE" python -m scripts.reset_login || true
+    cmd_start
+}
+
+cmd_proxy_example() {
+    local kind="${1:-}" name="${2:-}" file
+    case "$kind" in
+        apache) file="$ROOT/deploy/proxy/apache.conf" ;;
+        nginx) file="$ROOT/deploy/proxy/nginx.conf" ;;
+        caddy) file="$ROOT/deploy/proxy/Caddyfile" ;;
+        *) die "Which proxy: $SELF proxy-example apache|nginx|caddy your.domain.example" ;;
+    esac
+    [[ "$name" =~ ^[A-Za-z0-9.-]+$ ]] || die "Give the site's name, for example: $SELF proxy-example $kind home.example.com"
+    sed "s/smarthome\.example\.com/$name/g" "$file"
+}
+
+# ------------------------------------------------------------------ doctor
+
+cmd_doctor() {
+    local problems=0
+    ok() { say "  ok    $*"; }
+    bad() { say "  FIX   $*"; problems=$((problems + 1)); }
+    note() { say "  note  $*"; }
+    need_docker
+    say "Docker"
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl is-enabled --quiet docker 2>/dev/null && ok "Docker starts at boot" \
+            || bad "Docker does not start at boot: sudo systemctl enable docker"
+        if service_installed; then
+            systemctl is-enabled --quiet "$UNIT_NAME" 2>/dev/null && ok "$UNIT_NAME is installed and enabled" \
+                || bad "$UNIT_NAME is not enabled: sudo systemctl enable $UNIT_NAME"
+        else
+            note "no $UNIT_NAME (Docker's restart policy still brings the app back): $SELF install-service"
+        fi
+    fi
+
+    say "The app"
+    local id state
+    id="$(container_id)"
+    state="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$id" 2>/dev/null || true)"
+    [[ "$state" == "healthy" ]] && ok "running and healthy" || bad "not healthy (${state:-not running}): $SELF start, then $SELF logs"
+
+    say "Who can reach it"
+    local access host bind published
+    access="$(conf_get ACCESS lan)"
+    host="$(conf_get HOST_NETWORK no)"
+    bind="$(env_get BIND_ADDRESS)"
+    if [[ "$host" == "yes" ]]; then
+        note "shares the server's network: port 8000 is open on every address; only the server's firewall limits it"
+    elif [[ -n "$id" ]]; then
+        published="$(docker port "$id" 8000/tcp 2>/dev/null | tr '\n' ' ')"
+        say "        port 8000 is published on: ${published:-nothing}"
+        if [[ "$access" == "proxy" ]]; then
+            [[ "$published" =~ ^(127\.0\.0\.1:8000[[:space:]]*)+$ ]] && ok "only on 127.0.0.1, for the reverse proxy" \
+                || bad "reverse-proxy mode, but port 8000 is open on other addresses: set BIND_ADDRESS=127.0.0.1 in deploy/.env, then $SELF start"
+        else
+            [[ -z "$bind" ]] && note "every address on this server: keep port 8000 off your router's port forwarding" \
+                || ok "only on $bind"
+        fi
+    fi
+    if [[ "$access" == "proxy" && "$host" != "yes" ]]; then
+        local gateway trusted
+        gateway="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.Gateway}} {{end}}' "$id" 2>/dev/null | awk '{print $1}')"
+        trusted="$(env_get FORWARDED_ALLOW_IPS)"
+        [[ -n "$gateway" && ",$trusted," == *",$gateway,"* ]] && ok "the proxy's forwarded visitor addresses are trusted ($trusted)" \
+            || bad "visitor addresses are not trusted from the proxy: $SELF start (sets FORWARDED_ALLOW_IPS)"
+    fi
+
+    say "Data"
+    [[ -n "$(env_get SECRETS_KEY)" ]] && ok "SECRETS_KEY is set (keep a copy off this server)" || bad "no SECRETS_KEY in deploy/.env: $SELF install"
+    local newest
+    newest="$(compose exec -T "$SERVICE" python scripts/backup.py --list 2>/dev/null | grep -E '^/' | head -n1 | awk '{print $1}' || true)"
+    [[ -n "$newest" ]] && ok "newest backup: $newest" || note "no backups listed yet (the first comes after BACKUP_HOURS, or: $SELF backup)"
+    note "backups live on this disk: copy them elsewhere ($SELF copy-backups DIR, or a cron job; docs/DEPLOY-LINUX.md, section 6)"
+
+    say ""
+    if [[ "$problems" -eq 0 ]]; then say "Nothing to fix."; else say "$problems thing(s) to fix, above."; return 1; fi
 }
 
 main() {
@@ -205,9 +591,10 @@ main() {
         update) cmd_update ;;
         status) need_docker; compose ps ;;
         logs) need_docker; compose logs -f --tail 100 "$SERVICE" ;;
-        start) need_docker; compose up -d; wait_healthy ;;
+        start) cmd_start ;;
         stop) need_docker; compose stop ;;
         restart) need_docker; compose restart "$SERVICE"; wait_healthy ;;
+        doctor) cmd_doctor ;;
         backup) need_docker; compose exec -T "$SERVICE" python scripts/backup.py ;;
         backups) need_docker; compose exec -T "$SERVICE" python scripts/backup.py --list ;;
         restore) cmd_restore "$@" ;;
@@ -217,8 +604,13 @@ main() {
             compose cp "$SERVICE:/app/data/backups/." "$1"
             say "Copied to $1" ;;
         import-db) cmd_import_db "$@" ;;
-        help|-h|--help) sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
-        *) die "Unknown command: $cmd (try: deploy/linux/smarthome help)" ;;
+        reset-login) cmd_reset_login ;;
+        proxy-example) cmd_proxy_example "$@" ;;
+        install-service) need_docker; cmd_install_service ;;
+        remove-service) cmd_remove_service ;;
+        make-key) new_key ;;
+        help|-h|--help) sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+        *) die "Unknown command: $cmd (try: $SELF help)" ;;
     esac
 }
 

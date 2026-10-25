@@ -40,14 +40,20 @@ through the backend's permission checks and device safety limits.
 
 ## Headless Linux server
 
-The recommended way to run it: Docker on any 64-bit Linux, set up and kept
-up to date by one script:
+The recommended way to run it: Docker on any 64-bit Linux (Rocky, RHEL,
+Ubuntu, Debian and others), set up and kept up to date by one script:
 
-    deploy/linux/smarthome install
-    deploy/linux/smarthome update
+    git clone https://github.com/bobj4/Smart-Home-Unified-Control.git ~/smart-home
+    cd ~/smart-home
+    deploy/linux/smarthome install     # asks a few questions, starts at every boot
+    deploy/linux/smarthome doctor      # checks the setup in plain words
+    deploy/linux/smarthome update      # later: the latest approved code
 
-The full guide, including moving your database over from Windows, is
-[docs/DEPLOY-LINUX.md](docs/DEPLOY-LINUX.md).
+It runs on your home network (use a VPN such as Tailscale from outside), or,
+with `install --access proxy`, behind a reverse proxy on the same server for
+access from the internet; ready-made Apache, nginx and Caddy configurations
+are in `deploy/proxy/`. The full guide, including moving your database over
+from another computer, is [docs/DEPLOY-LINUX.md](docs/DEPLOY-LINUX.md).
 
 ## Quick start (Docker, any system)
 
@@ -91,6 +97,17 @@ Open http://localhost:8000 on the same computer. Browsers only accept the
 secure login cookies over plain HTTP on `localhost`, so turn on HTTPS
 before using other devices.
 
+## Known issues
+
+- Wake-on-LAN cannot reach TVs when the app runs in Docker on Windows (a
+  Docker networking limit there). On Linux, install with Wake-on-LAN
+  (`--host-network`); on Windows, run the app without Docker.
+- With the app's own HTTPS and a self-signed certificate, each device shows a
+  browser warning once: choose Advanced, then Proceed.
+- A change in Settings > Admin > HTTPS takes effect after a restart.
+- The Samsung 2014-2015 (H and J series) encrypted remote protocol has only
+  been tested against a fake TV.
+
 ## Project layout
 
 | Path | What |
@@ -101,7 +118,7 @@ before using other devices.
 | `backend/tests` | Unit, contract and browser (Playwright) tests |
 | `backend/scripts` | Server start, backups, secrets key, account recovery |
 | `web` | The web app (plain JavaScript, no build step) |
-| `deploy` | Dockerfile and Compose file |
+| `deploy` | Dockerfile, Compose files, the Linux installer (`deploy/linux`) and reverse-proxy examples (`deploy/proxy`) |
 | `docs` | Deployment, security requirements, integration notes |
 
 ## Development

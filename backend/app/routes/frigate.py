@@ -59,12 +59,15 @@ class Server(BaseModel):
         parts = urlsplit(value.strip())
         if parts.scheme not in ("http", "https") or not parts.hostname:
             raise ValueError(
-                "url must look like http://192.168.1.20:5000 or https://frigate.lan:8971"
+                "The address must look like http://192.168.1.20:5000 or "
+                "https://frigate.lan:8971"
             )
         if parts.username or parts.password or parts.query or parts.fragment:
-            raise ValueError("put the username and password in their own fields")
+            raise ValueError("Put the username and password in their own fields")
         if parts.path not in ("", "/"):
-            raise ValueError("url must not have a path")
+            raise ValueError(
+                "The address must end at the port (no /api or anything after it)"
+            )
         try:
             address = ipaddress.ip_address(parts.hostname)
         except ValueError:
@@ -74,7 +77,7 @@ class Server(BaseModel):
         try:
             port = parts.port
         except ValueError:
-            raise ValueError("the port is not valid") from None
+            raise ValueError("The port is not valid") from None
         netloc = (
             f"[{parts.hostname}]"
             if address and address.version == 6
@@ -115,6 +118,13 @@ def save_server(
     try:
         call(client.cameras)
     except FrigateUnavailable as error:
+        if error.status_code == 404:
+            # Something answered, but has no Frigate API there.
+            raise HTTPException(
+                400,
+                "That address answered, but not as Frigate. Check the port: "
+                "5000 without a login, 8971 with one.",
+            ) from None
         code = 400 if "refused" in error.reason else error.status_code
         raise HTTPException(code, error.reason) from None
     data = {

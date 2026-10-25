@@ -68,10 +68,12 @@ class SamsungPanel {
     const form = el('form', { className: 'row' }, [
       field('PIN shown on the TV', pin),
       el('button', { type: 'submit', testid: 'samsung-pin-submit', text: 'Pair' }),
+      formNote('samsung-pin-note'),
     ]);
+    const note = form.lastChild;
     form.addEventListener('submit', (event) => {
       event.preventDefault();
-      this.app.run(async () => {
+      runWithNote(this.app, note, `Pairing with ${tv.name}…`, async () => {
         await this.app.api.sendTvPin(this.app.home.id, tv.device_id, pin.value.trim());
         await this.load();
         this.app.status.success(`${tv.name} is paired.`);
@@ -96,10 +98,12 @@ class SamsungPanel {
       el('label', { className: 'check' }, [legacy, el('span', { text: 'Older TV (2010-2013): use the legacy protocol' })]),
       el('label', { className: 'check' }, [encrypted, el('span', { text: '2014-2015 TV (H or J series): pair with a PIN' })]),
       el('button', { type: 'submit', testid: 'samsung-add', text: 'Add TV' }),
+      formNote('samsung-add-note'),
     ]);
+    const note = form.lastChild;
     form.addEventListener('submit', (event) => {
       event.preventDefault();
-      this.app.run(async () => {
+      runWithNote(this.app, note, 'Adding the TV…', async () => {
         const tv = { name: name.value.trim(), host: host.value.trim(), protocol: legacy.checked ? 'legacy' : (encrypted.checked ? 'encrypted' : 'tizen') };
         if (mac.value.trim()) tv.mac = mac.value.trim();
         await this.app.api.addTv(this.app.home.id, tv);

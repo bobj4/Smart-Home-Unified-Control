@@ -2,7 +2,10 @@
 machine, so it is not an internet-facing way in).
 
 Run from backend/ with the app server stopped:
-  ../.venv/Scripts/python.exe -m scripts.reset_login
+  ../.venv/Scripts/python.exe -m scripts.reset_login   (Windows)
+  ../.venv/bin/python -m scripts.reset_login           (Linux, macOS)
+In Docker on Linux: deploy/linux/smarthome reset-login (stops and restarts
+the app around it).
 
 Sets a new password, turns two-factor login off, and ends the account's
 sessions. Set up an authenticator again afterwards in Settings > My account.

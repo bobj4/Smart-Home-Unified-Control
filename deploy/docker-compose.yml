@@ -3,6 +3,9 @@
 # Settings go in deploy/.env (copy deploy/.env.example); SECRETS_KEY is needed.
 # The database and backups are in the "data" volume. Phones and other
 # devices on the home network open http(s)://<this computer's IP>:8000.
+# BIND_ADDRESS (deploy/.env) picks the host address the port is published on;
+# empty means every address. Behind a reverse proxy on this machine set
+# 127.0.0.1 (docs/DEPLOY-LINUX.md, section 5).
 
 services:
   smart-home:
@@ -14,7 +17,7 @@ services:
       - path: .env
         required: false
     ports:
-      - "8000:8000"
+      - "${BIND_ADDRESS:+${BIND_ADDRESS}:}8000:8000"
     volumes:
       - data:/app/data
     read_only: true

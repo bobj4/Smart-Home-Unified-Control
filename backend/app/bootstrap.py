@@ -1,6 +1,10 @@
 """First start: with no accounts at all, create the default account
-(username "admin", password "admin") and its home, and turn off the email
-requirement so usernames work. Change that password straight away."""
+(username "admin") and its home, and turn off the email requirement so
+usernames work.
+
+Its password is "admin", unless the server was started with
+FIRST_ADMIN_PASSWORD set (the Linux installer sets a random one and shows it
+once). Change it straight away either way."""
 
 import json
 
@@ -17,14 +21,15 @@ DEFAULT_LOGIN = "admin"
 DEFAULT_PASSWORD = "admin"  # nosec B105
 
 
-def ensure_default_admin(db: Session) -> bool:
-    """Returns True if the default account was created now."""
+def ensure_default_admin(db: Session, password: str | None = None) -> bool:
+    """Returns True if the default account was created now, with `password`
+    (or the documented default)."""
     if db.scalars(select(User.id)).first() is not None:
         return False
     settings(db).require_email = False
     user = User(
         email=DEFAULT_LOGIN,
-        hashed_password=hash_password(DEFAULT_PASSWORD),
+        hashed_password=hash_password(password or DEFAULT_PASSWORD),
         name="Admin",
         is_active=True,
         is_superuser=True,

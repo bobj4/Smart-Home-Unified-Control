@@ -169,6 +169,7 @@ class HomeSettings {
     const owner = this.app.can('admin');
     const rows = await this.app.api.getIntegrations(this.app.home.id);
     const devices = await this.app.api.getDevices(this.app.home.id);
+    const problems = this.app.can('operator') ? await this.app.api.getIntegrationProblems(this.app.home.id) : {};
     container.append(el('div', { className: 'integration-list' }, rows.flatMap((row) => {
       const toggle = el('input', {
         type: 'checkbox', role: 'switch', className: 'switch', testid: 'integration-toggle',
@@ -192,6 +193,9 @@ class HomeSettings {
           el('strong', { text: row.name }),
           row.available ? null : el('span', { className: 'badge', text: 'Not built yet' }),
           el('p', { className: 'muted', text: row.description }),
+          row.enabled && problems[row.id]
+            ? el('p', { className: 'error', testid: 'integration-problem', text: `Connection problem: ${problems[row.id].reason}` })
+            : null,
         ]),
         toggle,
       ]);
