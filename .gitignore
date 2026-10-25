@@ -102,3 +102,15 @@ ReadMe.txt
 apply-*.ps1
 # deploy/linux/smarthome's own choices
 deploy/linux/local.conf
+
+# Local AI agent instructions and notes (kept on this PC only)
+AGENTS.md
+SPEC.md
+ROADMAP.md
+TASKS.md
+docs/PROGRESS.md
+docs/NOTES.md
+docs/PLAN-UI.md
+docs/PLAN-RHEEM.md
+docs/STATUS.md
+GITHUB_UPLOAD_SECURITY_NOTES.md
