@@ -84,7 +84,8 @@ class User(Base):
     totp_last_step: Mapped[int | None] = mapped_column(Integer)
     # New secret during an authenticator reset, until a code from it is confirmed.
     pending_totp_secret: Mapped[str | None] = mapped_column(String(128))
-    # Colour scheme for the web app: "system", "light" or "dark".
+    # Colour scheme for the web app: "system", "light", "dark", "red" (black
+    # and red) or "violet" (purple and black).
     theme: Mapped[str] = mapped_column(
         String(10), default="system", server_default="system"
     )
