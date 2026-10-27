@@ -272,8 +272,45 @@ async def _states(tokens: dict[str, Any]) -> dict[str, dict[str, Any]]:
                 await asyncio.wait_for(api.shut_down(), 5)
 
 
+# Lights and plugs are reached through one of the account's devices that is
+# on Wi-Fi (a "hub"). pycync marks it by probing every device once, right
+# after logging in, and waits for that before each light or plug command. If
+# no device answered then, or the device list was read again since (every
+# sync replaces the devices it had marked), every command waits until it
+# times out, while thermostats (no hub needed) keep working. So: probe again
+# when no hub is known, and say plainly when none answers.
+PROBE_WAIT_SECONDS = 8
+NO_HUB = (
+    "none of your Cync lights or plugs answered over Wi-Fi, so commands cannot "
+    "reach them. Check that at least one is powered and on Wi-Fi (the Cync app "
+    "shows it), then try again"
+)
+
+
+def has_hub(api: Any) -> bool:
+    return any(
+        getattr(d, "wifi_connected", False)
+        and CyncCapability.CAN_ACT_AS_WIFI_PROXY in getattr(d, "capabilities", ())
+        for d in api.get_devices()
+    )
+
+
+async def ensure_hub(api: Any, wait: float = PROBE_WAIT_SECONDS) -> None:
+    client = api._command_client  # noqa: SLF001 (pycync has no public way)
+    if not has_hub(api):
+        await asyncio.wait_for(client.probe_devices(), wait)
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + wait
+        while not has_hub(api):
+            if loop.time() >= deadline:
+                raise CyncError(NO_HUB)
+            await asyncio.sleep(0.25)
+    client._device_statuses_updated = True  # noqa: SLF001 (stops pycync waiting)
+
+
 async def act(api: Any, device_id: str, action: str, value: Any) -> None:
     """Carry out one action over an open connection (see `send`)."""
+    await ensure_hub(api)
     device = next((d for d in api.get_devices() if str(d.unique_id) == device_id), None)
     if device is None:
         raise CyncError("this device is no longer on the Cync account")
