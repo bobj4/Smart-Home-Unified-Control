@@ -1,4 +1,4 @@
-"""More colour themes: black and red ("red"), purple and black ("violet")."""
+"""More colour themes: Red ("red") and Purple ("violet"), both on black."""
 
 import pytest
 from playwright.sync_api import expect
@@ -33,7 +33,7 @@ def test_ui_red_and_violet(open_page, owner):
     _ui.ui_login(page, owner)
     select = _ui.go_settings(page, "account").get_by_test_id("theme-select")
     expect(select.locator("option")).to_have_text(
-        ["Device setting", "Light", "Dark", "Black and red", "Purple and black"]
+        ["Device Theme", "Light", "Dark", "Red", "Purple"]
     )
     html = page.locator("html")
 
@@ -51,7 +51,7 @@ def test_ui_red_and_violet(open_page, owner):
 
     select.select_option("violet")
     expect(html).to_have_attribute("data-theme", "violet")
-    assert colours() == ["#0d0a12", "#7c3aed", "#0d0a12"]
+    assert colours() == ["#0c0910", "#8a2be2", "#0c0910"]
 
     # Kept after a reload.
     page.reload()

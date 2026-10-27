@@ -72,11 +72,11 @@ class AccountSection {
 
   themeBox() {
     const select = el('select', { testid: 'theme-select', 'aria-label': 'Appearance' }, [
-      el('option', { value: 'system', text: 'Device setting' }),
+      el('option', { value: 'system', text: 'Device Theme' }),
       el('option', { value: 'light', text: 'Light' }),
       el('option', { value: 'dark', text: 'Dark' }),
-      el('option', { value: 'red', text: 'Black and red' }),
-      el('option', { value: 'violet', text: 'Purple and black' }),
+      el('option', { value: 'red', text: 'Red' }),
+      el('option', { value: 'violet', text: 'Purple' }),
     ]);
     select.value = this.app.account.theme || 'system';
     select.addEventListener('change', () => this.app.run(async () => {
