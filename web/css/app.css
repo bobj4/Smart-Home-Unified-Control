@@ -1,6 +1,6 @@
 :root {
   --bg: #f4f5f7; --surface: #ffffff; --surface-2: #f0f2f5; --text: #17191c; --muted: #5d6470;
-  --border: #dfe2e7; --accent: #1f6feb; --accent-text: #ffffff; --danger: #c62828; --success: #1b7f3b;
+  --border: #dfe2e7; --accent: #1f6feb; --accent-fg: var(--accent); --accent-text: #ffffff; --danger: #c62828; --success: #1b7f3b;
   --warm: #e8590c; --hot: #d6336c; --on: #f2b705; --radius: 12px;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
   color-scheme: light dark;
@@ -20,6 +20,18 @@
   --shadow: none; color-scheme: dark;
 }
 :root[data-theme="light"] { color-scheme: light; }
+/* Black and red */
+:root[data-theme="red"] {
+  --bg: #0b0b0c; --surface: #161617; --surface-2: #212124; --text: #f2f2f3; --muted: #a6a6ad;
+  --border: #2f2f33; --accent: #d91a1a; --accent-fg: #ff4d4d; --danger: #e5484d; --success: #4cc06f;
+  --on: #ffd43b; --shadow: none; color-scheme: dark;
+}
+/* Purple and black */
+:root[data-theme="violet"] {
+  --bg: #0d0a12; --surface: #18121f; --surface-2: #231a2f; --text: #efe9f7; --muted: #ab9fbf;
+  --border: #34294a; --accent: #7c3aed; --accent-fg: #c4a1ff; --danger: #e5484d; --success: #4cc06f;
+  --on: #ffd43b; --shadow: none; color-scheme: dark;
+}
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--text); line-height: 1.45; }
@@ -35,7 +47,8 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 button.secondary, button.ghost, .chip { background: var(--surface-2); color: var(--text); border-color: var(--border); }
 button.ghost { background: transparent; }
 button.danger { background: var(--danger); color: #fff; }
-.link { color: var(--accent); }
+a { color: var(--accent-fg); }
+.link { color: var(--accent-fg); }
 .muted { color: var(--muted); font-size: 0.9rem; }
 .note { background: var(--surface-2); border-radius: 8px; padding: 8px 10px; font-size: 0.92rem; }
 .error { color: var(--danger); min-height: 1.2em; }
@@ -56,7 +69,7 @@ button.danger { background: var(--danger); color: #fff; }
 .brand h1 { overflow-wrap: anywhere; }
 .nav { display: flex; gap: 4px; align-items: center; }
 .nav-link { color: var(--text); text-decoration: none; padding: 8px 12px; border-radius: 8px; font-weight: 600; }
-.nav-link.active { background: var(--surface-2); color: var(--accent); }
+.nav-link.active { background: var(--surface-2); color: var(--accent-fg); }
 main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 .status { max-width: 1100px; margin: 8px auto 0; padding: 0 16px; min-height: 1.4em; font-size: 0.92rem; }
 .status[data-kind="error"] { color: var(--danger); }
@@ -127,7 +140,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 .member-row, .session-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); min-width: 0; }
 .member-row > div:first-child, .session-row > div:first-child { min-width: 0; overflow-wrap: anywhere; }
 .badge { border-radius: 999px; padding: 2px 10px; font-size: 0.85rem; background: var(--surface); border: 1px solid var(--border); }
-.badge.owner { color: var(--accent); }
+.badge.owner { color: var(--accent-fg); }
 .activity { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 420px; overflow-y: auto; }
 .activity li .activity-details { grid-column: 1 / -1; font-size: 0.82rem; }
 .activity li.verbose { opacity: 0.9; }
@@ -157,7 +170,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 .settings-menu { display: grid; gap: 2px; position: sticky; top: 76px; }
 .settings-link { display: block; padding: 9px 12px; border-radius: 8px; color: var(--text); text-decoration: none; font-weight: 500; white-space: nowrap; }
 .settings-link:hover { background: var(--surface-2); }
-.settings-link.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); border: 1px solid var(--border); }
+.settings-link.active { background: var(--surface); color: var(--accent-fg); box-shadow: var(--shadow); border: 1px solid var(--border); }
 .settings-content { min-width: 0; }
 .integration-list { display: grid; gap: 8px; }
 .integration-row { display: flex; gap: 12px; justify-content: space-between; align-items: center; padding: 12px; border-radius: 10px; background: var(--surface-2); }
@@ -260,7 +273,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 .usage-table summary { cursor: pointer; color: #9aa1ad; }
 
 /* Thermostat tile */
-.heater-status.cooling { color: var(--accent); }
+.heater-status.cooling { color: var(--accent-fg); }
 .thermo-setpoint { display: flex; align-items: center; gap: 8px; }
 .thermo-setpoint span { flex: 1; font-weight: 600; }
 

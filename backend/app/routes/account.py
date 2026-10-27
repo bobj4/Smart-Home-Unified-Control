@@ -49,7 +49,8 @@ class PasswordChange(BaseModel):
 
 class Preferences(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    theme: Literal["system", "light", "dark"]
+    # "red": black and red; "violet": purple and black.
+    theme: Literal["system", "light", "dark", "red", "violet"]
 
 
 class TotpDisable(BaseModel):
