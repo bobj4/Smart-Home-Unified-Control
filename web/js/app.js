@@ -5,6 +5,8 @@
  */
 
 const VIEWS = ['devices', 'cameras', 'settings'];
+// Chosen colours (My account > Appearance); anything else follows the device.
+const THEMES = ['light', 'dark', 'red', 'violet'];
 
 class SmartHomeApp {
   constructor() {
@@ -136,8 +138,12 @@ class SmartHomeApp {
   }
 
   applyTheme(theme) {
-    if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+    if (THEMES.includes(theme)) document.documentElement.dataset.theme = theme;
     else delete document.documentElement.dataset.theme;
+    // The phone's status bar follows the page background.
+    const meta = document.querySelector('meta[name="theme-color"]');
+    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+    if (meta && bg) meta.setAttribute('content', bg);
   }
 
   async loadAccount() {
