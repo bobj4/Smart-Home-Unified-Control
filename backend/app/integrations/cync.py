@@ -314,16 +314,29 @@ async def act(api: Any, device_id: str, action: str, value: Any) -> None:
     device = next((d for d in api.get_devices() if str(d.unique_id) == device_id), None)
     if device is None:
         raise CyncError("this device is no longer on the Cync account")
-    if action == "power":
-        await (device.turn_on() if value else device.turn_off())
-    elif action == "brightness":
-        await device.set_brightness(value)
-    elif action == "color_temp":
-        await device.set_color_temp(value)
-    elif action == "rgb":
-        await device.set_rgb(value)
-    else:
+    # Send through this connection's own command client, not the device's:
+    # every device-list read (each sync) replaces the shared device objects
+    # with ones tied to that read's client, which never connects, and
+    # commands sent through it wait until they time out.
+    client = api._command_client  # noqa: SLF001 (pycync has no public way)
+    needs = {
+        "power": CyncCapability.ON_OFF,
+        "brightness": CyncCapability.DIMMING,
+        "color_temp": CyncCapability.CCT_COLOR,
+        "rgb": CyncCapability.RGB_COLOR,
+    }
+    if action not in needs:
         raise CyncUnsupported(f"unknown Cync action {action}")
+    if not device.supports_capability(needs[action]):
+        raise CyncUnsupported("this Cync device cannot do that")
+    if action == "power":
+        await client.set_power_state(device, bool(value))
+    elif action == "brightness":
+        await client.set_brightness(device, value)
+    elif action == "color_temp":
+        await client.set_color_temp(device, value)
+    else:
+        await client.set_rgb(device, value)
 
 
 def act_on_open(api: Any, loop: Any, device_id: str, action: str, value: Any) -> None:
