@@ -137,10 +137,13 @@ class DevicesView {
     card.classList.add('group-card');
     const count = group.device_ids.length;
     card.querySelector('.card-head .muted').textContent = `Group · ${count} device${count === 1 ? '' : 's'}${group.online ? '' : ' · offline'}`;
-    card.querySelector('.card-head').append(el('button', {
-      type: 'button', className: 'icon-button group-menu', testid: 'group-menu', text: '⋯',
-      'aria-label': `${group.name}: each device`, title: 'Each device', onclick: () => this.groups.open(group),
-    }));
+    // Each device on its own is only worth a menu with two or more.
+    if (count >= 2) {
+      card.querySelector('.card-head').append(el('button', {
+        type: 'button', className: 'icon-button group-menu', testid: 'group-menu', text: '⋯',
+        'aria-label': `${group.name}: each device`, title: 'Each device', onclick: () => this.groups.open(group),
+      }));
+    }
     return card;
   }
 
