@@ -144,6 +144,33 @@ def finish_pin_pairing(db: Session, device: Device, pin: str) -> None:
     db.commit()
 
 
+def update_tv(
+    db: Session,
+    device: Device,
+    name: str,
+    host: str,
+    protocol: str,
+    mac: str | None,
+    room: str | None,
+) -> bool:
+    """Change a TV's details. A new address or protocol needs pairing again:
+    the saved pairing is removed. Returns whether pairing is needed now."""
+    if host != device.external_id and any(
+        d.external_id == host for d in list_tvs(db, device.home_id) if d.id != device.id
+    ):
+        raise SamsungUnavailable(409, "a TV with that address is already added")
+    settings = config(device)
+    repair = host != device.external_id or protocol != settings["protocol"]
+    if repair:
+        credentials.remove(db, device.home_id, _credential_key(device))
+    device.name, device.room, device.external_id = name, room, host
+    device.capabilities = json.dumps(
+        {"protocol": protocol, "mac": mac, "paired": settings["paired"] and not repair}
+    )
+    db.commit()
+    return repair
+
+
 def remove_tv(db: Session, device: Device) -> None:
     credentials.remove(db, device.home_id, _credential_key(device))
     db.delete(device)
