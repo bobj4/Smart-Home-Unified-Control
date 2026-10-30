@@ -269,9 +269,9 @@ class SmartHomeApp {
       this.status.show('', 'info');
       this.route();
     } catch (error) {
-      errorEl.textContent = error.status === 429
-        ? 'Too many failed attempts. Wait five minutes and try again.'
-        : 'Login failed. Check your email, password and code.';
+      if (error.status === 429) errorEl.textContent = 'Too many failed attempts. Wait five minutes and try again.';
+      else if (error.status === 403) errorEl.textContent = error.message; // locked: says why
+      else errorEl.textContent = 'Login failed. Check your email, password and code.';
     }
   }
 

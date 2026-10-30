@@ -67,6 +67,8 @@ class SmartHomeAPI {
   logout() { return this.post('/auth/logout'); }
   getRememberedLogin() { return this.get('/auth/remembered'); }
   getLoginTimes() { return this.get('/admin/login-times'); }
+  getLoginFailures() { return this.get('/admin/login-failures'); }
+  setLoginFailures(body) { return this.put('/admin/login-failures', body); }
   setLoginTimes(body) { return this.put('/admin/login-times', body); }
   getMyDevices() { return this.get('/account/trusted-devices'); }
   forgetMyDevice(id) { return this.del(`/account/trusted-devices/${enc(id)}`); }

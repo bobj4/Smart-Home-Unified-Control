@@ -28,6 +28,7 @@ from app.routes import (
     https_admin,
     integrations,
     layout,
+    login_failures,
     login_times,
     member_access,
     members,
@@ -111,6 +112,7 @@ app.include_router(rheem.router)
 app.include_router(rheem.usage_router)
 app.include_router(thermostat.router)
 app.include_router(login_times.router)
+app.include_router(login_failures.router)
 app.include_router(verbose.router)
 app.include_router(layout.router)
 app.include_router(guest.router)

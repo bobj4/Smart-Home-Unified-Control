@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from sqlalchemy.orm import Session
 
+from app import login_failures
 from app.audit import record_event
 from app.auth import authenticate_user, verify_recovery_code, verify_totp_code
 from app.db_config import get_db
@@ -55,6 +56,7 @@ class LoginRequest(BaseModel):
 def _fail(db: Session, account: str, ip: str | None) -> HTTPException:
     record_login_failure(account, ip)
     record_event(db, "login_failure", ip_address=ip, details={"reason": "invalid"})
+    login_failures.failed(db, account, ip)  # the admin's lockout rule
     return HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
 
 
@@ -72,6 +74,13 @@ def login(
     user = authenticate_user(db, body.email.strip(), body.password)
     if user is None:
         raise _fail(db, account, ip)
+    ends = login_failures.locked_until(user)
+    if ends is not None:
+        # Said only to someone who gave the right password.
+        record_event(db, "login_refused_locked", user_id=user.id, ip_address=ip)
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, login_failures.locked_message(ends)
+        )
 
     if not user.is_totp_enabled:
         # The person turned two-factor off for their account (homes that
@@ -106,6 +115,7 @@ def login(
     keep = body.keep_logged_in and kept_for is not None
     remember_for = remember_me_seconds(db)
     device_for = device_cookie_seconds(db)
+    login_failures.succeeded(db, user)
     # Commits the TOTP/recovery change too.
     token, csrf = create_session(db, user.id, ip, keep=keep, keep_seconds=kept_for or 0)
     new_device = None

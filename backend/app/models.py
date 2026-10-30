@@ -77,6 +77,9 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(512))  # Argon2id
     name: Mapped[str | None] = mapped_column(String(100))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Failed logins in a row, and a lockout's end (app/login_failures.py).
+    failed_logins: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
     totp_secret: Mapped[str | None] = mapped_column(String(128))  # base32
     is_totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -353,6 +356,20 @@ class SystemSettings(Base):
     # "Remember this device": how long an approved device skips the code.
     remember_device_days: Mapped[int | None] = mapped_column(
         Integer, default=0, server_default="0", nullable=True
+    )
+    # After repeated failed logins (app/login_failures.py): "none", "lockout"
+    # (blocked for a time, or until the password is reset) or "lockdown"
+    # (account turned off until an admin turns it on again).
+    login_failure_action: Mapped[str] = mapped_column(
+        String(10), default="none", server_default="none"
+    )
+    # Failures in a row before it applies; None (blank) = the rule is off.
+    login_failure_limit: Mapped[int | None] = mapped_column(
+        Integer, default=10, server_default="10", nullable=True
+    )
+    # Lockout length in minutes; 0 = until the password is reset; None = off.
+    login_lockout_minutes: Mapped[int | None] = mapped_column(
+        Integer, default=15, server_default="15", nullable=True
     )
     # Settings > Activity log: also record integration detail (app/verbose.py).
     verbose_logging: Mapped[bool] = mapped_column(
