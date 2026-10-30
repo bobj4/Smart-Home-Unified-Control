@@ -241,7 +241,8 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 .remote .key svg { display: block; margin: auto; }
 
 /* Groups */
-.group-card .card-head { justify-content: space-between; }
+/* The ⋯ button sits at the right; without it the name stays next to the icon. */
+.group-card .card-head .group-menu { margin-left: auto; }
 .group-panel { max-width: 900px; }
 .group-form { display: grid; gap: 8px; padding: 10px 0; border-top: 1px solid var(--border); }
 .group-devices { display: flex; flex-wrap: wrap; gap: 6px 16px; }
