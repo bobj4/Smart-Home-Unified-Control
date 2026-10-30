@@ -34,6 +34,14 @@ function setAttrs(node, attrs) {
   }
 }
 
+/** "light" -> "Light", "tv" -> "TV", "water_heater" -> "Water heater". */
+function typeLabel(type) {
+  const known = { tv: 'TV', water_heater: 'Water heater' };
+  if (known[type]) return known[type];
+  const words = String(type || '').replace(/_/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 function field(label, input) {
   return el('label', { className: 'field' }, [el('span', { text: label }), input]);
 }
