@@ -572,6 +572,16 @@ cmd_doctor() {
             || bad "visitor addresses are not trusted from the proxy: $SELF start (sets FORWARDED_ALLOW_IPS)"
     fi
 
+    say "Integrations (last 30 minutes of the log)"
+    local problems_seen
+    problems_seen="$(compose logs --since 30m "$SERVICE" 2>/dev/null | grep -E "refresh skipped|live connection ended|connection closed|Failed to connect|live refresh failed" | tail -n 5 || true)"
+    if [[ -z "$problems_seen" ]]; then
+        ok "no connection problems logged"
+    else
+        bad "connection problems logged (newest last; Settings > Integrations shows the same):"
+        printf '%s\n' "$problems_seen" | sed 's/^/          /'
+    fi
+
     say "Data"
     [[ -n "$(env_get SECRETS_KEY)" ]] && ok "SECRETS_KEY is set (keep a copy off this server)" || bad "no SECRETS_KEY in deploy/.env: $SELF install"
     local newest
