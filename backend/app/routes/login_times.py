@@ -14,7 +14,7 @@ admin (SEC-11: never other homes' people).
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -22,7 +22,14 @@ from app.audit import record_event
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
 from app.login_policy import settings
-from app.login_times import DEVICE_COOKIE, MAX_DAYS, TIMES, device_out, times_out
+from app.login_times import (
+    DEVICE_COOKIE,
+    MAX_DAYS,
+    TIMES,
+    clean_name,
+    device_out,
+    times_out,
+)
 from app.models import HomeMembership, Role, TrustedDevice, User
 
 router = APIRouter(prefix="/api/v1", tags=["login times"])
@@ -116,6 +123,40 @@ def my_devices(
         .order_by(TrustedDevice.created_at.desc())
     ).all()
     return [device_out(db, d, token) for d in devices]
+
+
+class DeviceRename(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=100)
+
+
+@router.patch(
+    "/account/trusted-devices/{device_id}", dependencies=[Depends(require_csrf)]
+)
+def rename_mine(
+    device_id: str,
+    body: DeviceRename,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Give one of my approved devices a name of my own."""
+    device = db.get(TrustedDevice, device_id)
+    if device is None or device.user_id != user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    name = clean_name(body.name)
+    if name is None:
+        raise HTTPException(422, "Give the device a name")
+    before, device.name = device.name, name
+    db.commit()
+    record_event(
+        db,
+        "device_renamed",
+        user_id=user.id,
+        ip_address=client_ip(request),
+        details={"before": before, "after": name},
+    )
+    return device_out(db, device, request.cookies.get(DEVICE_COOKIE))
 
 
 def _forget(db: Session, device: TrustedDevice, by: User, request: Request) -> None:

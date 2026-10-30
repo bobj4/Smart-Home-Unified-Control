@@ -62,6 +62,8 @@ class SmartHomeAPI {
     };
     if (code.length === 8) body.recovery_code = code;
     else if (code) body.totp_code = code;
+    // The name given in the "Name this device" popup (device-name.js).
+    if (rememberDevice && this.deviceName) body.device_name = this.deviceName;
     return this.post('/auth/login', body);
   }
   logout() { return this.post('/auth/logout'); }
@@ -72,6 +74,7 @@ class SmartHomeAPI {
   setLoginTimes(body) { return this.put('/admin/login-times', body); }
   getMyDevices() { return this.get('/account/trusted-devices'); }
   forgetMyDevice(id) { return this.del(`/account/trusted-devices/${enc(id)}`); }
+  renameMyDevice(id, name) { return this.patch(`/account/trusted-devices/${enc(id)}`, { name }); }
   getAllDevices() { return this.get('/admin/trusted-devices'); }
   forgetAnyDevice(id) { return this.del(`/admin/trusted-devices/${enc(id)}`); }
   getVerbose() { return this.get('/admin/verbose-logging'); }

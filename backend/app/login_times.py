@@ -114,14 +114,31 @@ def device_name(user_agent: str | None) -> str:
     return f"{browser} on {system}"
 
 
-def remember(db: Session, user_id: str, user_agent: str | None, ip: str | None) -> str:
-    """Approve this browser for the user; returns the cookie's token."""
+NAME_MAX = 60
+
+
+def clean_name(name: str | None) -> str | None:
+    """A device name the person typed: trimmed, one line, at most NAME_MAX."""
+    text = " ".join((name or "").split())[:NAME_MAX]
+    return text or None
+
+
+def remember(
+    db: Session,
+    user_id: str,
+    user_agent: str | None,
+    ip: str | None,
+    name: str | None = None,
+) -> str:
+    """Approve this browser for the user; returns the cookie's token. `name`
+    is what the person called it ("Kitchen tablet"); without one, the
+    browser and system ("Chrome on Windows")."""
     token = secrets.token_urlsafe(32)
     db.add(
         TrustedDevice(
             user_id=user_id,
             token_hash=_hash(token),
-            name=device_name(user_agent),
+            name=clean_name(name) or device_name(user_agent),
             ip_address=ip,
         )
     )

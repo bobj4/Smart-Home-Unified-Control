@@ -40,6 +40,10 @@ class TrustedDevicesList {
         el('strong', { text: `${who}${device.name}${device.current ? ' (this device)' : ''}` }),
         el('p', { className: 'muted', text: `Approved ${formatTime(device.created_at)}${device.ip_address ? ` from ${device.ip_address}` : ''} · ${used} · ${until}` }),
       ]),
+      this.all ? null : el('button', {
+        type: 'button', className: 'secondary', testid: 'trusted-device-rename', text: 'Rename',
+        'aria-label': `Rename ${device.name}`, onclick: (e) => this.rename(device, e.currentTarget.closest('.session-row')),
+      }),
       el('button', {
         type: 'button', className: 'secondary', testid: 'trusted-device-forget', text: 'Remove',
         'aria-label': `Remove ${device.name}`,
@@ -51,6 +55,26 @@ class TrustedDevicesList {
         }),
       }),
     ]);
+  }
+
+  /** My own device: change its name in place. */
+  rename(device, row) {
+    const name = el('input', { type: 'text', testid: 'trusted-device-name', maxlength: '60', value: device.name, 'aria-label': 'Device name' });
+    const form = el('form', { className: 'row', testid: 'trusted-device-rename-form' }, [
+      name,
+      el('button', { type: 'submit', testid: 'trusted-device-save', text: 'Save' }),
+      el('button', { type: 'button', className: 'secondary', text: 'Cancel', onclick: () => this.load() }),
+    ]);
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      this.app.run(async () => {
+        await this.app.api.renameMyDevice(device.id, name.value.trim());
+        await this.load();
+        this.app.status.success('Device renamed.');
+      });
+    });
+    row.replaceChildren(form);
+    name.select();
   }
 }
 
