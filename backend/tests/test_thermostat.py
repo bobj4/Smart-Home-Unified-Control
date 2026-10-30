@@ -29,7 +29,7 @@ from tests import test_ui as _ui
 
 fake, secrets_key, econet = _cync.fake, _cync.secrets_key, _rheem.econet
 card, ui_login = _ui.card, _ui.ui_login
-CLOUD_ID = 556336025
+CLOUD_ID = 123456789
 # The probe reply body after the device id, from the owner's thermostat.
 REPLY = bytes.fromhex(
     "001800070009786c696e6b5f64657600900856312e322e31333601900856322e302e30313102"
@@ -47,7 +47,7 @@ def sensors_entry(text):
 
 SENSORS = (
     'sensorsData:[{"Type":"internal","Temperature":"67.1F","Humidity":45,"Active":true},'
-    '{"Type":"savant sensor","PinCode":24944,"Temperature":"67.8F","Humidity":44,'
+    '{"Type":"savant sensor","PinCode":135790,"Temperature":"67.8F","Humidity":44,'
     '"Active":true,"Batt":"2.89"},{"Type":"None","Temperature":null,"Active":true}]'
 )
 FULL_REPLY = REPLY + sensors_entry(SENSORS)
@@ -90,7 +90,7 @@ def test_decodes_the_real_probe_reply():
             "humidity": 44,
             "battery": "2.89",
             "active": True,
-            "pin": "024944",
+            "pin": "135790",
         },
     ]
     assert t.parse_probe_reply(bytes.fromhex("0018" + "0a")) is None  # offline
@@ -102,7 +102,7 @@ def test_builds_writes_as_the_notes_describe():
         "330000000f" + "01020304" + "0506" + "06" + "0b9005" + "37322e3046"
     )
     assert t.entry(t.MODE_SET, 1).hex() == "07400400000001"
-    assert t.probe_packet(CLOUD_ID, 24).hex() == "a3000000072129039900" + "1800"
+    assert t.probe_packet(CLOUD_ID, 24).hex() == "a300000007075bcd1500" + "1800"
     assert t.format_temperature(72, "F") == "72.0F"
     assert t.format_temperature(68, "C") == "20.0C"
     assert t.temperature_f("20.0C") == 68.0 and t.temperature_f("x") is None
