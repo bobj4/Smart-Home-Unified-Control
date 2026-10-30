@@ -125,4 +125,49 @@ class StatusBar {
   }
 }
 
-window.ui = { el, svg, field, section, formatTime, groupSecret, codeList, StatusBar, ROLE_RANK };
+/**
+ * A small popup at the bottom of the screen. "Changes Saved" closes by
+ * itself; an error stays until it is closed, so it is not missed.
+ */
+class Toast {
+  constructor() {
+    this.node = el('div', { className: 'toast', testid: 'toast', role: 'status', 'aria-live': 'polite', hidden: true });
+    document.body.append(this.node);
+  }
+
+  saved() {
+    this.show('Changes Saved', 'success', 2000);
+  }
+
+  failed(message) {
+    this.show(message, 'error', 0);
+  }
+
+  show(message, kind, closeAfter) {
+    clearTimeout(this.timer);
+    this.node.dataset.kind = kind;
+    const parts = [el('span', { testid: 'toast-text', text: message })];
+    if (kind === 'error') {
+      parts.push(el('button', {
+        type: 'button', className: 'ghost toast-close', testid: 'toast-close', text: '✕', 'aria-label': 'Close',
+        onclick: () => this.hide(),
+      }));
+    }
+    this.node.replaceChildren(...parts);
+    this.node.hidden = false;
+    if (closeAfter) this.timer = setTimeout(() => this.hide(), closeAfter);
+  }
+
+  hide() {
+    clearTimeout(this.timer);
+    this.node.hidden = true;
+  }
+}
+
+/** Is this the click of a Save button ("Save", "Save login times", ...)? */
+function isSaveButton(node) {
+  const button = node && node.closest && node.closest('button');
+  return Boolean(button) && /^save\b/i.test(button.textContent.trim());
+}
+
+window.ui = { el, svg, field, section, formatTime, groupSecret, codeList, StatusBar, Toast, ROLE_RANK };

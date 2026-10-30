@@ -14,6 +14,10 @@ class SmartHomeApp {
     this.account = null;
     this.home = null;
     this.status = new StatusBar(byTestId('status'));
+    // Every Save button: a "Changes Saved" popup once the server has it.
+    this.toast = new Toast();
+    document.addEventListener('click', (e) => { this.lastClick = { save: isSaveButton(e.target), at: Date.now() }; }, true);
+    document.addEventListener('submit', (e) => { this.lastClick = { save: isSaveButton(e.submitter), at: Date.now() }; }, true);
     this.devices = new DevicesView(this, byTestId('view-devices'));
     this.settings = new SettingsView(this, byTestId('view-settings'));
     this.cameras = new CamerasView(this, byTestId('view-cameras'));
@@ -70,10 +74,14 @@ class SmartHomeApp {
   async run(action) {
     this.status.pending();
     this.working += 1;
+    const click = this.lastClick;
+    const saving = Boolean(click && click.save && Date.now() - click.at < 1000);
     try {
       await action();
+      if (saving) this.toast.saved();
     } catch (error) {
       this.handleError(error);
+      if (saving && !(error instanceof AuthError)) this.toast.failed(error.message);
     } finally {
       this.working -= 1;
     }
