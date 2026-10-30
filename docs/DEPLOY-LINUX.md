@@ -1,4 +1,4 @@
-# Running Smart Home Control on a headless Linux server
+# Running Smart Home Unified Control on a headless Linux server
 
 The server runs in Docker, using the hardened container already in `deploy/`:
 non-root, read-only files, no extra capabilities. One script,
