@@ -299,3 +299,9 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 
 /* Members: an inactive account */
 .member-row.inactive > div:first-child { opacity: 0.55; }
+
+/* "Changes Saved" and save errors */
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 50; display: flex; gap: 12px; align-items: center; max-width: min(92vw, 520px); padding: 12px 16px; border-radius: var(--radius); background: var(--surface); color: var(--text); border: 1px solid var(--border); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25); font-weight: 600; }
+.toast[data-kind="success"] { border-color: var(--success); }
+.toast[data-kind="error"] { border-color: var(--danger); color: var(--danger); }
+.toast-close { padding: 2px 8px; }
