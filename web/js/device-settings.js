@@ -81,7 +81,7 @@ class DeviceSettings {
     const row = el('form', { className: 'device-row', testid: 'device-row', 'data-device-id': device.id, 'data-device-type': device.type }, [
       el('div', { className: 'grid-fields' }, fields),
       deviceInfoButton(device),
-      el('span', { className: 'muted', text: device.type.replace('_', ' ') }),
+      el('span', { className: 'muted', text: typeLabel(device.type) }),
     ]);
     if (admin) {
       row.addEventListener('input', () => { row.dataset.changed = 'true'; });

@@ -6,10 +6,6 @@
 
 const TEMPERATURE_TYPES = new Set(['thermostat', 'water_heater']);
 const POWER_TYPES = new Set(['light', 'plug', 'tv']);
-const TYPE_LABEL = {
-  light: 'Light', plug: 'Plug', tv: 'TV', thermostat: 'Thermostat', water_heater: 'Water heater',
-  sensor: 'Sensor', camera: 'Camera',
-};
 // Simple line icons, 24x24.
 const ICON_PATHS = {
   light: 'M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0 0 12 3z',
@@ -165,7 +161,7 @@ class DevicesView {
         icon(device.type),
         el('div', {}, [
           el('h3', { text: device.name }),
-          el('p', { className: 'muted', text: `${TYPE_LABEL[device.type] || device.type}${device.online ? '' : ' · offline'}` }),
+          el('p', { className: 'muted', text: `${typeLabel(device.type)}${device.online ? '' : ' · offline'}` }),
         ]),
       ]),
     ]);

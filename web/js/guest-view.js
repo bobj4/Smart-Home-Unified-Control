@@ -28,7 +28,7 @@ function blockedCard(device) {
       icon(device.type),
       el('div', {}, [
         el('h3', { text: device.name }),
-        el('p', { className: 'muted', testid: 'device-blocked', text: `${TYPE_LABEL[device.type] || device.type} · not available to you` }),
+        el('p', { className: 'muted', testid: 'device-blocked', text: `${typeLabel(device.type)} · not available to you` }),
       ]),
     ]),
   ]);
