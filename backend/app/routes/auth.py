@@ -51,6 +51,8 @@ class LoginRequest(BaseModel):
     remember_me: StrictBool = False
     # Skip the two-factor code on this browser next time (app/login_times.py).
     remember_device: StrictBool = False
+    # What to call it in the approved-devices lists ("Kitchen tablet").
+    device_name: str | None = Field(default=None, max_length=100)
 
 
 def _fail(db: Session, account: str, ip: str | None) -> HTTPException:
@@ -124,7 +126,9 @@ def login(
         and device_for is not None
         and method in ("totp", "recovery_code")
     ):
-        new_device = remember(db, user.id, request.headers.get("user-agent"), ip)
+        new_device = remember(
+            db, user.id, request.headers.get("user-agent"), ip, body.device_name
+        )
         record_event(db, "device_remembered", user_id=user.id, ip_address=ip)
     record_event(
         db,

@@ -18,6 +18,7 @@ card, ui_login, go_settings = _ui.card, _ui.ui_login, _ui.go_settings
 def test_ui_remember_this_device(open_page, db, owner):
     page = open_page()
     page.get_by_test_id("login-remember-device").check()
+    page.get_by_test_id("device-name-ok").click()  # keep the suggested name
     ui_login(page, owner)
     assert db.query(TrustedDevice).count() == 1
     page.get_by_test_id("logout").click()
@@ -46,6 +47,7 @@ def test_ui_admin_login_times_and_devices(open_page, db, owner, make_user):
     member = make_user(owner.home_id, role="member")
     other = open_page()
     other.get_by_test_id("login-remember-device").check()
+    other.get_by_test_id("device-name-ok").click()  # keep the suggested name
     ui_login(other, member)
     page = open_page()
     ui_login(page, owner, owner.totp.at(time.time() + 30))

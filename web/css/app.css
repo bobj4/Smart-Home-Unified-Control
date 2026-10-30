@@ -312,3 +312,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 .command-popup { max-width: 440px; border: 2px solid var(--danger); }
 .command-popup h2 { color: #ff8a8a; }
 .command-popup-reasons { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; }
+
+/* Name this device (login) */
+.device-name-popup { max-width: 400px; }
