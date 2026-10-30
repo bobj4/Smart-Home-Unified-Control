@@ -1,4 +1,4 @@
-# Smart Home Control
+# Smart Home Unified Control
 
 An open-source smart home control application. A single backend connects to
 your devices' services and serves one web app to every phone, tablet and

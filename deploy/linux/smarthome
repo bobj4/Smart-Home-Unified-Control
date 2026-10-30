@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smart Home Control on a headless Linux server (Docker).
+# Smart Home Unified Control on a headless Linux server (Docker).
 #
 #   deploy/linux/smarthome install [options]   set up, start, and start at boot
 #       --access lan       reached on this network only (the default)
@@ -258,9 +258,9 @@ unit_text() {
         if [[ "$f" == -* ]]; then line+=" $f"; else line+=" \"$f\""; fi
     done
     cat <<EOF
-# Written by $SELF install-service. Starts Smart Home Control at boot.
+# Written by $SELF install-service. Starts Smart Home Unified Control at boot.
 [Unit]
-Description=Smart Home Control (Docker)
+Description=Smart Home Unified Control (Docker)
 Requires=docker.service
 After=docker.service network-online.target
 Wants=network-online.target
@@ -418,7 +418,7 @@ cmd_install() {
     [[ -n "$new" ]] && confirm_key_saved "$new"
 
     say ""
-    say "Smart Home Control is running:"
+    say "Smart Home Unified Control is running:"
     addresses
     say ""
     if [[ "$access" == "proxy" ]]; then

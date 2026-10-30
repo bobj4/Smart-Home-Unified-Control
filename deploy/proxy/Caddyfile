@@ -1,4 +1,4 @@
-# Caddy in front of Smart Home Control, on the same server. Caddy gets and
+# Caddy in front of Smart Home Unified Control, on the same server. Caddy gets and
 # renews the HTTPS certificate by itself (ports 80 and 443 must reach it).
 #   deploy/linux/smarthome install --access proxy
 #   deploy/linux/smarthome proxy-example caddy your.domain  > /etc/caddy/Caddyfile
