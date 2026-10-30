@@ -98,7 +98,7 @@ def test_probe_asks_for_every_schedule_and_decodes_replies():
     assert any("setting Sched_Heat_Mon" in line for line in lines)
     decoded = [line for line in lines if '"heat": 68.0' in line]
     assert len(decoded) == 2  # from the ReadSetting reply and from point 63
-    ack = struct.pack(">IHB", 556336025, 100, 0)
+    ack = struct.pack(">IHB", 123456789, 100, 0)
     assert any(
         "set reply" in line and "code 0" in line
         for line in probe.describe(3, True, ack)
@@ -114,5 +114,5 @@ def test_reply_values_padding_and_pins():
     assert s.parse_schedule("heat", heat + b"\xff" * 20) == [
         {"time": "06:30", "heat": 68.0}
     ]
-    assert s.sensor_pin(bytes([1]) + b"024944") == "024944"
+    assert s.sensor_pin(bytes([1]) + b"135790") == "135790"
     assert s.sensor_pin(bytes(7)) is None
