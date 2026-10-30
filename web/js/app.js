@@ -16,6 +16,9 @@ class SmartHomeApp {
     this.status = new StatusBar(byTestId('status'));
     // Every Save button: a "Changes Saved" popup once the server has it.
     this.toast = new Toast();
+    // A device that did not follow a command: a popup with the reason.
+    this.commandPopup = new CommandPopup(this);
+    this.api.onCommandFailed = (failure) => this.commandPopup.show(failure);
     document.addEventListener('click', (e) => { this.lastClick = { save: isSaveButton(e.target), at: Date.now() }; }, true);
     document.addEventListener('submit', (e) => { this.lastClick = { save: isSaveButton(e.submitter), at: Date.now() }; }, true);
     this.devices = new DevicesView(this, byTestId('view-devices'));

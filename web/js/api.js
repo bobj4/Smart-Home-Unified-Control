@@ -94,16 +94,40 @@ class SmartHomeAPI {
   createGroup(homeId, group) { return this.post(`/homes/${enc(homeId)}/groups`, group); }
   changeGroup(homeId, groupId, changes) { return this.patch(`/homes/${enc(homeId)}/groups/${enc(groupId)}`, changes); }
   deleteGroup(homeId, groupId) { return this.del(`/homes/${enc(homeId)}/groups/${enc(groupId)}`); }
-  groupCommand(homeId, groupId, command, payload) { return this.post(`/homes/${enc(homeId)}/groups/${enc(groupId)}/command`, { command, payload }); }
+  /** A group: each device's result; any that failed open the failure popup. */
+  async groupCommand(homeId, groupId, command, payload) {
+    const again = () => this.groupCommand(homeId, groupId, command, payload);
+    let result;
+    try {
+      result = await this.post(`/homes/${enc(homeId)}/groups/${enc(groupId)}/command`, { command, payload });
+    } catch (error) {
+      this.commandFailed({ groupId, command, error, again });
+      throw error;
+    }
+    const failed = (result.results || []).filter((r) => r.ok === false);
+    if (failed.length) this.commandFailed({ groupId, command, failed, again });
+    return result;
+  }
   setDeviceLimits(homeId, deviceId, limits) { return this.put(`/homes/${enc(homeId)}/devices/${enc(deviceId)}/limits`, limits); }
   deleteDevice(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/devices/${enc(deviceId)}`); }
   updateDevice(homeId, deviceId, changes) {
     return this.patch(`/homes/${enc(homeId)}/devices/${enc(deviceId)}`, changes);
   }
   /** Guests send through the guest route, which checks their access. */
-  sendCommand(homeId, deviceId, command, payload = {}) {
-    if (this.guest) return this.post(`/homes/${enc(homeId)}/guest/devices/${enc(deviceId)}/command`, { command, payload });
-    return this.post(`/homes/${enc(homeId)}/devices/${enc(deviceId)}/command`, { command, payload });
+  async sendCommand(homeId, deviceId, command, payload = {}) {
+    const path = this.guest ? `/homes/${enc(homeId)}/guest/devices/${enc(deviceId)}/command` : `/homes/${enc(homeId)}/devices/${enc(deviceId)}/command`;
+    try {
+      return await this.post(path, { command, payload });
+    } catch (error) {
+      this.commandFailed({ deviceId, command, error, again: () => this.sendCommand(homeId, deviceId, command, payload) });
+      throw error;
+    }
+  }
+
+  /** A device did not follow a command: the app shows a popup (app.js). */
+  commandFailed(failure) {
+    if (failure.error instanceof AuthError) return; // the login page takes over
+    if (this.onCommandFailed) this.onCommandFailed(failure);
   }
 
   // Safety limits
