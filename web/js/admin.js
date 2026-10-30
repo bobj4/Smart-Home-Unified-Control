@@ -33,6 +33,7 @@ class AdminSection {
     this.fillHttps(https);
     container.append(this.nameForm(), this.displayBox(display), this.twoFactor(security), this.policyForm(policy));
     await new LoginTimesPanel(this.app).render(container);
+    await new LoginFailuresPanel(this.app).render(container);
     container.append(this.emailForm(email), this.httpsBox);
   }
 
