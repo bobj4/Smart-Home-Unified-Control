@@ -81,7 +81,9 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 .room { margin-top: 20px; }
 .devices-top { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
 .devices-top > :first-child { flex: 1 1 auto; min-width: 0; }
-.layout-open { margin-left: auto; }
+/* Edit layout: always at the bottom right of the Devices page. */
+.layout-open { position: fixed; right: 16px; bottom: 16px; z-index: 30; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3); }
+[data-testid="view-devices"] { padding-bottom: 72px; }
 .layout-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .layout-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; padding: 6px 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.06); overflow-wrap: anywhere; }
 .room > h2 { margin-bottom: 10px; color: var(--muted); font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.06em; }
