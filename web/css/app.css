@@ -306,3 +306,9 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 .toast[data-kind="success"] { border-color: var(--success); }
 .toast[data-kind="error"] { border-color: var(--danger); color: var(--danger); }
 .toast-close { padding: 2px 8px; }
+
+/* A device did not follow a command */
+.command-popup-overlay { z-index: 40; }
+.command-popup { max-width: 440px; border: 2px solid var(--danger); }
+.command-popup h2 { color: #ff8a8a; }
+.command-popup-reasons { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; }
