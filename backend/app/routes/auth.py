@@ -101,12 +101,19 @@ def login(
     else:
         raise _fail(db, account, ip)
 
-    keep = body.keep_logged_in
+    # A choice the admin turned off (blank in Login times) is ignored.
     kept_for = keep_seconds(db)
+    keep = body.keep_logged_in and kept_for is not None
+    remember_for = remember_me_seconds(db)
+    device_for = device_cookie_seconds(db)
     # Commits the TOTP/recovery change too.
-    token, csrf = create_session(db, user.id, ip, keep=keep, keep_seconds=kept_for)
+    token, csrf = create_session(db, user.id, ip, keep=keep, keep_seconds=kept_for or 0)
     new_device = None
-    if body.remember_device and method in ("totp", "recovery_code"):
+    if (
+        body.remember_device
+        and device_for is not None
+        and method in ("totp", "recovery_code")
+    ):
         new_device = remember(db, user.id, request.headers.get("user-agent"), ip)
         record_event(db, "device_remembered", user_id=user.id, ip_address=ip)
     record_event(
@@ -138,17 +145,17 @@ def login(
         response.set_cookie(
             DEVICE_COOKIE,
             new_device,
-            max_age=device_cookie_seconds(db),
+            max_age=device_for,
             path=DEVICE_PATH,
             secure=True,
             httponly=True,
             samesite="strict",
         )
-    if body.remember_me:
+    if body.remember_me and remember_for is not None:
         response.set_cookie(
             REMEMBER_COOKIE,
             body.email.strip(),
-            max_age=remember_me_seconds(db),
+            max_age=remember_for,
             path="/api/v1/auth",
             secure=True,
             httponly=True,
@@ -166,14 +173,19 @@ def remembered(
     remembered_login: str | None = Cookie(default=None, max_length=255),
     trusted_device: str | None = Cookie(default=None, max_length=100),
     db: Session = Depends(get_db),
-) -> dict[str, str | bool | int]:
+) -> dict[str, str | bool | int | None]:
     """The login name this browser asked to remember ("" when none), and
     whether it holds a remembered-device cookie (checked at login, for the
     account that logs in)."""
+    row = settings(db)
+    remember_on = row.remember_me_days is not None
     return {
-        "login": (remembered_login or "").strip(),
-        "device": bool(trusted_device),
-        "keep_days": settings(db).keep_logged_in_days,
+        "login": (remembered_login or "").strip() if remember_on else "",
+        "device": bool(trusted_device) and row.remember_device_days is not None,
+        # Days; 0 = until logging out; None = the choice is off (hidden).
+        "keep_days": row.keep_logged_in_days,
+        "remember_me": remember_on,
+        "remember_device": row.remember_device_days is not None,
     }
 
 

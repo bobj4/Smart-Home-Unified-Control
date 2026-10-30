@@ -341,17 +341,18 @@ class SystemSettings(Base):
     smtp_password: Mapped[str | None] = mapped_column(Text)
     smtp_from: Mapped[str | None] = mapped_column(String(255))
     # How long the login page's choices last (Settings > Admin > Login times).
-    # "Keep me logged in": days a kept session lasts.
-    keep_logged_in_days: Mapped[int] = mapped_column(
-        Integer, default=30, server_default="30"
+    # Each: days; 0 = never expires; None = turned off (its checkbox hidden).
+    # "Keep me logged in": how long a kept session lasts.
+    keep_logged_in_days: Mapped[int | None] = mapped_column(
+        Integer, default=30, server_default="30", nullable=True
     )
-    # "Remember me": days the login name stays filled in.
-    remember_me_days: Mapped[int] = mapped_column(
-        Integer, default=365, server_default="365"
+    # "Remember me": how long the login name stays filled in.
+    remember_me_days: Mapped[int | None] = mapped_column(
+        Integer, default=365, server_default="365", nullable=True
     )
-    # "Remember this device" (skip the two-factor code): days, 0 = forever.
-    remember_device_days: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0"
+    # "Remember this device": how long an approved device skips the code.
+    remember_device_days: Mapped[int | None] = mapped_column(
+        Integer, default=0, server_default="0", nullable=True
     )
     # Settings > Activity log: also record integration detail (app/verbose.py).
     verbose_logging: Mapped[bool] = mapped_column(

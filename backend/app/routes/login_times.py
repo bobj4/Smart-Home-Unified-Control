@@ -22,17 +22,19 @@ from app.audit import record_event
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
 from app.login_policy import settings
-from app.login_times import DEVICE_COOKIE, LIMITS, device_out, times_out
+from app.login_times import DEVICE_COOKIE, MAX_DAYS, TIMES, device_out, times_out
 from app.models import HomeMembership, Role, TrustedDevice, User
 
 router = APIRouter(prefix="/api/v1", tags=["login times"])
 
 
 class LoginTimes(BaseModel):
+    """Days; 0 = never expires; null = turned off."""
+
     model_config = ConfigDict(extra="forbid")
-    keep_logged_in_days: StrictInt
-    remember_me_days: StrictInt
-    remember_device_days: StrictInt  # 0 = forever
+    keep_logged_in_days: StrictInt | None
+    remember_me_days: StrictInt | None
+    remember_device_days: StrictInt | None
 
 
 def _admin_homes(db: Session, user: User) -> list[str]:
@@ -66,7 +68,7 @@ def _people(db: Session, homes: list[str]) -> dict[str, User]:
 @router.get("/admin/login-times")
 def get_login_times(
     user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> dict[str, int]:
+) -> dict[str, int | None]:
     require_admin(db, user)
     return times_out(settings(db))
 
@@ -77,12 +79,15 @@ def set_login_times(
     request: Request,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-) -> dict[str, int]:
+) -> dict[str, int | None]:
     require_admin(db, user)
     values = body.model_dump()
-    for name, (low, high) in LIMITS.items():
-        if not low <= values[name] <= high:
-            raise HTTPException(422, f"{name} must be {low} to {high} days")
+    for name in TIMES:
+        value = values[name]
+        if value is not None and not 0 <= value <= MAX_DAYS:
+            raise HTTPException(
+                422, f"{name}: a number of days (0 = never expires), or blank for off"
+            )
     row = settings(db)
     before = times_out(row)
     for name, value in values.items():

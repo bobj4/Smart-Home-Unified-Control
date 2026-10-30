@@ -128,7 +128,18 @@ class SmartHomeApp {
     try { remembered = await this.api.getRememberedLogin(); } catch (error) { return; }
     const { login, device, keep_days: keepDays } = remembered;
     byTestId('login-device-known').hidden = !device;
-    if (keepDays) byTestId('login-keep-label').textContent = `Keep me logged in for ${keepDays} day${keepDays === 1 ? '' : 's'}`;
+    // A choice the admin turned off is hidden (and unticked).
+    const show = (testid, on) => {
+      const box = byTestId(testid);
+      box.closest('label').hidden = !on;
+      if (!on) box.checked = false;
+    };
+    show('login-keep', keepDays !== null && keepDays !== undefined);
+    show('login-remember', remembered.remember_me !== false);
+    show('login-remember-device', remembered.remember_device !== false);
+    byTestId('login-keep-label').textContent = keepDays
+      ? `Keep me logged in for ${keepDays} day${keepDays === 1 ? '' : 's'}`
+      : 'Keep me logged in';
     if (login && !byTestId('login-email').value) {
       byTestId('login-email').value = login;
       byTestId('login-remember').checked = true;
