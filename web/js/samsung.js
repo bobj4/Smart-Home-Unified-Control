@@ -50,6 +50,7 @@ class SamsungPanel {
             this.app.status.success(`${tv.name} is paired.`);
           }),
         }),
+        el('button', { type: 'button', className: 'secondary', testid: 'samsung-edit', text: 'Edit', onclick: (e) => this.editForm(e.currentTarget.closest('.member-row'), tv) }),
         el('button', {
           type: 'button', className: 'danger', testid: 'samsung-remove', text: 'Remove',
           onclick: () => this.app.run(async () => {
@@ -61,6 +62,43 @@ class SamsungPanel {
       ]),
       pinBox,
     ]);
+  }
+
+  /** Change name, address, MAC or protocol. A new address or protocol
+   * means pairing again, and the form says so before saving. */
+  editForm(row, tv) {
+    const name = el('input', { type: 'text', testid: 'samsung-edit-name', maxlength: '100', required: true, value: tv.name });
+    const host = el('input', { type: 'text', testid: 'samsung-edit-host', required: true, value: tv.host });
+    const mac = el('input', { type: 'text', testid: 'samsung-edit-mac', placeholder: 'optional, for turning on', value: tv.mac || '' });
+    const protocol = el('select', { testid: 'samsung-edit-protocol', 'aria-label': 'Model year' }, [
+      ['tizen', '2016 or newer'], ['encrypted', '2014-2015 (H and J series): PIN pairing'], ['legacy', '2010-2013: legacy protocol'],
+    ].map(([value, text]) => el('option', { value, text })));
+    protocol.value = tv.protocol;
+    const warning = el('p', { className: 'note', testid: 'samsung-edit-repair', text: 'A new address or model year means pairing the TV again after saving.' });
+    const check = () => { warning.hidden = host.value.trim() === tv.host && protocol.value === tv.protocol; };
+    host.addEventListener('input', check);
+    protocol.addEventListener('change', check);
+    check();
+    const form = el('form', { className: 'subpanel', testid: 'samsung-edit-form' }, [
+      el('div', { className: 'grid-fields' }, [field('Name', name), field('IP address', host), field('MAC address', mac), field('Model year', protocol)]),
+      warning,
+      el('div', { className: 'row' }, [
+        el('button', { type: 'submit', testid: 'samsung-edit-save', text: 'Save' }),
+        el('button', { type: 'button', className: 'secondary', text: 'Cancel', onclick: () => this.load() }),
+      ]),
+    ]);
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      this.app.run(async () => {
+        const body = { name: name.value.trim(), host: host.value.trim(), protocol: protocol.value };
+        if (mac.value.trim()) body.mac = mac.value.trim();
+        const saved = await this.app.api.editTv(this.app.home.id, tv.device_id, body);
+        await this.load();
+        this.app.status.success(saved.pair_again ? `${saved.name} saved. Press Pair to pair it again.` : `${saved.name} saved.`);
+      });
+    });
+    row.replaceChildren(form);
+    name.focus();
   }
 
   showPinForm(box, tv) {

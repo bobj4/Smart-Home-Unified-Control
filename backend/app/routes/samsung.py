@@ -21,6 +21,7 @@ from app.samsung_home import (
     pair_tv,
     remove_tv,
     tv_out,
+    update_tv,
 )
 
 router = APIRouter(
@@ -107,6 +108,31 @@ def create_tv(
         protocol=body.protocol,
     )
     return tv_out(device)
+
+
+@router.put("/tvs/{device_id}", dependencies=[Depends(require_csrf)])
+def edit_tv(
+    home_id: str,
+    device_id: str,
+    body: TvIn,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Name, room, address, MAC and protocol. A new address or protocol means
+    pairing again (the answer says so)."""
+    require_role(db, user.id, home_id, Role.OPERATOR)
+    device = _tv(db, home_id, device_id)
+    mac = body.mac.upper().replace("-", ":") if body.mac else None
+    try:
+        room = body.room if "room" in body.model_fields_set else device.room
+        repair = update_tv(
+            db, device, body.name.strip(), body.host, body.protocol, mac, room
+        )
+    except SamsungUnavailable as error:
+        raise HTTPException(error.status_code, error.reason) from None
+    _audit(db, request, user, home_id, "tv_changed", device_id=device.id, repair=repair)
+    return {**tv_out(device), "pair_again": repair}
 
 
 @router.post("/tvs/{device_id}/pair", dependencies=[Depends(require_csrf)])

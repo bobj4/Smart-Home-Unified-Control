@@ -159,6 +159,7 @@ class SmartHomeAPI {
   // Samsung TVs (admin)
   getTvs(homeId) { return this.get(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs`); }
   addTv(homeId, tv) { return this.post(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs`, tv); }
+  editTv(homeId, deviceId, tv) { return this.put(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}`, tv); }
   pairTv(homeId, deviceId) { return this.post(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}/pair`); }
   sendTvPin(homeId, deviceId, pin) { return this.post(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}/pin`, { pin }); }
   removeTv(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}`); }
