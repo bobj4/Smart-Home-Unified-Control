@@ -1,11 +1,14 @@
 """How long the login page's choices last, and "Remember this device".
 
 Admins set three times in Settings > Admin > Login times (installation-wide,
-like the other login rules):
+like the other login rules). Each is a number of days, 0 for "never
+expires", or None (left blank) to turn that choice off, which also hides its
+checkbox on the login page:
   keep_logged_in_days   a "Keep me logged in" session (default 30)
   remember_me_days      the remembered login name (default 365)
   remember_device_days  an approved device skips the two-factor code
-                        (default 0 = forever)
+                        (default 0 = never expires). Turned off, approved
+                        devices need the code again.
 
 A remembered device is a random token in an HttpOnly, Secure, SameSite=Strict
 cookie scoped to /api/v1; the database keeps only its SHA-256. It only
@@ -28,29 +31,35 @@ from app.models import SystemSettings, TrustedDevice
 DAY = 24 * 60 * 60
 DEVICE_COOKIE = "trusted_device"
 DEVICE_PATH = "/api/v1"  # login, and My account (to mark "this device")
-FOREVER_SECONDS = 10 * 365 * DAY  # the cookie needs some max-age
-LIMITS = {
-    "keep_logged_in_days": (1, 365),
-    "remember_me_days": (1, 3650),
-    "remember_device_days": (0, 3650),
-}
+FOREVER_SECONDS = 10 * 365 * DAY  # "never expires": a cookie needs some max-age
+MAX_DAYS = 100_000  # any positive number, within what a date can hold
+TIMES = ("keep_logged_in_days", "remember_me_days", "remember_device_days")
 
 
-def times_out(row: SystemSettings) -> dict[str, int]:
-    return {name: int(getattr(row, name)) for name in LIMITS}
+def times_out(row: SystemSettings) -> dict[str, int | None]:
+    return {
+        name: None if getattr(row, name) is None else int(getattr(row, name))
+        for name in TIMES
+    }
 
 
-def keep_seconds(db: Session) -> int:
-    return int(settings(db).keep_logged_in_days) * DAY
+def _seconds(days: int | None) -> int | None:
+    """None: turned off. 0: never expires."""
+    if days is None:
+        return None
+    return int(days) * DAY if days else FOREVER_SECONDS
 
 
-def remember_me_seconds(db: Session) -> int:
-    return int(settings(db).remember_me_days) * DAY
+def keep_seconds(db: Session) -> int | None:
+    return _seconds(settings(db).keep_logged_in_days)
 
 
-def device_cookie_seconds(db: Session) -> int:
-    days = int(settings(db).remember_device_days)
-    return days * DAY if days else FOREVER_SECONDS
+def remember_me_seconds(db: Session) -> int | None:
+    return _seconds(settings(db).remember_me_days)
+
+
+def device_cookie_seconds(db: Session) -> int | None:
+    return _seconds(settings(db).remember_device_days)
 
 
 def _hash(token: str) -> str:
@@ -62,8 +71,10 @@ def _as_utc(value: datetime) -> datetime:
 
 
 def expires_at(db: Session, device: TrustedDevice) -> datetime | None:
-    days = int(settings(db).remember_device_days)
-    return _as_utc(device.created_at) + timedelta(days=days) if days else None
+    days = settings(db).remember_device_days
+    if not days:  # 0: never; None: the feature is off (trusted() refuses)
+        return None
+    return _as_utc(device.created_at) + timedelta(days=int(days))
 
 
 def device_name(user_agent: str | None) -> str:
@@ -128,6 +139,8 @@ def trusted(db: Session, user_id: str, token: str | None) -> TrustedDevice | Non
     ).first()
     if device is None or device.user_id != user_id:
         return None
+    if settings(db).remember_device_days is None:
+        return None  # turned off: every device needs the code again
     ends = expires_at(db, device)
     if ends is not None and datetime.now(UTC) >= ends:
         db.delete(device)
