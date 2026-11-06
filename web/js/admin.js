@@ -100,7 +100,9 @@ class AdminSection {
     toggle.disabled = !cert;
     toggle.addEventListener('change', () => this.app.run(async () => {
       try {
-        this.fillHttps(await this.app.api.setHttps(toggle.checked));
+        const saved = await this.app.api.setHttps(toggle.checked);
+        this.fillHttps(saved);
+        if (saved.restart_needed) httpsRestartPopup(this.app).open(saved); // https-restart.js
       } catch (error) {
         toggle.checked = !toggle.checked;
         throw error;
@@ -141,6 +143,7 @@ class AdminSection {
       el('h3', { text: 'HTTPS' }),
       settingRow('Use HTTPS', 'Needs a certificate. Takes effect when the server restarts (scripts/serve.py).', toggle),
       el('p', { className: https.restart_needed ? 'warning' : 'muted', testid: 'https-state', text: https.restart_needed ? `${now} Restart the server to apply the change.` : now }),
+      https.restart_needed ? el('button', { type: 'button', className: 'secondary', testid: 'https-restart', text: 'Restart…', onclick: () => httpsRestartPopup(this.app).open(https) }) : '',
       details,
       certAutoImportRow(this.app), // cert-auto.js
       upload,
