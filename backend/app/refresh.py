@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app import (
     cync_home,
+    hue_home,
     integration_status,
     rheem_home,
     roku_home,
@@ -122,6 +123,7 @@ def refresh_all(db: Session) -> None:
         steps = (
             (refresh_tvs, "samsung_tv"),
             (roku_home.refresh, "roku_tv"),
+            (hue_home.refresh, "hue"),
             (refresh_rheem, "rheem_econet"),
             (refresh_cync, "cync"),
         )

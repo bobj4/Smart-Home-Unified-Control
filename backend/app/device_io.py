@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.cync_home import CyncUnavailable
 from app.cync_home import send_command as send_cync_command
+from app.hue_home import HueUnavailable
+from app.hue_home import send_command as send_hue_command
 from app.models import Device
 from app.rheem_home import RheemUnavailable
 from app.rheem_home import send_command as send_rheem_command
@@ -32,7 +34,13 @@ def send_to_device(
 ) -> None:
     """Raise DeviceUnavailable if the device refused or could not be reached;
     the caller then leaves the stored state unchanged."""
-    if device.integration not in ("rheem_econet", "samsung_tv", "roku_tv", "cync"):
+    if device.integration not in (
+        "rheem_econet",
+        "samsung_tv",
+        "roku_tv",
+        "hue",
+        "cync",
+    ):
         return  # simulated: nothing to send
     start = time.monotonic()
     result: dict[str, Any] = {"result": "ok"}
@@ -71,6 +79,11 @@ def _send(
         try:
             send_rheem_command(db, device, command, payload, state)
         except RheemUnavailable as error:
+            raise DeviceUnavailable(error.status_code, error.reason) from None
+    elif device.integration == "hue":
+        try:
+            send_hue_command(db, device, command, state)
+        except HueUnavailable as error:
             raise DeviceUnavailable(error.status_code, error.reason) from None
     elif device.integration == "roku_tv":
         try:
