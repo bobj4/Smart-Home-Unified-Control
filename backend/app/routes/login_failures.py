@@ -1,12 +1,13 @@
-"""Settings > Admin > Login rules: what happens after repeated failed logins.
+"""Settings > Admin > Failed logins, set like the login times.
 
-  GET/PUT /api/v1/admin/login-failures   {action, limit, lockout_minutes}
+  GET/PUT /api/v1/admin/login-failures
+      {lockout_after, lockout_minutes, lockdown_after}
 
-Admins only. Numbers: any positive number, or 0 for lockout_minutes (locked
-until the password is reset); null (blank) turns that part off.
+Admins only. Each a number or null (blank = that rule off). lockout_minutes
+may be 0: locked until the password is reset.
 """
 
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, StrictInt
@@ -25,9 +26,9 @@ router = APIRouter(prefix="/api/v1/admin", tags=["login rules"])
 
 class FailureRules(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    action: Literal["none", "lockout", "lockdown"]
-    limit: StrictInt | None  # failures in a row; null = off
+    lockout_after: StrictInt | None  # failures in a row; null = off
     lockout_minutes: StrictInt | None  # 0 = until the password is reset
+    lockdown_after: StrictInt | None  # failures in a row; null = off
 
 
 @router.get("/login-failures")
@@ -46,18 +47,22 @@ def set_rules(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     require_admin(db, user)
-    if body.limit is not None and not 1 <= body.limit <= MAX_NUMBER:
-        raise HTTPException(422, "Failures: a positive number, or blank for off")
+    for name in ("lockout_after", "lockdown_after"):
+        value = getattr(body, name)
+        if value is not None and not 1 <= value <= MAX_NUMBER:
+            raise HTTPException(
+                422, f"{name}: a number of failed logins, or blank for off"
+            )
     if body.lockout_minutes is not None and not 0 <= body.lockout_minutes <= MAX_NUMBER:
         raise HTTPException(
             422,
-            "Lockout minutes: a number (0 = until the password is reset), or blank for off",
+            "lockout_minutes: a number (0 = until the password is reset), or blank for off",
         )
     row = settings(db)
     before = rules_out(row)
-    row.login_failure_action = body.action
-    row.login_failure_limit = body.limit
+    row.login_lockout_after = body.lockout_after
     row.login_lockout_minutes = body.lockout_minutes
+    row.login_lockdown_after = body.lockdown_after
     db.commit()
     record_event(
         db,
