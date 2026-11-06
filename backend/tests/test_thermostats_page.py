@@ -78,3 +78,22 @@ def test_ui_water_heaters_on_the_thermostats_page(open_page, db, owner, make_dev
     page.get_by_test_id("layout-save").click()
     expect(_ui.card(page, "Basement heater")).to_have_count(0)
     expect(_ui.card(page, "Lamp")).to_be_visible()
+
+
+def test_ui_water_heaters_in_the_thermostats_room(open_page, db, owner, make_device):
+    heater = make_device(
+        owner.home_id, device_type="water_heater", name="Basement heater"
+    )
+    db.get(Device, heater).room = "Basement"
+    make_device(owner.home_id, device_type="thermostat", name="Hallway")
+    db.commit()
+    page = open_page()
+    _ui.ui_login(page, owner)
+    room = page.locator('[data-testid="room"][data-room="Thermostats"]')
+    expect(
+        room.get_by_test_id("device-card").filter(has_text="Basement heater")
+    ).to_be_visible()
+    expect(
+        room.get_by_test_id("device-card").filter(has_text="Hallway")
+    ).to_be_visible()
+    expect(page.locator('[data-testid="room"][data-room="Basement"]')).to_have_count(0)
