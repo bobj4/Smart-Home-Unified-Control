@@ -40,12 +40,32 @@ class Filters(BaseModel):
     on: StrictBool = False
 
 
+class Grid(BaseModel):
+    """Rooms side by side: how many columns, and how many each room spans."""
+
+    model_config = ConfigDict(extra="forbid")
+    columns: int = Field(ge=1, le=4)
+    sizes: dict[str, int] = Field(default_factory=dict, max_length=200)
+
+
+def _grid(body: Grid) -> dict[str, Any]:
+    for room, span in body.sizes.items():
+        if len(room) > 50 or not 1 <= span <= 4:
+            raise HTTPException(422, "Each room is 1 to 4 columns wide")
+    return {"columns": body.columns, "sizes": body.sizes}
+
+
+def _default_grid(screen: str) -> dict[str, Any]:
+    return {"columns": 1 if screen == "phone" else 2, "sizes": {}}
+
+
 class Layout(BaseModel):
     model_config = ConfigDict(extra="forbid")
     room_order: list[str] | None = Field(default=None, max_length=200)
     collapsed: list[str] | None = Field(default=None, max_length=200)
     filters: Filters | None = None
     thermostats_apart: StrictBool | None = None
+    grid: Grid | None = None
     screen: Screen = "wide"
 
 
@@ -92,6 +112,7 @@ def _out(db: Session, user_id: str, home_id: str, screen: str) -> dict[str, Any]
         else Filters().model_dump(),
         "screen": screen,
         "thermostats_apart": bool(row.thermostats_apart) if row else False,
+        "grid": json.loads(row.grid) if row and row.grid else _default_grid(screen),
         "thermostats_room": THERMOSTATS_ROOM,
     }
 
@@ -117,7 +138,13 @@ def set_layout(
 ) -> dict[str, Any]:
     """The room order, the folded rooms, or both, for one screen type."""
     _require_member_or_guest(db, user, home_id)
-    changes = (body.room_order, body.collapsed, body.filters, body.thermostats_apart)
+    changes = (
+        body.room_order,
+        body.collapsed,
+        body.filters,
+        body.thermostats_apart,
+        body.grid,
+    )
     if all(change is None for change in changes):
         raise HTTPException(
             422, "Send room_order, collapsed, filters or thermostats_apart"
@@ -140,6 +167,8 @@ def set_layout(
         row.filters = json.dumps(body.filters.model_dump())
     if body.thermostats_apart is not None:
         row.thermostats_apart = body.thermostats_apart
+    if body.grid is not None:
+        row.grid = json.dumps(_grid(body.grid))
     db.commit()
     if body.room_order is not None:  # folding a room open or shut is not audited
         record_event(
