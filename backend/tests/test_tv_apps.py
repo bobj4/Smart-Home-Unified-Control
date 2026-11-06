@@ -55,3 +55,16 @@ def test_installed_apps(monkeypatch):
         {"id": "1", "name": "Netflix"}
     ]
     assert samsung.installed_apps("10.0.0.5", "legacy", None) == []
+
+
+def test_connection_failures_say_why():
+    import errno
+
+    from app.integrations.samsung import reach_reason
+
+    assert "did not answer" in reach_reason(TimeoutError())
+    assert "refused" in reach_reason(ConnectionRefusedError(errno.ECONNREFUSED, "x"))
+    assert "no route" in reach_reason(OSError(errno.EHOSTUNREACH, "No route to host"))
+    assert (
+        reach_reason(OSError(errno.EIO, "Input/output error")) == "Input/output error"
+    )

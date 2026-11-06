@@ -18,6 +18,7 @@ replace them with fakes. Nothing here touches the database.
 import asyncio
 import base64
 import concurrent.futures
+import errno
 import socket
 import time
 from typing import Any
@@ -114,6 +115,22 @@ def command_keys(command: str, payload: dict[str, Any]) -> list[str]:
 # ------------------------------------------------------------ tizen
 
 
+def reach_reason(error: BaseException) -> str:
+    """Why a connection failed, in plain words (not just "OSError")."""
+    if isinstance(error, socket.timeout | TimeoutError):
+        return "it did not answer (off, asleep, or not on this network)"
+    if isinstance(error, ConnectionRefusedError):
+        return "it refused the connection (in standby, or remote control is off)"
+    if isinstance(error, OSError) and error.errno in (
+        errno.EHOSTUNREACH,
+        errno.ENETUNREACH,
+    ):
+        return "no route to it from the server (another network, or a firewall)"
+    if isinstance(error, OSError) and error.strerror:
+        return error.strerror
+    return str(error) or type(error).__name__
+
+
 def _tizen(host: str, token: str | None) -> SamsungTVWS:
     return SamsungTVWS(
         host, token=token, port=8002, timeout=TIMEOUT_SECONDS, name=CLIENT_NAME
@@ -129,7 +146,7 @@ def _tizen_call(host: str, token: str | None, action: Any) -> str | None:
     except UnauthorizedError:
         raise TvDenied("the TV refused the connection") from None
     except (ConnectionFailure, OSError) as error:
-        raise TvError(f"could not reach the TV: {type(error).__name__}") from None
+        raise TvError(f"could not reach the TV: {reach_reason(error)}") from None
     finally:
         tv.close()
 
@@ -178,7 +195,7 @@ def _legacy_send(host: str, keys: list[str]) -> None:
                 sock.sendall(b"\x00\x00\x00" + _legacy_string(payload, raw=True))
                 _legacy_read(sock)
     except OSError as error:
-        raise TvError(f"could not reach the TV: {type(error).__name__}") from None
+        raise TvError(f"could not reach the TV: {reach_reason(error)}") from None
 
 
 # ------------------------------------------------------------ encrypted (2014-2015)
@@ -249,7 +266,7 @@ def _encrypted(coro: Any) -> Any:
     except SamsungTVEncryptedError:
         raise TvDenied("the TV refused the pairing: press Pair again") from None
     except _ENCRYPTED_ERRORS as error:
-        raise TvError(f"could not reach the TV: {type(error).__name__}") from None
+        raise TvError(f"could not reach the TV: {reach_reason(error)}") from None
 
 
 def start_pin_pairing(host: str) -> None:
