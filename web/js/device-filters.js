@@ -63,7 +63,8 @@ class DeviceFilters {
   matches(item) {
     const { text, type, on } = this.state;
     if (type && item.type !== type) return false;
-    if (on && !(item.state && item.state.on)) return false;
+    // Offline counts as off, as its tile shows it (its last report may say on).
+    if (on && !(item.online !== false && item.state && item.state.on)) return false;
     const words = text.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const hay = `${item.name} ${item.room || ''}`.toLowerCase();
     return words.every((w) => hay.includes(w));
