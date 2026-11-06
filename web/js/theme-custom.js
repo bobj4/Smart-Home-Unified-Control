@@ -28,19 +28,53 @@ function textOn(hex) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.18 ? '#111111' : '#ffffff';
 }
 
-/** Every colour of the page from one accent colour and a base. */
-function customPalette(accent, base) {
-  const [h, s, l] = hexToHsl(accent);
+/** Whether a colour is dark (light text reads better on it). */
+function isDark(hex) {
+  return textOn(hex) === '#ffffff';
+}
+
+/** The page's own colours: the background (dark, light or a chosen colour,
+ * the primary colour) and what goes on it. */
+function backgroundPalette(accent, base) {
+  if (base.startsWith('#')) {
+    const [h, s, l] = hexToHsl(base);
+    const dark = isDark(base);
+    const tone = (by) => `hsl(${Math.round(h)} ${Math.round(s)}% ${Math.round(Math.min(100, Math.max(0, l + (dark ? by : -by))))}%)`;
+    const ink = Math.min(s, 25);
+    return {
+      dark,
+      '--bg': base,
+      '--surface': tone(5),
+      '--surface-2': tone(10),
+      '--border': tone(20),
+      '--text': `hsl(${Math.round(h)} ${Math.round(ink)}% ${dark ? 95 : 10}%)`,
+      '--muted': `hsl(${Math.round(h)} ${Math.round(ink * 0.6)}% ${dark ? 70 : 36}%)`,
+    };
+  }
+  const [h, s] = hexToHsl(accent);
   const tint = Math.min(s, 30);
   const hsl = (sat, light) => `hsl(${Math.round(h)} ${Math.round(sat)}% ${Math.round(light)}%)`;
   const dark = base === 'dark';
   return {
+    dark,
     '--bg': dark ? hsl(tint, 5) : hsl(tint, 96),
     '--surface': dark ? hsl(tint, 9) : '#ffffff',
     '--surface-2': dark ? hsl(tint, 13) : hsl(tint, 93),
     '--text': dark ? hsl(tint, 95) : hsl(tint, 10),
     '--muted': dark ? hsl(tint * 0.6, 68) : hsl(tint * 0.6, 38),
     '--border': dark ? hsl(tint, 21) : hsl(tint, 86),
+  };
+}
+
+/** Every colour of the page from the accent (secondary) colour and the
+ * background (primary): dark, light or a colour of one's own. */
+function customPalette(accent, base) {
+  const [, s, l] = hexToHsl(accent);
+  const { dark, ...background } = backgroundPalette(accent, base);
+  const [h] = hexToHsl(accent);
+  const hsl = (sat, light) => `hsl(${Math.round(h)} ${Math.round(sat)}% ${Math.round(light)}%)`;
+  return {
+    ...background,
     '--accent': accent,
     // Accent-coloured text: lighter on dark, darker on light, so it reads.
     '--accent-fg': dark ? hsl(s, Math.max(l, 66)) : hsl(s, Math.min(l, 40)),
@@ -57,7 +91,8 @@ function customPalette(accent, base) {
 function applyThemeTo(root, theme, custom) {
   CUSTOM_VARS.forEach((name) => root.style.removeProperty(name));
   if (theme === 'custom' && custom) {
-    root.dataset.theme = `custom-${custom.base}`;
+    const dark = custom.base.startsWith('#') ? isDark(custom.base) : custom.base === 'dark';
+    root.dataset.theme = `custom-${dark ? 'dark' : 'light'}`;
     Object.entries(customPalette(custom.accent, custom.base)).forEach(([name, value]) => root.style.setProperty(name, value));
   } else if (THEMES.includes(theme)) {
     root.dataset.theme = theme;
@@ -68,4 +103,63 @@ function applyThemeTo(root, theme, custom) {
   const meta = document.querySelector('meta[name="theme-color"]');
   const bg = getComputedStyle(root).getPropertyValue('--bg').trim();
   if (meta && bg) meta.setAttribute('content', bg);
+}
+
+/** A colour button that shows its colour, with the colour's code beside it. */
+function colourPicker(testid, label, value, onInput) {
+  const input = el('input', { type: 'color', testid, value, 'aria-label': label, className: 'swatch' });
+  const code = el('span', { className: 'muted swatch-code', text: value });
+  input.addEventListener('input', () => { code.textContent = input.value; onInput(); });
+  return { input, element: el('label', { className: 'swatch-field' }, [el('span', { text: label }), el('span', { className: 'swatch-row' }, [input, code])]) };
+}
+
+/** My account > Appearance. Custom: an accent (secondary) colour and a
+ * background (primary): dark, light, or a colour of one's own. */
+function appearanceBox(app) {
+  const account = app.account;
+  const select = el('select', { testid: 'theme-select', 'aria-label': 'Appearance' }, [
+    ['system', 'Device Theme'], ['light', 'Light'], ['dark', 'Dark'], ['red', 'Red'], ['violet', 'Purple'], ['custom', 'Custom'],
+  ].map(([value, text]) => el('option', { value, text })));
+  select.value = account.theme || 'system';
+  const last = account.theme_custom || { accent: '#1f6feb', base: 'dark' };
+  const ownBase = last.base.startsWith('#');
+  const chip = el('span', { className: 'theme-chip', testid: 'theme-chip', 'aria-hidden': 'true' });
+  const current = () => ({ accent: accent.input.value, base: base.value === 'own' ? background.input.value : base.value });
+  const preview = () => {
+    const chosen = current();
+    background.element.hidden = base.value !== 'own';
+    chip.style.setProperty('--chip-accent', chosen.accent);
+    chip.style.setProperty('--chip-bg', chosen.base.startsWith('#') ? chosen.base : (chosen.base === 'dark' ? '#16181d' : '#f4f5f7'));
+    if (select.value === 'custom') app.applyTheme('custom', chosen);
+  };
+  const accent = colourPicker('theme-colour', 'Accent colour', last.accent, preview);
+  const background = colourPicker('theme-background', 'Background colour', ownBase ? last.base : '#202124', preview);
+  const base = el('select', { testid: 'theme-base', 'aria-label': 'Background' },
+    [['dark', 'Dark'], ['light', 'Light'], ['own', 'My own colour']].map(([value, text]) => el('option', { value, text })));
+  base.value = ownBase ? 'own' : last.base;
+  base.addEventListener('change', preview);
+  const save = (theme, custom) => app.run(async () => {
+    const saved = await app.api.setPreferences(custom ? { theme, custom } : { theme });
+    account.theme = saved.theme;
+    if (saved.custom) account.theme_custom = saved.custom;
+    app.applyTheme(saved.theme, account.theme_custom);
+    app.status.success('Appearance saved.');
+  });
+  const customBox = el('div', { className: 'row', testid: 'theme-custom' }, [
+    accent.element, field('Background', base), background.element,
+    el('button', { type: 'button', testid: 'theme-custom-save', text: 'Save colours', onclick: () => save('custom', current()) }),
+  ]);
+  const show = () => { customBox.hidden = select.value !== 'custom'; chip.hidden = select.value !== 'custom'; };
+  select.addEventListener('change', () => {
+    show();
+    if (select.value === 'custom') preview();
+    else save(select.value);
+  });
+  show();
+  preview();
+  return el('div', { className: 'subpanel' }, [
+    el('h3', { text: 'Appearance' }),
+    el('div', { className: 'row' }, [field('Colours', select), chip]),
+    customBox,
+  ]);
 }

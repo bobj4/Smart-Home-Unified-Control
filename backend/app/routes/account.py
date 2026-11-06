@@ -52,7 +52,8 @@ class PasswordChange(BaseModel):
 class CustomTheme(BaseModel):
     model_config = ConfigDict(extra="forbid")
     accent: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
-    base: Literal["dark", "light"]
+    # The background: dark, light, or a colour of one's own.
+    base: str = Field(pattern=r"^(dark|light|#[0-9a-fA-F]{6})$")
 
 
 class Preferences(BaseModel):
@@ -144,7 +145,9 @@ def set_preferences(
         if body.custom is None and not user.theme_custom:
             raise HTTPException(422, "choose the custom colour")
         if body.custom is not None:
-            user.theme_custom = f"{body.custom.accent.lower()} {body.custom.base}"
+            user.theme_custom = (
+                f"{body.custom.accent.lower()} {body.custom.base.lower()}"
+            )
     user.theme = body.theme
     db.commit()
     if user.theme == "custom":

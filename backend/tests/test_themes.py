@@ -132,3 +132,43 @@ def test_ui_custom_theme(open_page, db, owner):
     _ui.go_settings(page, "account").get_by_test_id("theme-select").select_option("red")
     expect(html).to_have_attribute("data-theme", "red")
     assert var("--accent") == "#d91a1a"
+
+
+def test_custom_background_colour(client, owner, login, csrf):
+    assert login(client, owner).status_code == 200
+    body = {"theme": "custom", "custom": {"accent": "#FFCC00", "base": "#1A2B3C"}}
+    r = client.put(URL, json=body, headers=csrf(client))
+    assert r.json()["custom"] == {"accent": "#ffcc00", "base": "#1a2b3c"}
+    bad = {"theme": "custom", "custom": {"accent": "#ffcc00", "base": "#12"}}
+    assert client.put(URL, json=bad, headers=csrf(client)).status_code == 422
+
+
+def test_ui_own_background_and_swatches(open_page, db, owner):
+    page = open_page()
+    _ui.ui_login(page, owner)
+    account = _ui.go_settings(page, "account")
+    account.get_by_test_id("theme-select").select_option("custom")
+    expect(account.get_by_test_id("theme-background")).to_be_hidden()
+    account.get_by_test_id("theme-base").select_option("own")
+    expect(account.get_by_test_id("theme-background")).to_be_visible()
+    account.get_by_test_id("theme-background").fill("#f0e6d2")  # light: dark text
+    html = page.locator("html")
+    expect(html).to_have_attribute("data-theme", "custom-light")
+
+    def var(name):
+        return page.evaluate(
+            f"getComputedStyle(document.documentElement).getPropertyValue('{name}').trim()"
+        )
+
+    assert var("--bg") == "#f0e6d2"
+    account.get_by_test_id("theme-background").fill("#102030")  # dark
+    expect(html).to_have_attribute("data-theme", "custom-dark")
+    # The colour buttons show their colour, and the chip shows both.
+    assert "50%" in page.evaluate(
+        "getComputedStyle(document.querySelector('[data-testid=theme-colour]')).borderRadius"
+    )
+    expect(account.get_by_test_id("theme-chip")).to_be_visible()
+    account.get_by_test_id("theme-custom-save").click()
+    expect(page.get_by_test_id("status")).to_contain_text("Appearance saved")
+    db.expire_all()
+    assert db.get(User, owner.id).theme_custom.endswith(" #102030")
