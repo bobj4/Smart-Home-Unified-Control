@@ -357,20 +357,15 @@ class SystemSettings(Base):
     remember_device_days: Mapped[int | None] = mapped_column(
         Integer, default=0, server_default="0", nullable=True
     )
-    # After repeated failed logins (app/login_failures.py): "none", "lockout"
-    # (blocked for a time, or until the password is reset) or "lockdown"
-    # (account turned off until an admin turns it on again).
-    login_failure_action: Mapped[str] = mapped_column(
-        String(10), default="none", server_default="none"
-    )
-    # Failures in a row before it applies; None (blank) = the rule is off.
-    login_failure_limit: Mapped[int | None] = mapped_column(
-        Integer, default=10, server_default="10", nullable=True
-    )
-    # Lockout length in minutes; 0 = until the password is reset; None = off.
+    # After repeated failed logins in a row (app/login_failures.py); each a
+    # number, None (blank) = that rule is off. Lockout: blocked for
+    # login_lockout_minutes (0 = until the password is reset). Lockdown:
+    # account turned off until an admin turns it on again.
+    login_lockout_after: Mapped[int | None] = mapped_column(Integer, nullable=True)
     login_lockout_minutes: Mapped[int | None] = mapped_column(
         Integer, default=15, server_default="15", nullable=True
     )
+    login_lockdown_after: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Settings > Activity log: also record integration detail (app/verbose.py).
     verbose_logging: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa_false()

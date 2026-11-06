@@ -1,14 +1,15 @@
-"""What happens after repeated failed logins (Settings > Admin > Login rules).
+"""What happens after repeated failed logins (Settings > Admin > Failed
+logins), set like the login times: each a number, blank = off.
 
-  none      only the login rate limit (app/rate_limiter.py) slows guessing
-  lockout   after login_failure_limit failures in a row the account is
-            blocked for login_lockout_minutes, or, with 0, until its
-            password is reset (by an admin, a reset code, or reset-login)
-  lockdown  after login_failure_limit failures the account is turned off
-            until an admin turns it on again (Settings > Admin > Users)
+  lockout after     this many failures in a row block the account for
+                    lockout minutes, or, with 0 minutes, until its password
+                    is reset (by an admin, a reset code, or reset-login)
+  lockdown after    this many failures in a row turn the account off until
+                    an admin turns it on again (Settings > Admin > Users)
 
-A blank failure limit turns the rule off whatever the action; a blank
-lockout time turns lockouts off. A correct login resets the count.
+Both can be on: for example a 15-minute lockout after 5, and a lockdown after
+20. The count keeps going through a lockout (guesses during one are refused
+without counting) and starts again after a correct login.
 
 Failures count only for accounts that exist; the answer stays the same
 generic one, so it reveals nothing. A locked account learns why only after
@@ -25,17 +26,16 @@ from app.login_policy import settings
 from app.models import Session as SessionModel
 from app.models import SystemSettings, User
 
-ACTIONS = ("none", "lockout", "lockdown")
 MAX_NUMBER = 100_000
 # "Until the password is reset": a date that never comes.
 UNTIL_RESET = datetime(9999, 1, 1, tzinfo=UTC)
 
 
-def rules_out(row: SystemSettings) -> dict[str, object]:
+def rules_out(row: SystemSettings) -> dict[str, int | None]:
     return {
-        "action": row.login_failure_action or "none",
-        "limit": row.login_failure_limit,
+        "lockout_after": row.login_lockout_after,
         "lockout_minutes": row.login_lockout_minutes,
+        "lockdown_after": row.login_lockdown_after,
     }
 
 
@@ -73,38 +73,45 @@ def failed(db: Session, login_name: str, ip: str | None) -> None:
     if user is None or not user.is_active:
         return
     row = settings(db)
-    action, limit = row.login_failure_action or "none", row.login_failure_limit
-    if action == "none" or not limit:
-        return
-    if action == "lockout" and row.login_lockout_minutes is None:
+    lockout_after, lockdown_after = row.login_lockout_after, row.login_lockdown_after
+    if row.login_lockout_minutes is None:
+        lockout_after = None  # lockouts are off
+    if not lockout_after and not lockdown_after:
         return
     if locked_until(user) is not None:
         return  # already locked: guesses do not extend it
     user.failed_logins = int(user.failed_logins or 0) + 1
-    if user.failed_logins < limit:
+    count = user.failed_logins
+    if lockdown_after and count >= lockdown_after:
+        user.is_active = False
+        user.failed_logins = 0
+        db.query(SessionModel).filter(SessionModel.user_id == user.id).delete()
         db.commit()
+        record_event(
+            db,
+            "account_locked_down",
+            user_id=user.id,
+            ip_address=ip,
+            details={"failures": count},
+        )
         return
-    user.failed_logins = 0
-    details = {"failures": limit, "action": action}
-    if action == "lockout":
+    if lockout_after and count % lockout_after == 0:
         minutes = int(row.login_lockout_minutes or 0)
         user.locked_until = (
             UNTIL_RESET
             if minutes == 0
             else datetime.now(UTC) + timedelta(minutes=minutes)
         )
-        details["minutes"] = minutes
         db.commit()
         record_event(
-            db, "account_locked", user_id=user.id, ip_address=ip, details=details
+            db,
+            "account_locked",
+            user_id=user.id,
+            ip_address=ip,
+            details={"failures": count, "minutes": minutes},
         )
-    else:
-        user.is_active = False
-        db.query(SessionModel).filter(SessionModel.user_id == user.id).delete()
-        db.commit()
-        record_event(
-            db, "account_locked_down", user_id=user.id, ip_address=ip, details=details
-        )
+        return
+    db.commit()
 
 
 @event.listens_for(User.hashed_password, "set")

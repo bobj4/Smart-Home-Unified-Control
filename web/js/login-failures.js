@@ -1,13 +1,13 @@
 /**
  * Settings > Admin: what happens after repeated failed logins (every
- * account). None, Lockout (for a time, or until the password is reset) or
- * Lockdown (the account is turned off until an admin turns it on again).
+ * account), set like the login times: a number per rule, blank = off.
  */
 
-const FAILURE_ACTIONS = [
-  ['none', 'None: only slow down repeated tries'],
-  ['lockout', 'Lockout: block the account for a time, or until its password is reset'],
-  ['lockdown', 'Lockdown: turn the account off until an admin turns it on again'],
+// [key, label, help]
+const FAILURE_FIELDS = [
+  ['lockout_after', 'Lock out after (failed logins)', 'Wrong passwords or codes in a row before the account is blocked for a while. Blank = off. A correct login starts the count again.'],
+  ['lockout_minutes', 'Lockout length (minutes)', '0 = until the password is reset (by an admin or a reset code). Blank = lockouts off.'],
+  ['lockdown_after', 'Lock down after (failed logins)', 'Failures in a row before the account is turned off until an admin turns it on again (Settings > Admin > Users). Blank = off. Use a higher number than the lockout, or on its own.'],
 ];
 
 class LoginFailuresPanel {
@@ -17,41 +17,27 @@ class LoginFailuresPanel {
 
   async render(container) {
     const rules = await this.app.api.getLoginFailures();
-    const action = el('select', { testid: 'failure-action', 'aria-label': 'After failed logins' },
-      FAILURE_ACTIONS.map(([value, text]) => el('option', { value, text })));
-    action.value = rules.action;
-    const number = (testid, value) => el('input', {
-      type: 'number', testid, min: '0', step: '1', placeholder: 'off', value: value === null ? '' : String(value),
+    const inputs = {};
+    const fields = FAILURE_FIELDS.map(([key, label, help]) => {
+      inputs[key] = el('input', {
+        type: 'number', testid: `failure-${key}`, min: key === 'lockout_minutes' ? '0' : '1', step: '1', placeholder: 'off',
+        value: rules[key] === null ? '' : String(rules[key]),
+      });
+      return el('div', {}, [field(label, inputs[key]), el('p', { className: 'muted', text: help })]);
     });
-    const limit = number('failure-limit', rules.limit);
-    const minutes = number('failure-minutes', rules.lockout_minutes);
-    const minutesBox = el('div', {}, [
-      field('Lockout length (minutes)', minutes),
-      el('p', { className: 'muted', text: '0 = until the password is reset (by an admin or a reset code). Blank = lockouts off.' }),
-    ]);
-    const showMinutes = () => { minutesBox.hidden = action.value !== 'lockout'; };
-    action.addEventListener('change', showMinutes);
-    showMinutes();
     const form = el('form', { className: 'subpanel', testid: 'login-failures' }, [
       el('h3', { text: 'Failed logins' }),
-      field('After repeated failed logins', action),
-      el('div', { className: 'grid-fields' }, [
-        el('div', {}, [
-          field('Failed logins in a row', limit),
-          el('p', { className: 'muted', text: 'How many wrong passwords or codes before it applies. Blank = off. A correct login starts the count again.' }),
-        ]),
-        minutesBox,
-      ]),
-      el('button', { type: 'submit', testid: 'failure-save', text: 'Save failed-login rule' }),
+      el('p', { className: 'muted', text: 'Repeated tries are always slowed down. These add a lockout, a lockdown, or both.' }),
+      el('div', { className: 'grid-fields' }, fields),
+      el('button', { type: 'submit', testid: 'failure-save', text: 'Save failed-login rules' }),
     ]);
-    const value = (input) => (input.value.trim() === '' ? null : Number(input.value));
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       this.app.run(async () => {
-        const saved = await this.app.api.setLoginFailures({ action: action.value, limit: value(limit), lockout_minutes: value(minutes) });
-        limit.value = saved.limit === null ? '' : String(saved.limit);
-        minutes.value = saved.lockout_minutes === null ? '' : String(saved.lockout_minutes);
-        this.app.status.success('Failed-login rule saved.');
+        const body = Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, input.value.trim() === '' ? null : Number(input.value)]));
+        const saved = await this.app.api.setLoginFailures(body);
+        Object.entries(saved).forEach(([key, value]) => { inputs[key].value = value === null ? '' : String(value); });
+        this.app.status.success('Failed-login rules saved.');
       });
     });
     container.append(form);
