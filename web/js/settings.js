@@ -80,6 +80,8 @@ class SettingsView {
 
   /** Admin: Users first, then the home and login settings. */
   async renderAdmin(panel) {
+    const steps = await setupStepsPanel(this.app);
+    if (steps) panel.append(steps);
     const users = el('div', { className: 'subpanel', testid: 'settings-members' }, [el('h3', { text: 'Users' })]);
     panel.append(users);
     await this.members.render(users);
