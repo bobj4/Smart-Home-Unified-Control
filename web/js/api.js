@@ -176,6 +176,10 @@ class SmartHomeAPI {
   pairHue(homeId, host) { return this.post(`/homes/${enc(homeId)}/integrations/hue/pair`, { host }); }
   syncHue(homeId) { return this.post(`/homes/${enc(homeId)}/integrations/hue/sync`); }
   unpairHue(homeId) { return this.del(`/homes/${enc(homeId)}/integrations/hue`); }
+  getLgTvs(homeId) { return this.get(`/homes/${enc(homeId)}/integrations/lg_tv/tvs`); }
+  addLgTv(homeId, tv) { return this.post(`/homes/${enc(homeId)}/integrations/lg_tv/tvs`, tv); }
+  pairLgTv(homeId, deviceId) { return this.post(`/homes/${enc(homeId)}/integrations/lg_tv/tvs/${enc(deviceId)}/pair`); }
+  removeLgTv(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/integrations/lg_tv/tvs/${enc(deviceId)}`); }
   getRokus(homeId) { return this.get(`/homes/${enc(homeId)}/integrations/roku_tv/tvs`); }
   addRoku(homeId, tv) { return this.post(`/homes/${enc(homeId)}/integrations/roku_tv/tvs`, tv); }
   removeRoku(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/integrations/roku_tv/tvs/${enc(deviceId)}`); }
