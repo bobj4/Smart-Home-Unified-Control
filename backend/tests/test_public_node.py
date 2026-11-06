@@ -25,8 +25,11 @@ def _fake(bin_dir: Path, name: str, body: str) -> None:
 def server(tmp_path):
     root = tmp_path / "checkout"
     (root / "deploy" / "linux").mkdir(parents=True)
-    for name in ("smarthome", "public-node.sh"):
-        shutil.copy(REPO / "deploy" / "linux" / name, root / "deploy" / "linux" / name)
+    for path in [
+        REPO / "deploy/linux/smarthome",
+        *(REPO / "deploy/linux").glob("*.sh"),
+    ]:
+        shutil.copy(path, root / "deploy" / "linux" / path.name)
     shutil.copy(REPO / "deploy" / "docker-compose.yml", root / "deploy")
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()

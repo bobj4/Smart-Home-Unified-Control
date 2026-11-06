@@ -46,6 +46,25 @@ def _out(db: Session, request: Request) -> dict[str, Any]:
     }
 
 
+def _auto(db: Session) -> dict[str, Any]:
+    row = settings(db)
+    return {
+        "on": bool(row.cert_auto_import),
+        "source": row.cert_import_source,
+        "imported_at": row.cert_imported_at.isoformat()
+        if row.cert_imported_at
+        else None,
+    }
+
+
+@router.get("/auto-import")
+def get_auto_import(
+    user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    _require_owner_somewhere(db, user)
+    return _auto(db)
+
+
 @router.get("")
 def get_https(
     request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
@@ -92,6 +111,28 @@ def delete_certificate(
         db, "https_certificate_removed", user_id=user.id, ip_address=client_ip(request)
     )
     return _out(db, request)
+
+
+@router.put("/auto-import", dependencies=[Depends(require_csrf)])
+def switch_auto_import(
+    body: Switch,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Take the certificate from this server's web server (deploy/linux/smarthome
+    cert-import does the reading, on the server, while this is on)."""
+    _require_owner_somewhere(db, user)
+    settings(db).cert_auto_import = body.enabled
+    db.commit()
+    record_event(
+        db,
+        "https_auto_import_switched",
+        user_id=user.id,
+        ip_address=client_ip(request),
+        details={"enabled": body.enabled},
+    )
+    return _auto(db)
 
 
 @router.put("", dependencies=[Depends(require_csrf)])

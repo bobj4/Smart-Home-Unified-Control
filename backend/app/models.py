@@ -382,6 +382,13 @@ class SystemSettings(Base):
     # for good; a new text (new version) shows again to everyone.
     motd_text: Mapped[str | None] = mapped_column(Text)
     motd_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # The HTTPS certificate taken from this server's web server (Apache,
+    # nginx, Caddy or certbot) by `smarthome cert-import`, when on.
+    cert_auto_import: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
+    cert_import_source: Mapped[str | None] = mapped_column(String(300))
+    cert_imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # People may change their own name and email (My account).
     users_edit_own_info: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa_false()

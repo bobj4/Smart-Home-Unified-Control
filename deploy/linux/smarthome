@@ -28,6 +28,9 @@
 #                                        or daily); offsite-remove stops it
 #   deploy/linux/smarthome fail2ban-setup  ban addresses that keep failing
 #                                        to log in (internet-facing servers)
+#   deploy/linux/smarthome cert-import | cert-auto-setup
+#                                        give the app the web server's HTTPS
+#                                        certificate (now, or kept up to date)
 #
 # Run it from anywhere inside the checkout; it uses deploy/docker-compose.yml.
 # The database and backups live in the Docker volume "data". Settings are in
@@ -601,6 +604,8 @@ cmd_doctor() {
 
 # shellcheck source=deploy/linux/public-node.sh
 . "$ROOT/deploy/linux/public-node.sh"
+# shellcheck source=deploy/linux/certificates.sh
+. "$ROOT/deploy/linux/certificates.sh"
 
 main() {
     local cmd="${1:-help}"
@@ -632,7 +637,10 @@ main() {
         offsite-setup) cmd_offsite_setup "$@" ;;
         offsite-remove) cmd_offsite_remove ;;
         fail2ban-setup) cmd_fail2ban_setup ;;
-        help|-h|--help) sed -n '2,35p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+        cert-import) cmd_cert_import "$@" ;;
+        cert-auto-setup) cmd_cert_auto_setup ;;
+        cert-auto-remove) cmd_cert_auto_remove ;;
+        help|-h|--help) sed -n '2,38p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
         *) die "Unknown command: $cmd (try: $SELF help)" ;;
     esac
 }

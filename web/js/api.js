@@ -184,6 +184,8 @@ class SmartHomeAPI {
   addDoor(homeId, door) { return this.post(`/homes/${enc(homeId)}/integrations/ratgdo/doors`, door); }
   removeDoor(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/integrations/ratgdo/doors/${enc(deviceId)}`); }
   findTvs(homeId, network) { return this.post(`/homes/${enc(homeId)}/tv-scan`, network ? { network } : {}); }
+  getHttpsAutoImport() { return this.get('/admin/https/auto-import'); }
+  setHttpsAutoImport(enabled) { return this.put('/admin/https/auto-import', { enabled }); }
   getRokus(homeId) { return this.get(`/homes/${enc(homeId)}/integrations/roku_tv/tvs`); }
   addRoku(homeId, tv) { return this.post(`/homes/${enc(homeId)}/integrations/roku_tv/tvs`, tv); }
   removeRoku(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/integrations/roku_tv/tvs/${enc(deviceId)}`); }
