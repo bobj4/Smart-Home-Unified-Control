@@ -23,6 +23,11 @@
 #                                        print a reverse-proxy config for NAME
 #   deploy/linux/smarthome install-service | remove-service
 #   deploy/linux/smarthome make-key      print a new SECRETS_KEY
+#   deploy/linux/smarthome offsite-backup DEST | offsite-setup DEST [HOUR]
+#                                        copy backups off this server (now,
+#                                        or daily); offsite-remove stops it
+#   deploy/linux/smarthome fail2ban-setup  ban addresses that keep failing
+#                                        to log in (internet-facing servers)
 #
 # Run it from anywhere inside the checkout; it uses deploy/docker-compose.yml.
 # The database and backups live in the Docker volume "data". Settings are in
@@ -587,11 +592,14 @@ cmd_doctor() {
     local newest
     newest="$(compose exec -T "$SERVICE" python scripts/backup.py --list 2>/dev/null | grep -E '^/' | head -n1 | awk '{print $1}' || true)"
     [[ -n "$newest" ]] && ok "newest backup: $newest" || note "no backups listed yet (the first comes after BACKUP_HOURS, or: $SELF backup)"
-    note "backups live on this disk: copy them elsewhere ($SELF copy-backups DIR, or a cron job; docs/DEPLOY-LINUX.md, section 6)"
+    doctor_public_node
 
     say ""
     if [[ "$problems" -eq 0 ]]; then say "Nothing to fix."; else say "$problems thing(s) to fix, above."; return 1; fi
 }
+
+# shellcheck source=deploy/linux/public-node.sh
+. "$ROOT/deploy/linux/public-node.sh"
 
 main() {
     local cmd="${1:-help}"
@@ -619,7 +627,11 @@ main() {
         install-service) need_docker; cmd_install_service ;;
         remove-service) cmd_remove_service ;;
         make-key) new_key ;;
-        help|-h|--help) sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+        offsite-backup) cmd_offsite_backup "$@" ;;
+        offsite-setup) cmd_offsite_setup "$@" ;;
+        offsite-remove) cmd_offsite_remove ;;
+        fail2ban-setup) cmd_fail2ban_setup ;;
+        help|-h|--help) sed -n '2,35p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
         *) die "Unknown command: $cmd (try: $SELF help)" ;;
     esac
 }
