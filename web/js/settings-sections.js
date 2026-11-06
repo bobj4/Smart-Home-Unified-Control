@@ -64,4 +64,18 @@ function makeCollapsible(app, pageId, panel) {
   intro.after(el('nav', { className: 'section-jump', testid: 'section-jump', 'aria-label': 'Sections' }, [...links, all]));
 }
 
+/** Turn the group's own sections into smaller parts of it (they keep
+ * their headings, shown smaller, and fold with the group). */
+function nestSections(group) {
+  [...group.children].forEach((child) => child.classList.replace('subpanel', 'subsection'));
+  return group;
+}
+
+/** One foldable section made of several smaller ones. */
+function groupSections(title, testid, parts) {
+  return nestSections(el('div', { className: 'subpanel', testid }, [el('h3', { text: title }), ...parts.filter(Boolean)]));
+}
+
 window.makeCollapsible = makeCollapsible;
+window.nestSections = nestSections;
+window.groupSections = groupSections;

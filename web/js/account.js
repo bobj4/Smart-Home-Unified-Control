@@ -1,6 +1,6 @@
 /**
- * Settings > Your account: password, recovery codes, authenticator app and
- * logged-in sessions. Secrets shown here are displayed once and never stored.
+ * Settings > Your account: password, appearance, 2 Factor Login (status,
+ * authenticator app, recovery codes) and logged-in sessions. Secrets shown here are displayed once and never stored.
  */
 
 const MIN_PASSWORD = 12;
@@ -20,10 +20,7 @@ class AccountSection {
       ownInfoBox(this.app) || '',
       this.passwordForm(),
       this.themeBox(),
-      new BackgroundBox(this.app).element(),
-      this.twoFactorBox(),
-      this.recoveryForm(),
-      this.totpForm(),
+      groupSections('2 Factor Login', 'two-factor-login', [this.twoFactorBox(), this.totpForm(), this.recoveryForm()]),
     );
     // Two tabs: where you are logged in now, and the devices approved to
     // skip the two-factor code.
@@ -72,8 +69,11 @@ class AccountSection {
     return form;
   }
 
+  /** Appearance (theme-custom.js) with the background picture in it. */
   themeBox() {
-    return appearanceBox(this.app); // theme-custom.js
+    const box = appearanceBox(this.app);
+    box.append(new BackgroundBox(this.app).element());
+    return nestSections(box);
   }
 
   twoFactorBox() {
@@ -85,7 +85,7 @@ class AccountSection {
   fillTwoFactor() {
     const account = this.app.account;
     const parts = [
-      el('h3', { text: 'Two-factor login' }),
+      el('h3', { text: 'Status' }),
       el('p', {
         testid: 'two-factor-status',
         text: account.two_factor

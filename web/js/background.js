@@ -70,7 +70,7 @@ class BackgroundBox {
           this.saved(await this.app.api.removeBackground());
           this.app.status.success('Background picture removed.');
         }),
-      }) : null,
+      }) : '',
     );
   }
 }

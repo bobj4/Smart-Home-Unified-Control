@@ -5,7 +5,7 @@
  */
 
 const SETTINGS_SECTIONS = [
-  { id: 'account', label: 'My account', intro: 'Password, recovery codes, authenticator app and logged-in devices.' },
+  { id: 'account', label: 'My account', intro: 'Password, appearance, 2 Factor Login and logged-in devices.' },
   { id: 'admin', label: 'Admin', intro: 'Users, home name, login rules, email server and HTTPS.', role: 'admin' },
   { id: 'devices', label: 'Devices', intro: 'Rename devices and choose their room.', role: 'operator' },
   { id: 'integrations', label: 'Integrations', intro: 'Device brands this home uses. A brand that is off accepts no commands and no new devices.', role: 'operator' },
