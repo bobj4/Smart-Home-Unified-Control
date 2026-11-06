@@ -187,7 +187,6 @@ def test_ui_rule_and_locked_message(open_page, db, owner, make_user):
     for _ in range(2):
         other.get_by_test_id("login-email").fill(member.email)
         other.get_by_test_id("login-password").fill("wrong password")
-        other.get_by_test_id("login-code").fill(member.totp.now())
         other.get_by_test_id("login-submit").click()
         expect(other.get_by_test_id("login-error")).to_contain_text("Login failed")
         other.get_by_test_id("login-error").evaluate("e => e.textContent = ''")

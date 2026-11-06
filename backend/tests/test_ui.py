@@ -74,11 +74,35 @@ def next_step_code(secret):
     return pyotp.TOTP(secret).at(int(time.time()) + 30)
 
 
-def ui_login(page, user, code=None):
-    page.get_by_test_id("login-email").fill(user.email)
-    page.get_by_test_id("login-password").fill(user.password)
-    page.get_by_test_id("login-code").fill(code or user.totp.now())
+def submit_login(page, email, password, code=None, remember_device=False):
+    """Screen 1: name and password. Screen 2, if the account asks for a
+    two-factor code: the code. (Changed with the owner's approval when the
+    login became two screens.)"""
+    page.get_by_test_id("login-email").fill(email)
+    page.get_by_test_id("login-password").fill(password)
     page.get_by_test_id("login-submit").click()
+    if code is None:
+        return
+    step2 = page.get_by_test_id("login-step2")
+    page.wait_for_function(
+        """() => ['login-step2', 'app-shell', 'login-error'].some((id) => {
+            const node = document.querySelector(`[data-testid="${id}"]`);
+            return node && !node.hidden && (id !== 'login-error' || node.textContent);
+        })"""
+    )
+    if step2.is_visible():
+        if remember_device:
+            page.get_by_test_id("login-remember-device").check()
+        page.get_by_test_id("login-code").fill(code)
+        page.get_by_test_id("login-code-submit").click()
+        if remember_device:  # then the device needs a name (the suggested one)
+            page.get_by_test_id("device-name-ok").click()
+
+
+def ui_login(page, user, code=None, remember_device=False):
+    submit_login(
+        page, user.email, user.password, code or user.totp.now(), remember_device
+    )
     expect(page.get_by_test_id("app-shell")).to_be_visible()
 
 
@@ -130,10 +154,7 @@ def test_ui_shell_login_and_logout(open_page, owner):
     expect(page.get_by_test_id("login-form")).to_be_visible()
     expect(page.get_by_test_id("app-shell")).to_be_hidden()
 
-    page.get_by_test_id("login-email").fill(owner.email)
-    page.get_by_test_id("login-password").fill("wrong password here")
-    page.get_by_test_id("login-code").fill("000000")
-    page.get_by_test_id("login-submit").click()
+    submit_login(page, owner.email, "wrong password here")
     expect(page.get_by_test_id("login-error")).not_to_be_empty()
     expect(page.get_by_test_id("app-shell")).to_be_hidden()
 
@@ -1016,10 +1037,7 @@ def test_ui_enroll_new_member(open_page, new_client, owner):
 
     page.get_by_test_id("enroll-done").click()
     expect(page.get_by_test_id("login-form")).to_be_visible()
-    page.get_by_test_id("login-email").fill("newbie@example.com")
-    page.get_by_test_id("login-password").fill(password)
-    page.get_by_test_id("login-code").fill(next_step_code(secret))
-    page.get_by_test_id("login-submit").click()
+    submit_login(page, "newbie@example.com", password, next_step_code(secret))
     expect(page.get_by_test_id("home-name")).to_have_text("Home A")
 
 

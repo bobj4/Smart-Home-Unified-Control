@@ -1,7 +1,8 @@
 /**
- * "Remember this device" on the login page: ticking it asks what to call
- * this device ("Kitchen tablet"), so it is easy to recognise later in the
- * approved-devices lists. Cancel unticks it. The name goes with the login.
+ * "Remember this device" on the login page: once the code is accepted and
+ * the device is approved, a popup asks what to call it ("Kitchen tablet"),
+ * so it is easy to recognise later in the approved-devices lists. A name is
+ * required (no cancel); it starts as the browser and system.
  */
 
 function guessDeviceName() {
@@ -14,47 +15,46 @@ function guessDeviceName() {
 class DeviceNamePopup {
   constructor(app) {
     this.app = app;
-    this.box = byTestId('login-remember-device');
     this.overlay = el('div', { className: 'overlay', testid: 'device-name-overlay', hidden: true });
     document.body.append(this.overlay);
-    this.box.addEventListener('change', () => {
-      if (this.box.checked) this.ask();
-      else this.app.api.deviceName = null;
-    });
   }
 
-  ask() {
-    const name = el('input', { type: 'text', testid: 'device-name-input', maxlength: '60', value: this.app.api.deviceName || guessDeviceName(), 'aria-label': 'Device name' });
+  /** After a login that approved this device: name it before going on. */
+  async ask() {
+    const devices = await this.app.api.getMyDevices();
+    const mine = devices.find((d) => d.current);
+    if (!mine) return; // not approved (an admin turned remembering off)
+    const name = el('input', { type: 'text', testid: 'device-name-input', maxlength: '60', required: true, value: guessDeviceName(), 'aria-label': 'Device name' });
+    const error = el('p', { className: 'error', role: 'alert' });
     const form = el('form', { className: 'remote device-name-popup', testid: 'device-name-popup', role: 'dialog', 'aria-label': 'Name this device' }, [
       el('h2', { text: 'Name this device' }),
-      el('p', { className: 'muted', text: 'It will skip the two-factor code here, and show under this name in My account > Approved devices.' }),
+      el('p', { className: 'muted', text: 'This device now skips the two-factor code. Give it a name you will recognise in My account > Approved devices.' }),
       field('Name', name),
-      el('div', { className: 'row' }, [
-        el('button', { type: 'submit', testid: 'device-name-ok', text: 'Remember this device' }),
-        el('button', { type: 'button', className: 'secondary', testid: 'device-name-cancel', text: 'Cancel', onclick: () => this.cancel() }),
-      ]),
+      error,
+      el('button', { type: 'submit', testid: 'device-name-ok', text: 'Save name' }),
     ]);
-    form.addEventListener('submit', (event) => {
+    form.addEventListener('submit', async (event) => {
       event.preventDefault();
-      this.app.api.deviceName = name.value.trim() || guessDeviceName();
-      this.close();
+      const chosen = name.value.trim();
+      if (!chosen) {
+        error.textContent = 'Give this device a name.';
+        return;
+      }
+      try {
+        await this.app.api.renameMyDevice(mine.id, chosen);
+        this.close();
+      } catch (problem) {
+        error.textContent = problem.message;
+      }
     });
-    form.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.cancel(); });
     this.overlay.replaceChildren(form);
     this.overlay.hidden = false;
     name.select();
   }
 
-  cancel() {
-    this.box.checked = false;
-    this.app.api.deviceName = null;
-    this.close();
-  }
-
   close() {
     this.overlay.hidden = true;
     this.overlay.replaceChildren();
-    this.box.focus();
   }
 }
 

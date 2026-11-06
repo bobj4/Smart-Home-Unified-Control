@@ -29,6 +29,7 @@ class SmartHomeApp {
     this.homeSelect = byTestId('home-select');
 
     document.getElementById('login-form').addEventListener('submit', (e) => this.login(e));
+    byTestId('login-back').addEventListener('click', () => { byTestId('login-error').textContent = ''; byTestId('login-code').value = ''; this.loginStep(1); });
     byTestId('logout').addEventListener('click', () => this.logout());
     this.homeSelect.addEventListener('change', () => this.selectHome(this.homeSelect.value));
     window.addEventListener('hashchange', () => this.route());
@@ -248,31 +249,6 @@ class SmartHomeApp {
     this.home = this.account.homes.find((h) => h.id === homeId) || this.home;
     this.status.show('', 'info');
     this.route();
-  }
-
-  async login(event) {
-    event.preventDefault();
-    const errorEl = byTestId('login-error');
-    errorEl.textContent = '';
-    const password = byTestId('login-password');
-    const code = byTestId('login-code');
-    const name = byTestId('login-email').value.trim();
-    try {
-      await this.api.login(name, password.value, code.value.trim(), {
-        keepLoggedIn: byTestId('login-keep').checked,
-        rememberMe: byTestId('login-remember').checked,
-        rememberDevice: byTestId('login-remember-device').checked,
-      });
-      password.value = '';
-      code.value = '';
-      await this.loadAccount();
-      this.status.show('', 'info');
-      this.route();
-    } catch (error) {
-      if (error.status === 429) errorEl.textContent = 'Too many failed attempts. Wait five minutes and try again.';
-      else if (error.status === 403) errorEl.textContent = error.message; // locked: says why
-      else errorEl.textContent = 'Login failed. Check your email, password and code.';
-    }
   }
 
   async logout() {
