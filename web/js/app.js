@@ -5,8 +5,6 @@
  */
 
 const VIEWS = ['devices', 'cameras', 'settings'];
-// Chosen colours (My account > Appearance); anything else follows the device.
-const THEMES = ['light', 'dark', 'red', 'violet'];
 
 class SmartHomeApp {
   constructor() {
@@ -159,18 +157,14 @@ class SmartHomeApp {
     byTestId('recover-link').hidden = !options.allow_recovery;
   }
 
-  applyTheme(theme) {
-    if (THEMES.includes(theme)) document.documentElement.dataset.theme = theme;
-    else delete document.documentElement.dataset.theme;
-    // The phone's status bar follows the page background.
-    const meta = document.querySelector('meta[name="theme-color"]');
-    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
-    if (meta && bg) meta.setAttribute('content', bg);
+  /** Chosen colours (My account > Appearance; see theme-custom.js). */
+  applyTheme(theme, custom = null) {
+    applyThemeTo(document.documentElement, theme, custom);
   }
 
   async loadAccount() {
     this.account = await this.api.getAccount();
-    this.applyTheme(this.account.theme);
+    this.applyTheme(this.account.theme, this.account.theme_custom);
     const homes = this.account.homes;
     this.homeSelect.replaceChildren(...homes.map((h) => el('option', { value: h.id, text: h.name })));
     this.homeSelect.hidden = homes.length < 2;

@@ -47,10 +47,24 @@ class PasswordChange(BaseModel):
     )  # rules: app/login_policy.py
 
 
+class CustomTheme(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    accent: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
+    base: Literal["dark", "light"]
+
+
 class Preferences(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    # "red": black and red; "violet": purple and black.
-    theme: Literal["system", "light", "dark", "red", "violet"]
+    # "red": black and red; "violet": purple and black; "custom": `custom`.
+    theme: Literal["system", "light", "dark", "red", "violet", "custom"]
+    custom: CustomTheme | None = None
+
+
+def _custom(user: User) -> dict[str, str] | None:
+    if not user.theme_custom:
+        return None
+    accent, base = user.theme_custom.split(" ")
+    return {"accent": accent, "base": base}
 
 
 class TotpDisable(BaseModel):
@@ -95,15 +109,24 @@ def get_account(
         # A home requires it and it is off: the app shows only the setup page.
         "two_factor_setup_required": required and not user.is_totp_enabled,
         "theme": user.theme or "system",
+        # The last custom colours, kept when another theme is chosen.
+        "theme_custom": _custom(user),
     }
 
 
 @router.put("/preferences", dependencies=[Depends(require_csrf)])
 def set_preferences(
     body: Preferences, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> dict[str, str]:
+) -> dict[str, Any]:
+    if body.theme == "custom":
+        if body.custom is None and not user.theme_custom:
+            raise HTTPException(422, "choose the custom colour")
+        if body.custom is not None:
+            user.theme_custom = f"{body.custom.accent.lower()} {body.custom.base}"
     user.theme = body.theme
     db.commit()
+    if user.theme == "custom":
+        return {"theme": user.theme, "custom": _custom(user)}
     return {"theme": user.theme}
 
 
