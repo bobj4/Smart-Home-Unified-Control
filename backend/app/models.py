@@ -469,12 +469,15 @@ class TrustedDevice(Base):
 
 class RoomLayout(Base):
     """One user's order of the rooms on a home's Devices page (a JSON list
-    of room names; THERMOSTATS_ROOM stands for the thermostats' own room).
+    of room names; THERMOSTATS_ROOM stands for the thermostats' own room),
+    per screen type ("phone" or "wide"), and the rooms they folded shut.
     Rooms not in the list follow in name order."""
 
     __tablename__ = "room_layouts"
     __table_args__ = (
-        UniqueConstraint("user_id", "home_id", name="uq_room_layout_user_home"),
+        UniqueConstraint(
+            "user_id", "home_id", "screen", name="uq_room_layout_user_home_screen"
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -485,6 +488,10 @@ class RoomLayout(Base):
         String(36), ForeignKey("homes.id", ondelete="CASCADE"), index=True
     )
     room_order: Mapped[str] = mapped_column(Text, default="[]")
+    screen: Mapped[str] = mapped_column(
+        String(10), default="wide", server_default="wide"
+    )
+    collapsed: Mapped[str | None] = mapped_column(Text)  # JSON list of room names
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )

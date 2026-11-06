@@ -55,7 +55,7 @@ class RoomLayoutEditor {
         el('h2', { text: 'Room order' }),
         el('button', { type: 'button', className: 'ghost', testid: 'layout-close', text: '✕', 'aria-label': 'Close', onclick: () => this.close() }),
       ]),
-      el('p', { className: 'muted', text: 'Only your Devices page changes; everyone has their own order.' }),
+      el('p', { className: 'muted', text: `Only your Devices page on ${this.view.layoutScreen === 'phone' ? 'phones' : 'larger screens'} changes; everyone has their own order.` }),
       el('ol', { className: 'layout-list' }, rows),
       el('div', { className: 'row' }, [
         el('button', { type: 'button', testid: 'layout-save', text: 'Save', onclick: () => this.save(this.rooms) }),
@@ -68,7 +68,7 @@ class RoomLayoutEditor {
   save(order) {
     const { app } = this.view;
     return app.run(async () => {
-      const saved = await app.api.setLayout(app.home.id, order);
+      const saved = await app.api.setLayout(app.home.id, { room_order: order, screen: this.view.layoutScreen });
       this.view.roomOrder = saved.room_order;
       this.close();
       this.view.render(this.view.lastDevices);
@@ -82,6 +82,53 @@ class RoomLayoutEditor {
   }
 }
 
+/** Phones get a layout of their own (order and folded rooms). */
+const PHONE_SCREEN = window.matchMedia('(max-width: 700px)');
+const screenType = () => (PHONE_SCREEN.matches ? 'phone' : 'wide');
+
+/** The user's layout for this home and screen type, read once (again when either changes). */
+async function loadLayout(view, homeId) {
+  if (!view.watchingScreen) {
+    view.watchingScreen = true;
+    PHONE_SCREEN.addEventListener('change', () => { if (view.app.home) view.load().catch((e) => view.app.handleError(e)); });
+  }
+  const screen = screenType();
+  if (view.layoutHome === homeId && view.layoutScreen === screen) return;
+  try {
+    const layout = await view.app.api.getLayout(homeId, screen);
+    view.roomOrder = layout.room_order;
+    view.collapsed = new Set(layout.collapsed || []);
+  } catch (error) {
+    view.roomOrder = null; // the default order
+    view.collapsed = new Set();
+  }
+  view.layoutHome = homeId;
+  view.layoutScreen = screen;
+}
+
+/** A room on the Devices page; its heading folds it shut or open (remembered). */
+function roomSection(view, room, tiles) {
+  const shut = view.collapsed ? view.collapsed.has(room) : false;
+  const label = room || 'No room';
+  const grid = el('div', { className: 'device-grid', hidden: shut });
+  grid.append(...tiles);
+  const toggle = el('button', {
+    type: 'button', className: 'room-toggle', testid: 'room-toggle', 'aria-expanded': String(!shut),
+    title: shut ? `Show ${label}` : `Hide ${label}`,
+  }, [el('span', { className: 'room-caret', text: '▾', 'aria-hidden': 'true' }), el('h2', { text: label }), shut ? el('span', { className: 'muted room-count', text: `${tiles.length}` }) : null]);
+  toggle.addEventListener('click', () => {
+    if (!view.collapsed) view.collapsed = new Set();
+    if (view.collapsed.has(room)) view.collapsed.delete(room);
+    else view.collapsed.add(room);
+    view.render(view.lastDevices);
+    view.app.api.setLayout(view.app.home.id, { collapsed: [...view.collapsed], screen: view.layoutScreen })
+      .catch((error) => view.app.handleError(error));
+  });
+  return el('section', { className: `room${shut ? ' collapsed' : ''}`, testid: 'room', 'data-room': room }, [toggle, grid]);
+}
+
+window.loadLayout = loadLayout;
+window.roomSection = roomSection;
 window.orderRooms = orderRooms;
 window.displayRoom = displayRoom;
 window.RoomLayoutEditor = RoomLayoutEditor;

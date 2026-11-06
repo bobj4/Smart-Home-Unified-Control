@@ -82,8 +82,8 @@ class SmartHomeAPI {
   getGuestPage(homeId) { return this.get(`/homes/${enc(homeId)}/guest`); }
   getGuestAccess(homeId, userId) { return this.get(`/homes/${enc(homeId)}/members/${enc(userId)}/guest-access`); }
   setGuestAccess(homeId, userId, body) { return this.put(`/homes/${enc(homeId)}/members/${enc(userId)}/guest-access`, body); }
-  getLayout(homeId) { return this.get(`/homes/${enc(homeId)}/layout`); }
-  setLayout(homeId, roomOrder) { return this.put(`/homes/${enc(homeId)}/layout`, { room_order: roomOrder }); }
+  getLayout(homeId, screen) { return this.get(`/homes/${enc(homeId)}/layout?screen=${enc(screen)}`); }
+  setLayout(homeId, layout) { return this.put(`/homes/${enc(homeId)}/layout`, layout); }
 
   // Devices
   getDevices(homeId) { return this.get(`/homes/${enc(homeId)}/devices`); }
