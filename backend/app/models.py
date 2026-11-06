@@ -380,6 +380,10 @@ class SystemSettings(Base):
     # for good; a new text (new version) shows again to everyone.
     motd_text: Mapped[str | None] = mapped_column(Text)
     motd_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # People may change their own name and email (My account).
+    users_edit_own_info: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
     # Settings > Activity log: also record integration detail (app/verbose.py).
     verbose_logging: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa_false()
