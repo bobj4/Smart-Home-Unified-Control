@@ -209,6 +209,9 @@ class SmartHomeAPI {
   setMemberPassword(homeId, userId, password) { return this.post(`/homes/${enc(homeId)}/members/${enc(userId)}/password`, { password }); }
   createResetCode(homeId, userId) { return this.post(`/homes/${enc(homeId)}/members/${enc(userId)}/reset-code`); }
   setPreferences(prefs) { return this.put('/account/preferences', prefs); }
+  setBackground(image) { return this.put('/account/background', { image }); }
+  switchBackground(on) { return this.put('/account/background/on', { on }); }
+  removeBackground() { return this.del('/account/background'); }
   disableTotp(password, code) { return this.post('/account/totp/disable', { password, totp_code: code }); }
   getSecurityPolicy(homeId) { return this.get(`/homes/${enc(homeId)}/security`); }
   setSecurityPolicy(homeId, requireTwoFactor) { return this.put(`/homes/${enc(homeId)}/security`, { require_two_factor: requireTwoFactor }); }

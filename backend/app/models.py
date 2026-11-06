@@ -10,6 +10,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -94,6 +95,12 @@ class User(Base):
     )
     # theme "custom": "#rrggbb dark" or "#rrggbb light".
     theme_custom: Mapped[str | None] = mapped_column(String(16))
+    # A picture behind the dashboard (loaded only when asked for: deferred).
+    background_image: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    background_type: Mapped[str | None] = mapped_column(String(20))
+    background_on: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
     # JSON list of Argon2id hashes; a used code is replaced by null.
     recovery_codes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(

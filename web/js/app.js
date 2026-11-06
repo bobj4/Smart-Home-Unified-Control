@@ -165,6 +165,7 @@ class SmartHomeApp {
   async loadAccount() {
     this.account = await this.api.getAccount();
     this.applyTheme(this.account.theme, this.account.theme_custom);
+    applyBackground(this.account.background);
     const homes = this.account.homes;
     this.homeSelect.replaceChildren(...homes.map((h) => el('option', { value: h.id, text: h.name })));
     this.homeSelect.hidden = homes.length < 2;
@@ -281,6 +282,7 @@ class SmartHomeApp {
     this.account = null;
     this.home = null;
     this.applyTheme('system');
+    applyBackground(null);
     this.route();
     await this.fillRememberedLogin(); // a device approved at this login
   }
