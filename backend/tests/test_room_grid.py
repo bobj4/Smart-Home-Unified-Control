@@ -68,3 +68,24 @@ def test_ui_side_by_side_and_widths(open_page, db, owner, make_device):
     )
     page.get_by_test_id("layout-open").click()
     expect(page.get_by_test_id("layout-columns")).to_have_count(0)
+
+
+def test_ui_short_rooms_fill_the_space_beside_a_tall_one(
+    open_page, db, owner, make_device
+):
+    rooms = {"Attic": 6, "Bath": 1, "Cellar": 1}
+    for room, count in rooms.items():
+        for n in range(count):
+            device_id = make_device(owner.home_id, name=f"{room} light {n}")
+            db.get(Device, device_id).room = room
+    db.commit()
+    page = open_page()
+    page.set_viewport_size({"width": 1300, "height": 900})
+    _ui.ui_login(page, owner)
+    expect(_ui.card(page, "Cellar light 0")).to_be_visible()
+    page.wait_for_timeout(300)  # the rooms settle into place
+    attic, bath, cellar = box(page, "Attic"), box(page, "Bath"), box(page, "Cellar")
+    assert abs(attic["y"] - bath["y"]) < 2  # side by side
+    # Cellar sits under Bath, beside the tall Attic, not below it.
+    assert cellar["x"] == bath["x"]
+    assert cellar["y"] < attic["y"] + attic["height"]
