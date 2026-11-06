@@ -176,6 +176,14 @@ def web_icon(name: str) -> FileResponse:
     return FileResponse(WEB_DIR / "icons" / name, media_type="image/png")
 
 
+@app.get("/sw.js", include_in_schema=False)
+def web_service_worker() -> FileResponse:
+    """At the site root, so it covers the whole app (installing on phones)."""
+    return FileResponse(
+        WEB_DIR / "sw.js", media_type="text/javascript", headers=REVALIDATE
+    )
+
+
 @app.get("/manifest.json", include_in_schema=False)
 def web_manifest() -> FileResponse:
     return FileResponse(

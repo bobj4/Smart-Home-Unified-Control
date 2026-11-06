@@ -74,6 +74,8 @@ a { color: var(--accent-fg); }
 /* Shell */
 .topbar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--border); }
 .brand { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.brand-logo { border-radius: 8px; flex: 0 0 auto; }
+.auth-logo { display: block; margin: 0 auto 12px; border-radius: 16px; }
 .brand h1 { overflow-wrap: anywhere; }
 .nav { display: flex; gap: 4px; align-items: center; }
 .nav-link { color: var(--text); text-decoration: none; padding: 8px 12px; border-radius: 8px; font-weight: 600; }

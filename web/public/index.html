@@ -5,12 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Home Unified Control</title>
     <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Smart Home">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="stylesheet" href="/css/app.css">
     <meta name="theme-color" content="#1f6feb">
 </head>
 <body>
     <div id="login-page" class="auth-page" data-testid="login-page" hidden>
         <div class="auth-card">
+            <img class="auth-logo" src="/icons/icon-192.png" alt="" width="72" height="72">
             <h1>Smart Home Unified Control</h1>
             <form id="login-form" data-testid="login-form">
                 <label for="email" id="login-name-label">Email</label>
@@ -108,6 +115,7 @@
     <div id="app-shell" data-testid="app-shell" hidden>
         <header class="topbar">
             <div class="brand">
+                <img class="brand-logo" src="/icons/icon-192.png" alt="" width="32" height="32">
                 <h1 data-testid="home-name">Smart Home</h1>
                 <select data-testid="home-select" aria-label="Home" hidden></select>
             </div>
@@ -128,6 +136,7 @@
 
     <script src="/js/api.js"></script>
     <script src="/js/ui.js"></script>
+    <script src="/js/pwa.js"></script>
     <script src="/js/theme-custom.js"></script>
     <script src="/js/background.js"></script>
     <script src="/js/remote.js"></script>
