@@ -37,7 +37,11 @@ class SmartHomeAPI {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const data = await response.json().catch(() => ({}));
-    if (response.status === 401) throw new AuthError(data.detail || 'Not logged in');
+    if (response.status === 401) {
+      const error = new AuthError(data.detail || 'Not logged in');
+      error.codeRequired = Boolean(data.code_required); // login: right password, code next
+      throw error;
+    }
     if (!response.ok) {
       const detail = Array.isArray(data.detail)
         ? data.detail.map((d) => String(d.msg).replace(/^Value error, /, '')).join('; ')
@@ -63,7 +67,6 @@ class SmartHomeAPI {
     if (code.length === 8) body.recovery_code = code;
     else if (code) body.totp_code = code;
     // The name given in the "Name this device" popup (device-name.js).
-    if (rememberDevice && this.deviceName) body.device_name = this.deviceName;
     return this.post('/auth/login', body);
   }
   logout() { return this.post('/auth/logout'); }

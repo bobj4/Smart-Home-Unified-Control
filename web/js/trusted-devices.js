@@ -18,9 +18,11 @@ class TrustedDevicesList {
     await this.load();
   }
 
-  async load() {
+  /** Redraw the list; not over a name being edited unless `force`. */
+  async load({ force = false } = {}) {
     const api = this.app.api;
     const devices = this.all ? await api.getAllDevices() : await api.getMyDevices();
+    if (!force && this.box.querySelector('[data-testid="trusted-device-rename-form"]')) return;
     if (!devices.length) {
       this.box.replaceChildren(el('p', {
         className: 'muted', testid: 'devices-none',
@@ -50,7 +52,7 @@ class TrustedDevicesList {
         onclick: () => this.app.run(async () => {
           if (this.all) await this.app.api.forgetAnyDevice(device.id);
           else await this.app.api.forgetMyDevice(device.id);
-          await this.load();
+          await this.load({ force: true });
           this.app.status.success('Removed: that device will ask for the code again.');
         }),
       }),
@@ -63,13 +65,13 @@ class TrustedDevicesList {
     const form = el('form', { className: 'row', testid: 'trusted-device-rename-form' }, [
       name,
       el('button', { type: 'submit', testid: 'trusted-device-save', text: 'Save' }),
-      el('button', { type: 'button', className: 'secondary', text: 'Cancel', onclick: () => this.load() }),
+      el('button', { type: 'button', className: 'secondary', text: 'Cancel', onclick: () => this.load({ force: true }) }),
     ]);
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       this.app.run(async () => {
         await this.app.api.renameMyDevice(device.id, name.value.trim());
-        await this.load();
+        await this.load({ force: true });
         this.app.status.success('Device renamed.');
       });
     });

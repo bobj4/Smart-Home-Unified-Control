@@ -61,21 +61,29 @@ def test_rename_my_own_only(client, new_client, db, owner, make_user, login, csr
 def test_ui_name_popup_and_rename(open_page, db, owner):
     page = open_page()
     expect(page.get_by_test_id("login-page")).to_be_visible()
+    _ui.submit_login(page, owner.email, owner.password)
+    expect(page.get_by_test_id("login-step2")).to_be_visible()
     page.get_by_test_id("login-remember-device").check()
     popup = page.get_by_test_id("device-name-popup")
+    expect(popup).to_have_count(0)  # asked after the code is accepted
+    page.get_by_test_id("login-code").fill(owner.totp.now())
+    page.get_by_test_id("login-code-submit").click()
+    expect(page.get_by_test_id("app-shell")).to_be_visible()
     expect(popup).to_be_visible()
     # Browser and system as this machine reports them ("Chrome on Windows").
     expect(popup.get_by_test_id("device-name-input")).to_have_value(
         re.compile(r"^\w+ on \w+")
     )
-    popup.get_by_test_id("device-name-cancel").click()
-    expect(page.get_by_test_id("login-remember-device")).not_to_be_checked()
-    page.get_by_test_id("login-remember-device").check()
-    page.get_by_test_id("device-name-input").fill("Living room tablet")
-    page.get_by_test_id("device-name-ok").click()
-    expect(popup).to_be_hidden()
-    expect(page.get_by_test_id("login-remember-device")).to_be_checked()
-    _ui.ui_login(page, owner)
+    expect(popup.get_by_test_id("device-name-cancel")).to_have_count(0)  # required
+    page.keyboard.press("Escape")
+    expect(popup).to_be_visible()
+    popup.get_by_test_id("device-name-input").fill("   ")
+    popup.get_by_test_id("device-name-ok").click()
+    expect(popup).to_be_visible()
+    popup.get_by_test_id("device-name-input").fill("Living room tablet")
+    popup.get_by_test_id("device-name-ok").click()
+    expect(popup).to_have_count(0)
+    db.expire_all()
     assert db.query(TrustedDevice).one().name == "Living room tablet"
 
     _ui.go_settings(page, "account")

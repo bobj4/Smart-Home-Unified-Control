@@ -110,7 +110,12 @@ def login(
             raise _fail(db, account, ip)
         method = "recovery_code"
     else:
-        raise _fail(db, account, ip)
+        # The right password, no code yet: the login page asks for it on a
+        # second screen. Still 401 with no session; not a failed login.
+        return JSONResponse(
+            {"detail": "Invalid credentials", "code_required": True},
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
 
     # A choice the admin turned off (blank in Login times) is ignored.
     kept_for = keep_seconds(db)
