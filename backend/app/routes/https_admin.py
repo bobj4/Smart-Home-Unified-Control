@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app import tls
 from app.audit import record_event
+from app.backup import BackupError, database_path
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
 from app.login_policy import settings
@@ -20,6 +21,17 @@ from app.routes.admin import _require_owner_somewhere
 from app.vault import VaultError
 
 router = APIRouter(prefix="/api/v1/admin/https", tags=["admin"])
+# Left in the data folder when the toggle is switched on; on the server,
+# smarthome-cert.path sees it and runs the import at once (then removes it).
+REQUEST_FILE = "cert-import-requested"
+
+
+def request_import() -> None:
+    try:
+        folder = database_path().parent
+        (folder / REQUEST_FILE).write_text("requested\n", encoding="utf-8")
+    except (BackupError, OSError):
+        pass  # not SQLite, or not writable: the 6-hourly check still runs
 
 
 class Certificate(BaseModel):
@@ -125,6 +137,8 @@ def switch_auto_import(
     _require_owner_somewhere(db, user)
     settings(db).cert_auto_import = body.enabled
     db.commit()
+    if body.enabled:
+        request_import()
     record_event(
         db,
         "https_auto_import_switched",

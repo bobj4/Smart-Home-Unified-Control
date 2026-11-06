@@ -113,13 +113,24 @@ cmd_cert_import() {
     esac
 }
 
-cmd_cert_auto_setup() {
-    command -v systemctl >/dev/null 2>&1 || die "No systemd here: run $SELF cert-import from cron instead."
-    cmd_cert_import
-    local tmp
+cert_data_dir() {  # the app's data folder on this server (the Docker volume)
+    local id
+    id="$(compose ps -q "$SERVICE" 2>/dev/null | head -n1)"
+    [[ -n "$id" ]] || return 1
+    docker inspect -f '{{range .Mounts}}{{if eq .Destination "/app/data"}}{{.Source}}{{end}}{{end}}' "$id" 2>/dev/null
+}
+
+# The units that import the certificate: every 6 hours, after each certbot
+# renewal, and at once when the toggle is switched on in the app (the app
+# leaves cert-import-requested in its data folder; the .path unit sees it).
+# Installed with the service (install, update), so nothing else is needed.
+cert_units_install() {
+    command -v systemctl >/dev/null 2>&1 || return 0
+    local tmp data
     tmp="$(mktemp)"
+    data="$(cert_data_dir || true)"
     cat > "$tmp" <<UNIT
-# Written by $SELF cert-auto-setup.
+# Written by $SELF. Takes the web server's HTTPS certificate into the app.
 [Unit]
 Description=Smart Home Unified Control: take the web server's HTTPS certificate
 After=docker.service
@@ -129,9 +140,10 @@ Type=oneshot
 WorkingDirectory=$ROOT
 ExecStart=$ROOT/deploy/linux/smarthome cert-import --quiet
 UNIT
-    as_root install -m 644 "$tmp" "$OFFSITE_DIR/$CERT_UNIT.service"
+    [[ -n "$data" ]] && printf 'ExecStopPost=/bin/rm -f %s/cert-import-requested\n' "$data" >> "$tmp"
+    cert_unit_put "$tmp" "$CERT_UNIT.service"
     cat > "$tmp" <<UNIT
-# Written by $SELF cert-auto-setup.
+# Written by $SELF.
 [Unit]
 Description=Check the web server's HTTPS certificate every 6 hours
 
@@ -142,21 +154,53 @@ OnUnitActiveSec=6h
 [Install]
 WantedBy=timers.target
 UNIT
-    as_root install -m 644 "$tmp" "$OFFSITE_DIR/$CERT_UNIT.timer"
-    rm -f "$tmp"
+    cert_unit_put "$tmp" "$CERT_UNIT.timer"
+    if [[ -n "$data" ]]; then
+        cat > "$tmp" <<UNIT
+# Written by $SELF. Runs the import as soon as the app asks for it.
+[Unit]
+Description=Import the HTTPS certificate when the app asks
+
+[Path]
+PathExists=$data/cert-import-requested
+Unit=$CERT_UNIT.service
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+        cert_unit_put "$tmp" "$CERT_UNIT.path"
+    fi
     if [[ -d "$CERT_ROOT/etc/letsencrypt/renewal-hooks/deploy" ]]; then
         printf '#!/bin/sh\nsystemctl start --no-block %s.service\n' "$CERT_UNIT" > "$tmp"
         as_root install -m 755 "$tmp" "$CERT_ROOT/etc/letsencrypt/renewal-hooks/deploy/smarthome"
-        rm -f "$tmp"
     fi
-    as_root systemctl daemon-reload
-    as_root systemctl enable --now "$CERT_UNIT.timer" >/dev/null 2>&1
-    say "The certificate is checked every 6 hours (and after each certbot renewal)."
+    rm -f "$tmp"
+    if [[ -n "$CERT_CHANGED" ]]; then
+        as_root systemctl daemon-reload
+        as_root systemctl enable --now "$CERT_UNIT.timer" >/dev/null 2>&1 || true
+        [[ -n "$data" ]] && as_root systemctl enable --now "$CERT_UNIT.path" >/dev/null 2>&1 || true
+    fi
+}
+
+CERT_CHANGED=""
+cert_unit_put() {  # install the unit only when it differs
+    local target="$OFFSITE_DIR/$2"
+    if [[ -f "$target" ]] && cmp -s "$1" "$target"; then return 0; fi
+    as_root install -m 644 "$1" "$target"
+    CERT_CHANGED=1
+}
+
+cmd_cert_auto_setup() {
+    command -v systemctl >/dev/null 2>&1 || die "No systemd here: run $SELF cert-import from cron instead."
+    cmd_cert_import
+    CERT_CHANGED=1
+    cert_units_install
+    say "The certificate is imported when you switch it on in the app, every 6 hours, and after each certbot renewal."
 }
 
 cmd_cert_auto_remove() {
-    as_root systemctl disable --now "$CERT_UNIT.timer" >/dev/null 2>&1 || true
-    as_root rm -f "$OFFSITE_DIR/$CERT_UNIT.timer" "$OFFSITE_DIR/$CERT_UNIT.service" \
+    as_root systemctl disable --now "$CERT_UNIT.timer" "$CERT_UNIT.path" >/dev/null 2>&1 || true
+    as_root rm -f "$OFFSITE_DIR/$CERT_UNIT.timer" "$OFFSITE_DIR/$CERT_UNIT.service" "$OFFSITE_DIR/$CERT_UNIT.path" \
         "$CERT_ROOT/etc/letsencrypt/renewal-hooks/deploy/smarthome"
     as_root systemctl daemon-reload || true
     say "Automatic certificate import is off on this server."

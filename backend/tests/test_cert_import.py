@@ -145,3 +145,49 @@ def test_ui_toggle(open_page, owner):
     page.get_by_test_id("https-auto-import").check()
     expect(page.get_by_test_id("status")).to_contain_text("imports the certificate")
     expect(page.get_by_test_id("https-auto-status")).to_contain_text("cert-auto-setup")
+
+
+def test_switching_on_asks_the_server(
+    client, owner, login, csrf, tmp_path, monkeypatch
+):
+    from app.routes import https_admin
+
+    monkeypatch.setattr(
+        https_admin, "database_path", lambda: tmp_path / "smart_home.db"
+    )
+    assert login(client, owner).status_code == 200
+    client.put(f"{URL}/auto-import", json={"enabled": False}, headers=csrf(client))
+    assert not (tmp_path / "cert-import-requested").exists()
+    client.put(f"{URL}/auto-import", json={"enabled": True}, headers=csrf(client))
+    assert (tmp_path / "cert-import-requested").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Linux deploy script")
+def test_units_watch_for_the_request(tmp_path):
+    units, data = tmp_path / "systemd", tmp_path / "volume"
+    units.mkdir()
+    data.mkdir()
+    script = (
+        f'ROOT="{REPO}"; SELF=smarthome; SERVICE=smart-home; OFFSITE_DIR="{units}"; '
+        f'compose() {{ echo abc123; }}; docker() {{ echo "{data}"; }}; '
+        'as_root() { "$@"; }; systemctl() { echo "systemctl $*" >> "$OFFSITE_DIR/calls"; }; '
+        f'. "{REPO}/deploy/linux/certificates.sh"; cert_units_install'
+    )
+    r = subprocess.run(
+        ["bash", "-c", script], capture_output=True, text=True, timeout=30
+    )  # noqa: S603, S607
+    assert r.returncode == 0, r.stderr
+    path_unit = (units / "smarthome-cert.path").read_text()
+    assert f"PathExists={data}/cert-import-requested" in path_unit
+    service = (units / "smarthome-cert.service").read_text()
+    assert "cert-import --quiet" in service
+    assert f"ExecStopPost=/bin/rm -f {data}/cert-import-requested" in service
+    calls = (units / "calls").read_text()
+    assert (
+        "enable --now smarthome-cert.path" in calls
+        and "enable --now smarthome-cert.timer" in calls
+    )
+    # Nothing changed: nothing is reinstalled or restarted.
+    (units / "calls").unlink()
+    subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=30)  # noqa: S603, S607
+    assert not (units / "calls").exists()
