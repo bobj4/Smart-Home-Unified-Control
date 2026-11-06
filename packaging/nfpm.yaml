@@ -1,0 +1,42 @@
+# Builds the .rpm and .deb (https://nfpm.goreleaser.com). Run by
+# .github/workflows/packages.yml; VERSION and RELEASE come from there.
+name: smart-home-unified-control
+arch: all
+platform: linux
+version: ${VERSION}
+release: ${RELEASE}
+section: misc
+priority: optional
+maintainer: Smart Home Unified Control <noreply@github.com>
+description: |
+  Self-hosted smart home control (lights, plugs, TVs, thermostats, water
+  heater, cameras). Runs in Docker; this package installs the app, the
+  smarthome command and its automatic update step.
+homepage: https://github.com/bobj4/Smart-Home-Unified-Control
+license: Proprietary
+contents:
+  - src: ./backend
+    dst: /opt/smart-home-unified-control/backend
+    type: tree
+  - src: ./web
+    dst: /opt/smart-home-unified-control/web
+    type: tree
+  - src: ./deploy
+    dst: /opt/smart-home-unified-control/deploy
+    type: tree
+  - src: ./scripts
+    dst: /opt/smart-home-unified-control/scripts
+    type: tree
+  - src: ./README.md
+    dst: /opt/smart-home-unified-control/README.md
+  - src: ./packaging/smarthome-upgrade.service
+    dst: /usr/lib/systemd/system/smarthome-upgrade.service
+  - src: /opt/smart-home-unified-control/deploy/linux/smarthome
+    dst: /usr/bin/smarthome
+    type: symlink
+scripts:
+  postinstall: ./packaging/postinstall.sh
+  preremove: ./packaging/preremove.sh
+rpm:
+  signature:
+    key_file: ${RPM_SIGNING_KEY_FILE}

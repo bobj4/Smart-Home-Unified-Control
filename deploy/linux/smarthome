@@ -37,7 +37,8 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Through the /usr/bin/smarthome link too (the package installs one).
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd)"
 ENV_FILE="$ROOT/deploy/.env"
 CONF="$ROOT/deploy/linux/local.conf"
 SERVICE="smart-home"
