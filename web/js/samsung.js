@@ -18,6 +18,7 @@ class SamsungPanel {
       this.addForm(),
     ]));
     await this.load();
+    await new SmartThingsPanel(this.app).render(container);
   }
 
   async load() {

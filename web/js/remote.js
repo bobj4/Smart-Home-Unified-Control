@@ -40,9 +40,31 @@ class TvRemote {
 
   open(device) {
     this.device = { ...device, state: { ...(device.state || {}) } };
+    this.sources = null;
+    this.sourcesAsked = false;
+    this.liveInput = null;
     this.render();
+    if (device.smartthings) this.loadSources(device.id);
     this.overlay.hidden = false;
     this.overlay.querySelector('[data-testid="remote-power"]').focus();
+  }
+
+  /** A TV linked to SmartThings: its inputs by name (else the fixed list). */
+  async loadSources(deviceId) {
+    this.sourcesAsked = true;
+    try {
+      const found = await this.app.api.getTvSources(this.app.home.id, deviceId);
+      if (!this.device || this.device.id !== deviceId || !found.sources.length) return;
+      this.sources = found.sources.map((s) => [s.id, s.name]);
+      // The TV's real input, until a command here changes the saved one.
+      if (found.current) {
+        this.liveInput = { saved: this.device.state.input, current: found.current };
+        this.device.state.input = found.current;
+      }
+      this.render();
+    } catch (error) {
+      // The fixed inputs still work by key.
+    }
   }
 
   close() {
@@ -55,15 +77,19 @@ class TvRemote {
   /** Keep the open remote in step with a fresh device list. */
   refresh(devices) {
     if (!this.device) return;
-    const fresh = devices.find((d) => d.id === this.device.id);
+    let fresh = devices.find((d) => d.id === this.device.id);
     if (!fresh || !fresh.controllable) {
       this.close();
       return;
     }
+    const live = this.liveInput;
+    if (live && fresh.state && fresh.state.input === live.saved) fresh = { ...fresh, state: { ...fresh.state, input: live.current } };
+    else this.liveInput = null;
     const same = JSON.stringify(fresh.state || {}) === JSON.stringify(this.device.state)
       && fresh.name === this.device.name
       && JSON.stringify(fresh.quick_apps || []) === JSON.stringify(this.device.quick_apps || []);
     this.device = { ...fresh, state: { ...(fresh.state || {}) } };
+    if (fresh.smartthings && !this.sourcesAsked) this.loadSources(fresh.id);
     // Redraw only when something changed, so the open remote keeps its
     // buttons (and focus) between the 5-second refreshes.
     if (!same) this.render();
@@ -106,7 +132,7 @@ class TvRemote {
     const off = !s.on;
     const source = s.app
       ? (this.apps().find(([id]) => id === s.app) || TV_APPS.find(([id]) => id === s.app) || [s.app, 'App'])[1]
-      : (TV_INPUTS.find(([id]) => id === s.input) || [s.input, s.input])[1];
+      : ((this.sources || TV_INPUTS).find(([id]) => id === s.input) || [s.input, s.input])[1];
     const screen = el('div', { className: `tv-screen${off ? ' off' : ''}`, testid: 'remote-screen' }, [
       el('strong', { text: off ? 'Off' : source }),
       el('span', { testid: 'remote-channel', text: off ? '' : `Channel ${s.channel}` }),
@@ -125,10 +151,11 @@ class TvRemote {
       this.send('set_channel', { channel: number });
     };
     channel.addEventListener('keydown', (e) => { if (e.key === 'Enter') goTo(); });
-    const input = el('select', { testid: 'remote-input', disabled: off, 'aria-label': 'Input' },
-      TV_INPUTS.map(([id, name]) => el('option', { value: id, text: name })));
+    const named = Boolean(this.sources);
+    const input = el('select', { testid: 'remote-input', disabled: off, 'aria-label': 'Input', 'data-named': String(named) },
+      (this.sources || TV_INPUTS).map(([id, name]) => el('option', { value: id, text: name })));
     input.value = s.input;
-    input.addEventListener('change', () => this.send('set_input', { source: input.value }));
+    input.addEventListener('change', () => this.send(named ? 'set_source' : 'set_input', { source: input.value }));
 
     const key = (id, text, label) => this.button(`remote-key-${id}`, text, () => this.send('press_key', { key: id }), { label });
     const panel = el('div', { className: 'remote', testid: 'tv-remote', role: 'dialog', 'aria-label': `${this.device.name} remote` }, [
