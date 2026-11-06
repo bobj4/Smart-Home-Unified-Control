@@ -24,7 +24,7 @@ from app.auth import (
 )
 from app.db_config import get_db
 from app.dependencies import client_ip, current_session, current_user, require_csrf
-from app.login_policy import check_password
+from app.login_policy import check_password, settings
 from app.login_times import forget_all
 from app.models import Home, HomeMembership, User
 from app.models import Session as SessionModel
@@ -115,6 +115,7 @@ def get_account(
         "theme_custom": _custom(user),
         "background": background_out(db, user),
         "motd": motd_for(db, user),
+        "can_edit_info": bool(settings(db).users_edit_own_info),
     }
 
 

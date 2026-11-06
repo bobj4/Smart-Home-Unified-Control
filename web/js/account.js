@@ -17,6 +17,7 @@ class AccountSection {
   async render(container) {
     container.append(
       el('p', { className: 'muted', text: `Logged in as ${this.app.account.email}` }),
+      ownInfoBox(this.app) || '',
       this.passwordForm(),
       this.themeBox(),
       new BackgroundBox(this.app).element(),

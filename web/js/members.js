@@ -55,6 +55,7 @@ class MembersSection {
       if (setPassword) row.append(setPassword);
       return row;
     }
+    row.append(memberInfoButton(this, member));
     const role = el('select', { testid: 'member-role', 'aria-label': `Role for ${member.email}` },
       ROLES.map((r) => el('option', { value: r, text: r })));
     role.value = member.role;

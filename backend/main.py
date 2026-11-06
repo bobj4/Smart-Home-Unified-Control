@@ -39,6 +39,7 @@ from app.routes import (
     samsung,
     thermostat,
     tv_sources,
+    user_info,
     verbose,
 )
 from app.verbose import VerboseRequestMiddleware
@@ -125,6 +126,7 @@ app.include_router(samsung.router)
 app.include_router(tv_sources.router)
 app.include_router(background.router)
 app.include_router(motd.router)
+app.include_router(user_info.router)
 app.include_router(frigate.settings_router)
 app.include_router(frigate.router)
 
