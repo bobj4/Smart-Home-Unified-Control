@@ -22,3 +22,28 @@ def test_ui_layout_button_bottom_right(open_page, owner, make_device):
         box = button.bounding_box()
         assert height - (box["y"] + box["height"]) <= 24, box
         page.close()
+
+
+def test_ui_layout_button_never_over_popups(open_page, owner, make_device):
+    make_device(owner.home_id, name="Lamp")
+    page = open_page()
+    _ui.ui_login(page, owner)
+    button = page.get_by_test_id("layout-open")
+    expect(button).to_be_visible()
+    button.click()  # the room order popup
+    expect(page.get_by_test_id("layout-panel")).to_be_visible()
+    expect(button).to_be_hidden()
+    page.keyboard.press("Escape")
+    expect(page.get_by_test_id("layout-panel")).to_be_hidden()
+    expect(button).to_be_visible()
+    _ui.card(page, "Lamp").get_by_test_id(
+        "light-settings-open"
+    ).click()  # another popup
+    expect(page.get_by_test_id("light-panel")).to_be_visible()
+    expect(button).to_be_hidden()
+    z = button.evaluate("b => Number(getComputedStyle(b).zIndex)")
+    overlay_z = page.evaluate(
+        "() => { const o = document.createElement('div'); o.className = 'overlay'; o.hidden = true;"
+        " document.body.append(o); const z = Number(getComputedStyle(o).zIndex); o.remove(); return z; }"
+    )
+    assert z < overlay_z
