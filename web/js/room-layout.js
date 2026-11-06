@@ -96,9 +96,9 @@ class RoomLayoutEditor {
   /** Only for homes with thermostats: keep them on their own page. */
   thermostatsChoice() {
     this.apart = null;
-    if (!(this.view.lastDevices || []).some((d) => d.type === 'thermostat')) return null;
+    if (!(this.view.lastDevices || []).some((d) => THERMOSTAT_PAGE_TYPES.includes(d.type))) return null;
     this.apart = el('input', { type: 'checkbox', testid: 'layout-thermostats-apart', checked: Boolean(this.view.thermostatsApart) });
-    return el('label', { className: 'check' }, [this.apart, ' Thermostats only on their own page (the Thermostats link)']);
+    return el('label', { className: 'check' }, [this.apart, ' Thermostats and water heaters only on their own page (the Thermostats link)']);
   }
 
   save(order) {
