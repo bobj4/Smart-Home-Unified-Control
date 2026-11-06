@@ -33,7 +33,7 @@ function memberInfoButton(view, member) {
   });
 }
 
-/** Settings > Admin: may people change their own name and email? */
+/** Settings > Admin > Users: may people change their own name and email? */
 class SelfEditPanel {
   constructor(app) {
     this.app = app;
@@ -41,14 +41,25 @@ class SelfEditPanel {
 
   async render(container) {
     const current = await this.app.api.getSelfEdit();
-    const box = el('input', { type: 'checkbox', testid: 'self-edit', checked: current.allowed });
-    box.addEventListener('change', () => this.app.run(async () => {
-      const saved = await this.app.api.setSelfEdit(box.checked);
-      this.app.status.success(saved.allowed ? 'People can now change their own name and email.' : 'Only admins can change names and emails now.');
+    const toggle = el('input', {
+      type: 'checkbox', role: 'switch', className: 'switch', testid: 'self-edit', checked: current.allowed,
+      'aria-label': 'Let people change their own name and email',
+    });
+    toggle.addEventListener('change', () => this.app.run(async () => {
+      try {
+        const saved = await this.app.api.setSelfEdit(toggle.checked);
+        this.app.status.success(saved.allowed ? 'People can now change their own name and email.' : 'Only admins can change names and emails now.');
+      } catch (error) {
+        toggle.checked = !toggle.checked;
+        throw error;
+      }
     }));
-    container.append(el('div', { className: 'subpanel', testid: 'self-edit-settings' }, [
-      el('h3', { text: 'Your details' }),
-      el('label', { className: 'check' }, [box, ' Let people change their own name and email (My account). Changing an email needs their password.']),
+    container.append(el('div', { className: 'integration-row', testid: 'self-edit-settings' }, [
+      el('div', {}, [
+        el('strong', { text: 'People can change their own details' }),
+        el('p', { className: 'muted', text: 'Name and email, in My account. Changing an email needs their password.' }),
+      ]),
+      toggle,
     ]));
   }
 }
