@@ -73,38 +73,7 @@ class AccountSection {
   }
 
   themeBox() {
-    const account = this.app.account;
-    const select = el('select', { testid: 'theme-select', 'aria-label': 'Appearance' }, [
-      ['system', 'Device Theme'], ['light', 'Light'], ['dark', 'Dark'], ['red', 'Red'], ['violet', 'Purple'], ['custom', 'Custom'],
-    ].map(([value, text]) => el('option', { value, text })));
-    select.value = account.theme || 'system';
-    const last = account.theme_custom || { accent: '#1f6feb', base: 'dark' };
-    const colour = el('input', { type: 'color', testid: 'theme-colour', value: last.accent, 'aria-label': 'Theme colour' });
-    const base = el('select', { testid: 'theme-base', 'aria-label': 'Background' }, [['dark', 'Dark'], ['light', 'Light']].map(([value, text]) => el('option', { value, text })));
-    base.value = last.base;
-    const save = (theme, custom) => this.app.run(async () => {
-      const saved = await this.app.api.setPreferences(custom ? { theme, custom } : { theme });
-      account.theme = saved.theme;
-      if (saved.custom) account.theme_custom = saved.custom;
-      this.app.applyTheme(saved.theme, account.theme_custom);
-      this.app.status.success('Appearance saved.');
-    });
-    // The colours show as they are picked; Save keeps them.
-    const preview = () => this.app.applyTheme('custom', { accent: colour.value, base: base.value });
-    colour.addEventListener('input', preview);
-    base.addEventListener('change', preview);
-    const customBox = el('div', { className: 'row', testid: 'theme-custom' }, [
-      field('Colour', colour), field('Background', base),
-      el('button', { type: 'button', testid: 'theme-custom-save', text: 'Save colours', onclick: () => save('custom', { accent: colour.value, base: base.value }) }),
-    ]);
-    const show = () => { customBox.hidden = select.value !== 'custom'; };
-    select.addEventListener('change', () => {
-      show();
-      if (select.value === 'custom') preview();
-      else save(select.value);
-    });
-    show();
-    return el('div', { className: 'subpanel' }, [el('h3', { text: 'Appearance' }), field('Colours', select), customBox]);
+    return appearanceBox(this.app); // theme-custom.js
   }
 
   twoFactorBox() {
