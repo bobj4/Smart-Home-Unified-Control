@@ -30,12 +30,19 @@ class DeviceSettings {
       el('option', { value: '', text: 'All types' }),
       ...types.map((t) => el('option', { value: t, text: DEVICE_TYPE_LABELS[t] || t })),
     ]);
-    filter.addEventListener('change', () => {
+    // Search by name, room, brand, type or network address (IP or MAC).
+    const search = el('input', { type: 'search', testid: 'device-search', placeholder: 'Name, room, brand, IP or MAC', 'aria-label': 'Search devices' });
+    const haystack = new Map(devices.map((d) => [d.id, [d.name, d.room, d.integration, DEVICE_TYPE_LABELS[d.type] || d.type, d.network && d.network.ip, d.network && d.network.mac].filter(Boolean).join(' ').toLowerCase()]));
+    const apply = () => {
+      const words = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
       rows.querySelectorAll('[data-testid="device-row"]').forEach((row) => {
-        row.hidden = Boolean(filter.value) && row.dataset.deviceType !== filter.value;
+        const text = haystack.get(row.dataset.deviceId) || '';
+        row.hidden = (Boolean(filter.value) && row.dataset.deviceType !== filter.value) || !words.every((w) => text.includes(w));
       });
-    });
-    const tools = [field('Show', filter)];
+    };
+    filter.addEventListener('change', apply);
+    search.addEventListener('input', apply);
+    const tools = [field('Search', search), field('Show', filter)];
     if (!admin) {
       container.append(roomList, el('div', { className: 'actions' }, tools), rows);
       return;

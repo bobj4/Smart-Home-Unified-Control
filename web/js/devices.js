@@ -87,7 +87,11 @@ class DevicesView {
       this.root.replaceChildren(el('p', { className: 'empty', testid: 'devices-empty', text: 'No devices yet. An admin can add them.' }));
       return;
     }
-    const groupList = this.groupList || [];
+    const allGroups = this.groupList || [];
+    if (!this.filters) this.filters = new DeviceFilters(this);
+    this.filters.setTypes([...devices.map((d) => d.type), ...allGroups.map((g) => this.groupDevice(g).type)]);
+    const shown = (item) => this.filters.matches(item);
+    const groupList = allGroups.filter((g) => shown(this.groupDevice(g)));
     const apart = Boolean(this.display && this.display.show_grouped_devices);
     // Default: a group is one tile in its room, and its devices are not
     // listed there (open them with the group's ⋯ button).
@@ -98,7 +102,7 @@ class DevicesView {
       rooms.get(room).push(tile);
     };
     if (!apart) groupList.forEach((g) => add(g.room || '', this.groupTile(g)));
-    devices.filter((d) => !grouped.has(d.id)).forEach((d) => add(displayRoom(d), this.card(d)));
+    devices.filter((d) => !grouped.has(d.id) && shown(d)).forEach((d) => add(displayRoom(d), this.card(d)));
     const names = orderRooms([...rooms.keys()], this.roomOrder);
     const top = apart ? this.groups.section(groupList) : this.groups.hint(groupList);
     const layout = el('button', {
@@ -108,7 +112,14 @@ class DevicesView {
         this.layoutEditor.open(names);
       },
     });
-    this.root.replaceChildren(el('div', { className: 'devices-top' }, [top, layout].filter(Boolean)), ...names.map((room) => roomSection(this, room, rooms.get(room))));
+    const none = names.length === 0 && this.filters.active ? el('p', { className: 'empty', testid: 'filter-empty' }, [
+      'No devices match. ', el('button', { type: 'button', className: 'link', testid: 'filter-clear', text: 'Clear filters', onclick: () => this.filters.clear() }),
+    ]) : null;
+    // The filter bar stays put (keeping focus while typing); the rest is redrawn.
+    const bar = this.filters.element;
+    if (bar.parentNode !== this.root) this.root.replaceChildren(bar);
+    while (this.root.lastChild !== bar) this.root.lastChild.remove();
+    this.root.append(...[el('div', { className: 'devices-top' }, [top, layout].filter(Boolean)), none, ...names.map((room) => roomSection(this, room, rooms.get(room)))].filter(Boolean));
   }
 
   /** A group as a device for the card and the light settings window. */

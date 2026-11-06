@@ -132,6 +132,7 @@ def test_layout_defaults_to_thermostats_first(client, owner, login):
     assert r.json() == {
         "room_order": ["Thermostats"],
         "collapsed": [],
+        "filters": {"text": "", "type": "", "on": False},
         "screen": "wide",
         "thermostats_room": "Thermostats",
     }
