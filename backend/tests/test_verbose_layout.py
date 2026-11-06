@@ -135,6 +135,7 @@ def test_layout_defaults_to_thermostats_first(client, owner, login):
         "filters": {"text": "", "type": "", "on": False},
         "screen": "wide",
         "thermostats_apart": False,
+        "doors_apart": False,
         "grid": {"columns": 2, "sizes": {}},
         "thermostats_room": "Thermostats",
     }

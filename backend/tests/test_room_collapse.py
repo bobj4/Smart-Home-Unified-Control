@@ -34,6 +34,7 @@ def test_collapsed_and_screens_api(client, owner, login, csrf):
         "filters": {"text": "", "type": "", "on": False},
         "screen": "phone",
         "thermostats_apart": False,
+        "doors_apart": False,
         "grid": {"columns": 1, "sizes": {}},
         "thermostats_room": "Thermostats",
     }
