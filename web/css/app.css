@@ -243,6 +243,9 @@ body:has(.overlay:not([hidden])) .layout-open { display: none; }
 /* TV remote */
 .overlay { position: fixed; inset: 0; z-index: 10; background: rgba(0, 0, 0, 0.55); display: grid; place-items: center; padding: 12px; }
 .remote { width: 100%; max-width: 360px; max-height: calc(100vh - 24px); overflow-y: auto; background: #1d2027; color: #e8eaed; border-radius: 28px; padding: 18px; display: grid; gap: 14px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4); }
+/* A popup that leaves the page usable (https-restart.js). */
+.restart-popup { position: fixed; right: 16px; bottom: 16px; z-index: 11; width: calc(100% - 32px); }
+.restart-popup[hidden] { display: none; }
 .remote .field { color: #9aa1ad; }
 .remote input, .remote select { background: #2a2e37; border-color: #3a3f4a; color: #e8eaed; }
 .remote-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }

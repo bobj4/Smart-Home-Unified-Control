@@ -4,6 +4,9 @@ Owner of any home only (like the login rules). A change takes effect when
 the server is restarted with scripts/serve.py.
 """
 
+import os
+import signal
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -221,3 +224,54 @@ def switch_https(
         details={"enabled": body.enabled},
     )
     return _out(db, request)
+
+
+# ------------------------------------------------------------ restart
+
+# Files container engines leave in a container (Docker, Podman): there,
+# the restart policy starts the app again after it stops.
+CONTAINER_MARKERS = ("/.dockerenv", "/run/.containerenv")
+
+
+def restart_available() -> bool:
+    """Whether the app is started again by itself after it stops."""
+    return any(Path(marker).exists() for marker in CONTAINER_MARKERS)
+
+
+def _stop_server() -> None:
+    """Stop the way `docker stop` does; the restart policy starts it again."""
+    os.kill(os.getpid(), signal.SIGTERM)
+
+
+@router.get("/restart")
+def get_restart(
+    user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    _require_owner_somewhere(db, user)
+    return {"available": restart_available()}
+
+
+@router.post("/restart", dependencies=[Depends(require_csrf)])
+def restart_server(
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Restart the app so an HTTPS change takes effect (a second later, so
+    this answer still reaches the browser)."""
+    _require_owner_somewhere(db, user)
+    if not restart_available():
+        raise HTTPException(
+            status_code=409,
+            detail="The app cannot restart itself here: restart the server "
+            "(deploy/linux/smarthome restart, or scripts/serve.py again).",
+        )
+    record_event(
+        db,
+        "server_restart_requested",
+        user_id=user.id,
+        ip_address=client_ip(request),
+        details={"https": bool(settings(db).https_enabled)},
+    )
+    threading.Timer(1.0, _stop_server).start()
+    return {"restarting": True, "https": bool(settings(db).https_enabled)}
