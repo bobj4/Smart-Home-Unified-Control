@@ -14,7 +14,7 @@ import json
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -37,7 +37,7 @@ class Filters(BaseModel):
     model_config = ConfigDict(extra="forbid")
     text: str = Field(default="", max_length=100)
     type: str = Field(default="", max_length=30, pattern=r"^[a-z_]*$")
-    on: bool = False
+    on: StrictBool = False
 
 
 class Layout(BaseModel):
@@ -45,6 +45,7 @@ class Layout(BaseModel):
     room_order: list[str] | None = Field(default=None, max_length=200)
     collapsed: list[str] | None = Field(default=None, max_length=200)
     filters: Filters | None = None
+    thermostats_apart: StrictBool | None = None
     screen: Screen = "wide"
 
 
@@ -90,6 +91,7 @@ def _out(db: Session, user_id: str, home_id: str, screen: str) -> dict[str, Any]
         if row and row.filters
         else Filters().model_dump(),
         "screen": screen,
+        "thermostats_apart": bool(row.thermostats_apart) if row else False,
         "thermostats_room": THERMOSTATS_ROOM,
     }
 
@@ -115,8 +117,11 @@ def set_layout(
 ) -> dict[str, Any]:
     """The room order, the folded rooms, or both, for one screen type."""
     _require_member_or_guest(db, user, home_id)
-    if body.room_order is None and body.collapsed is None and body.filters is None:
-        raise HTTPException(422, "Send room_order, collapsed or filters")
+    changes = (body.room_order, body.collapsed, body.filters, body.thermostats_apart)
+    if all(change is None for change in changes):
+        raise HTTPException(
+            422, "Send room_order, collapsed, filters or thermostats_apart"
+        )
     current = _out(db, user.id, home_id, body.screen)
     row = _row(db, user.id, home_id, body.screen)
     if row is None:
@@ -133,6 +138,8 @@ def set_layout(
         row.collapsed = json.dumps(_names(body.collapsed))
     if body.filters is not None:
         row.filters = json.dumps(body.filters.model_dump())
+    if body.thermostats_apart is not None:
+        row.thermostats_apart = body.thermostats_apart
     db.commit()
     if body.room_order is not None:  # folding a room open or shut is not audited
         record_event(

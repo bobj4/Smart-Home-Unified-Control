@@ -203,6 +203,7 @@ class SmartHomeApp {
       byTestId(`view-${name}`).hidden = name !== view;
       byTestId(`nav-${name}`).classList.toggle('active', name === view);
     }
+    byTestId('nav-thermostats').classList.toggle('active', view === 'devices' && sub === 'thermostats');
     byTestId('home-name').textContent = this.home ? this.home.name : 'No home yet';
     if (!this.home) return;
     this.api.guest = this.isGuest(); // guests use the guest routes

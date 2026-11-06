@@ -57,6 +57,7 @@ class RoomLayoutEditor {
       ]),
       el('p', { className: 'muted', text: `Only your Devices page on ${this.view.layoutScreen === 'phone' ? 'phones' : 'larger screens'} changes; everyone has their own order.` }),
       el('ol', { className: 'layout-list' }, rows),
+      this.thermostatsChoice(),
       el('div', { className: 'row' }, [
         el('button', { type: 'button', testid: 'layout-save', text: 'Save', onclick: () => this.save(this.rooms) }),
         el('button', { type: 'button', className: 'secondary', testid: 'layout-reset', text: 'Reset', onclick: () => this.save([THERMOSTATS_ROOM]) }),
@@ -65,11 +66,21 @@ class RoomLayoutEditor {
     ]));
   }
 
+  /** Only for homes with thermostats: keep them on their own page. */
+  thermostatsChoice() {
+    this.apart = null;
+    if (!(this.view.lastDevices || []).some((d) => d.type === 'thermostat')) return null;
+    this.apart = el('input', { type: 'checkbox', testid: 'layout-thermostats-apart', checked: Boolean(this.view.thermostatsApart) });
+    return el('label', { className: 'check' }, [this.apart, ' Thermostats only on their own page (the Thermostats link)']);
+  }
+
   save(order) {
     const { app } = this.view;
     return app.run(async () => {
-      const saved = await app.api.setLayout(app.home.id, { room_order: order, screen: this.view.layoutScreen });
+      const apart = this.apart ? this.apart.checked : this.view.thermostatsApart;
+      const saved = await app.api.setLayout(app.home.id, { room_order: order, screen: this.view.layoutScreen, thermostats_apart: apart });
       this.view.roomOrder = saved.room_order;
+      this.view.thermostatsApart = saved.thermostats_apart;
       this.close();
       this.view.render(this.view.lastDevices);
       app.status.success('Room order saved.');
@@ -99,6 +110,7 @@ async function loadLayout(view, homeId) {
     view.roomOrder = layout.room_order;
     view.collapsed = new Set(layout.collapsed || []);
     view.layoutFilters = layout.filters;
+    view.thermostatsApart = Boolean(layout.thermostats_apart);
   } catch (error) {
     view.roomOrder = null; // the default order
     view.collapsed = new Set();
