@@ -88,6 +88,7 @@ class HeaterPanel {
         line('Allowed by the heater', s.min_set_point != null ? `${s.min_set_point}–${s.max_set_point} °F` : 'not reported'),
         line('Wi-Fi signal', s.wifi != null ? String(s.wifi) : 'not reported'),
         line('Alerts', String(s.alerts || 0)),
+        line('Updated from Rheem', 'every 5 minutes (Rheem limits how often it is asked)'),
       ]),
     ]));
     this.overlay.hidden = false;

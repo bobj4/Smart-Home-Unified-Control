@@ -8,7 +8,6 @@ refuses logins with HTTP 429 when they come too often.
 
 import asyncio
 import concurrent.futures
-import hashlib
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
@@ -27,8 +26,8 @@ from pyeconet.errors import (
 TIMEOUT_SECONDS = 30
 SESSION_SECONDS = 6 * 3600
 RATE_LIMITED = "Rheem is refusing logins for now (too many attempts). Wait 15 minutes, then try once."
-# hash of (email, password) -> (user token, account id, time of login)
-_sessions: dict[str, tuple[str, str, float]] = {}
+# (email, password) -> (user token, account id, time of login)
+_sessions: dict[tuple[str, str], tuple[str, str, float]] = {}
 
 
 class RheemError(Exception):
@@ -86,17 +85,49 @@ class RheemHeater:
         }
 
 
+def heater_mode(heater: WaterHeater) -> str | None:
+    """The heater's mode, read from the name of its @MODE value.
+
+    pyeconet's own `mode` counts along its list of the modes it knows, so
+    a mode name it does not know earlier in the heater's list shifts every
+    later mode (or fails): the wrong mode, and with it the wrong status."""
+    info = heater._equipment_info  # noqa: SLF001 - the raw EcoNet values
+    enabled = info.get("@ENABLED")
+    if isinstance(enabled, dict) and enabled.get("value") == 0:
+        return "off"
+    raw = info.get("@MODE")
+    if isinstance(raw, dict):
+        names = (raw.get("constraints") or {}).get("enumText") or []
+        value = raw.get("value")
+        text = raw.get("status")
+        if isinstance(value, int) and 0 <= value < len(names):
+            text = names[value]
+        if isinstance(text, str) and text.strip():
+            found = WaterHeaterOperationMode.by_string(text)
+            if found is WaterHeaterOperationMode.ELECTRIC_GAS:
+                gas = heater.generic_type in ("gasWaterHeater", "tanklessWaterHeater")
+                found = (
+                    WaterHeaterOperationMode.GAS
+                    if gas
+                    else WaterHeaterOperationMode.ELECTRIC_MODE
+                )
+            if found is not WaterHeaterOperationMode.UNKNOWN:
+                return found.name.lower()
+            return "_".join(text.lower().split())[:30]
+    mode = _safe(lambda: heater.mode, None)
+    return mode.name.lower() if mode is not None else None
+
+
 def heater_from_equipment(heater: WaterHeater) -> RheemHeater:
     low, high = heater.set_point_limits
-    mode = heater.mode
     return RheemHeater(
         serial=str(heater.serial_number),
         name=str(heater.device_name),
         set_point=int(heater.set_point),
         min_set_point=int(low),
         max_set_point=int(high),
-        mode=mode.name.lower() if mode is not None else None,
-        enabled=heater.enabled,
+        mode=heater_mode(heater),
+        enabled=_safe(lambda: heater.enabled, None),
         running=is_running(_safe(lambda: heater.running_state, None)),
         connected=bool(heater.connected),
         modes=tuple(m.name.lower() for m in _safe(lambda: heater.modes, [])),
@@ -214,8 +245,9 @@ class PyeconetClient:
         except (PyeconetError, OSError, TimeoutError) as error:
             raise RheemError(f"EcoNet request failed: {type(error).__name__}") from None
 
-    def _key(self) -> str:
-        return hashlib.sha256(f"{self._email}\0{self._password}".encode()).hexdigest()
+    def _key(self) -> tuple[str, str]:
+        # Kept in memory only, like the login itself; never stored or logged.
+        return (self._email, self._password)
 
     async def _login(self, reuse: bool = True) -> tuple[EcoNetApiInterface, bool]:
         """Return a logged-in API and whether it came from a saved login."""
