@@ -14,7 +14,15 @@ import segno
 from app.models import AuditEvent, Device
 
 ACCOUNT = "/api/v1/account"
-INTEGRATION_IDS = ["simulated", "cync", "samsung_tv", "rheem_econet", "frigate"]
+# Roku added with the owner's approval (new integrations, 2026-11-05).
+INTEGRATION_IDS = [
+    "simulated",
+    "cync",
+    "samsung_tv",
+    "roku_tv",
+    "rheem_econet",
+    "frigate",
+]
 
 
 def home_url(home_id, suffix=""):

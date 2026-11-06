@@ -14,7 +14,14 @@ import time
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import cync_home, integration_status, rheem_home, samsung_home, verbose
+from app import (
+    cync_home,
+    integration_status,
+    rheem_home,
+    roku_home,
+    samsung_home,
+    verbose,
+)
 from app.db_config import SessionLocal
 from app.features import integration_enabled
 from app.integrations import samsung
@@ -114,6 +121,7 @@ def refresh_all(db: Session) -> None:
     for home_id in db.scalars(select(Home.id)).all():
         steps = (
             (refresh_tvs, "samsung_tv"),
+            (roku_home.refresh, "roku_tv"),
             (refresh_rheem, "rheem_econet"),
             (refresh_cync, "cync"),
         )

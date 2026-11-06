@@ -24,6 +24,7 @@ import pyotp
 from playwright.sync_api import expect
 
 from app.auth import verify_password
+from app.features import INTEGRATIONS
 from app.models import Device, DeviceSafetyLimits, HomeMembership, User
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -633,7 +634,8 @@ def test_ui_integrations_owner_turns_brands_on_and_off(
     page = open_page()
     ui_login(page, owner)
     section = go_settings(page, "integrations")
-    expect(section.get_by_test_id("integration-row")).to_have_count(5)
+    # One row per integration (the list grows with approved integrations).
+    expect(section.get_by_test_id("integration-row")).to_have_count(len(INTEGRATIONS))
     for integration_id in (
         "simulated",
         "cync",
@@ -689,9 +691,9 @@ def test_ui_integrations_read_only_for_admin(open_page, owner, make_user):
     page = open_page()
     ui_login(page, admin)
     section = go_settings(page, "integrations")
-    expect(section.get_by_test_id("integration-row")).to_have_count(5)
+    expect(section.get_by_test_id("integration-row")).to_have_count(len(INTEGRATIONS))
     toggles = section.get_by_test_id("integration-toggle")
-    for i in range(5):
+    for i in range(len(INTEGRATIONS)):
         expect(toggles.nth(i)).to_be_disabled()
 
 
