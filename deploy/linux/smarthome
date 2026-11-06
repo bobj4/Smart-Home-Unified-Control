@@ -315,6 +315,7 @@ cmd_remove_service() {
 
 refresh_service() {  # the unit names the compose files: keep it current
     if service_installed; then cmd_install_service; fi
+    cert_units_install  # certificate import from the web server (certificates.sh)
 }
 
 # ------------------------------------------------------------------ install
@@ -424,6 +425,7 @@ cmd_install() {
     wait_healthy
     sync_forwarded
     if [[ "$service" == "yes" ]]; then cmd_install_service; fi
+    cert_units_install
     [[ -n "$new" ]] && confirm_key_saved "$new"
 
     say ""
