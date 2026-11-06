@@ -36,6 +36,7 @@ from app.routes import (
     safety_limits,
     samsung,
     thermostat,
+    tv_sources,
     verbose,
 )
 from app.verbose import VerboseRequestMiddleware
@@ -119,6 +120,7 @@ app.include_router(guest.router)
 app.include_router(cync.router)
 app.include_router(home_security.router)
 app.include_router(samsung.router)
+app.include_router(tv_sources.router)
 app.include_router(frigate.settings_router)
 app.include_router(frigate.router)
 

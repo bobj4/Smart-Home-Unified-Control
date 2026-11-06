@@ -164,6 +164,11 @@ class SmartHomeAPI {
   sendTvPin(homeId, deviceId, pin) { return this.post(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}/pin`, { pin }); }
   getTvApps(homeId, deviceId) { return this.get(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}/apps`); }
   setQuickApps(homeId, deviceId, apps) { return this.put(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}/quick-apps`, { apps }); }
+  getSmartThings(homeId) { return this.get(`/homes/${enc(homeId)}/integrations/samsung_tv/smartthings`); }
+  connectSmartThings(homeId, token) { return this.put(`/homes/${enc(homeId)}/integrations/samsung_tv/smartthings`, { token }); }
+  disconnectSmartThings(homeId) { return this.del(`/homes/${enc(homeId)}/integrations/samsung_tv/smartthings`); }
+  linkTv(homeId, deviceId, smartthingsId) { return this.put(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}/smartthings`, { smartthings_id: smartthingsId }); }
+  getTvSources(homeId, deviceId) { return this.get(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}/sources`); }
   removeTv(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}`); }
 
   // Frigate: server settings (owner) and events (members)

@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import credentials
+from app import credentials, tv_sources
 from app.features import integration_enabled
 from app.integrations import samsung
 from app.models import Device
@@ -191,6 +191,12 @@ def send_tv_command(
     db: Session, device: Device, command: str, payload: dict[str, Any]
 ) -> None:
     """Carry out an already validated TV command on the real TV."""
+    if command == "set_source":  # an input by name: through SmartThings
+        try:
+            tv_sources.set_tv_source(db, device, payload["source"])
+        except tv_sources.SourcesUnavailable as error:
+            raise SamsungUnavailable(error.status_code, error.reason) from None
+        return
     settings = config(device)
     if not settings["paired"]:
         raise SamsungUnavailable(409, "pair the TV first (Settings > Integrations)")
