@@ -1,4 +1,4 @@
-"""GE Cync lights and plugs, through the pycync library (Cync's cloud).
+"""GE Cync lights, plugs and wall switches, through the pycync library (Cync's cloud).
 
 Cync has no published API; pycync follows what the Cync app does. The
 functions here are the only way the app talks to Cync; tests replace them.
@@ -91,6 +91,12 @@ def is_thermostat(device: Any) -> bool:
     return getattr(device, "device_type", None) == DeviceType.THERMOSTAT
 
 
+def is_switch(device: Any) -> bool:
+    """A wall switch or dimmer: pycync gives it no class of its own, but it
+    takes the same on/off (and brightness) commands as a light."""
+    return getattr(device, "device_type", None) == DeviceType.SWITCH
+
+
 def _info(device: Any) -> CyncDeviceInfo:
     if is_thermostat(device):
         return CyncDeviceInfo(
@@ -105,15 +111,18 @@ def _info(device: Any) -> CyncDeviceInfo:
             cloud_id=int(device.device_id),
         )
     caps = device.capabilities
-    is_light = isinstance(device, CyncLight)
+    # A dimmer switch works its lights: shown as a light with brightness. An
+    # on/off switch is shown like a plug (on and off only).
+    dimmer = is_switch(device) and CyncCapability.DIMMING in caps
+    is_light = isinstance(device, CyncLight) or dimmer
     return CyncDeviceInfo(
         id=str(device.unique_id),
         name=str(device.name or "Cync device")[:100],
         kind="light" if is_light else "plug",
         online=bool(device.is_online),
         dimming=is_light and CyncCapability.DIMMING in caps,
-        white=is_light and CyncCapability.CCT_COLOR in caps,
-        color=is_light and CyncCapability.RGB_COLOR in caps,
+        white=isinstance(device, CyncLight) and CyncCapability.CCT_COLOR in caps,
+        color=isinstance(device, CyncLight) and CyncCapability.RGB_COLOR in caps,
         mac=_mac(getattr(device, "mac", None)),
     )
 
@@ -225,7 +234,7 @@ async def _devices(tokens: dict[str, Any]) -> tuple[list[CyncDeviceInfo], dict]:
         found = [
             _info(d)
             for d in api.get_devices()
-            if isinstance(d, CyncLight | CyncPlug) or is_thermostat(d)
+            if isinstance(d, CyncLight | CyncPlug) or is_thermostat(d) or is_switch(d)
         ]
         return found, _tokens(auth.user)
 
