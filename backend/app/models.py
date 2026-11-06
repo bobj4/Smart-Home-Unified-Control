@@ -504,6 +504,8 @@ class RoomLayout(Base):
     )
     collapsed: Mapped[str | None] = mapped_column(Text)  # JSON list of room names
     filters: Mapped[str | None] = mapped_column(Text)  # JSON {"text", "type", "on"}
+    # Rooms side by side: JSON {"columns": 1-4, "sizes": {room: columns wide}}.
+    grid: Mapped[str | None] = mapped_column(Text)
     # Thermostats only on their own page (#/devices/thermostats), not with the rest.
     thermostats_apart: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa_false()

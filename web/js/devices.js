@@ -122,7 +122,7 @@ class DevicesView {
     const bar = this.filters.element;
     if (bar.parentNode !== this.root) this.root.replaceChildren(bar);
     while (this.root.lastChild !== bar) this.root.lastChild.remove();
-    this.root.append(...[el('div', { className: 'devices-top' }, [top, layout].filter(Boolean)), none, ...names.map((room) => roomSection(this, room, rooms.get(room)))].filter(Boolean));
+    this.root.append(...[el('div', { className: 'devices-top' }, [top, layout].filter(Boolean)), none, roomsGrid(this, names.map((room) => roomSection(this, room, rooms.get(room))))].filter(Boolean));
   }
 
   /** A group as a device for the card and the light settings window. */
