@@ -172,6 +172,10 @@ class SmartHomeAPI {
   disconnectSmartThings(homeId) { return this.del(`/homes/${enc(homeId)}/integrations/samsung_tv/smartthings`); }
   linkTv(homeId, deviceId, smartthingsId) { return this.put(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}/smartthings`, { smartthings_id: smartthingsId }); }
   getTvSources(homeId, deviceId) { return this.get(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}/sources`); }
+  getHue(homeId) { return this.get(`/homes/${enc(homeId)}/integrations/hue`); }
+  pairHue(homeId, host) { return this.post(`/homes/${enc(homeId)}/integrations/hue/pair`, { host }); }
+  syncHue(homeId) { return this.post(`/homes/${enc(homeId)}/integrations/hue/sync`); }
+  unpairHue(homeId) { return this.del(`/homes/${enc(homeId)}/integrations/hue`); }
   getRokus(homeId) { return this.get(`/homes/${enc(homeId)}/integrations/roku_tv/tvs`); }
   addRoku(homeId, tv) { return this.post(`/homes/${enc(homeId)}/integrations/roku_tv/tvs`, tv); }
   removeRoku(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/integrations/roku_tv/tvs/${enc(deviceId)}`); }

@@ -27,6 +27,7 @@ from app.routes import (
     home_security,
     homes,
     https_admin,
+    hue,
     integrations,
     layout,
     login_failures,
@@ -126,6 +127,7 @@ app.include_router(cync.router)
 app.include_router(home_security.router)
 app.include_router(samsung.router)
 app.include_router(roku.router)
+app.include_router(hue.router)
 app.include_router(tv_sources.router)
 app.include_router(background.router)
 app.include_router(motd.router)

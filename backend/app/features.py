@@ -38,6 +38,13 @@ INTEGRATIONS: tuple[Integration, ...] = (
         True,
     ),
     Integration(
+        "hue",
+        "Philips Hue",
+        "Hue lights and smart plugs, through the Hue Bridge on your network.",
+        False,
+        True,
+    ),
+    Integration(
         "samsung_tv", "Samsung TV", "Samsung smart TVs on your network.", False, True
     ),
     Integration(
