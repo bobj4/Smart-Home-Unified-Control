@@ -41,6 +41,13 @@ INTEGRATIONS: tuple[Integration, ...] = (
         "samsung_tv", "Samsung TV", "Samsung smart TVs on your network.", False, True
     ),
     Integration(
+        "roku_tv",
+        "Roku TV",
+        "Roku TVs and players on your network (TCL, Hisense, Sharp and more).",
+        False,
+        True,
+    ),
+    Integration(
         "rheem_econet",
         "Rheem EcoNet",
         "Rheem water heaters through EcoNet.",

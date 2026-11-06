@@ -178,7 +178,7 @@ class HomeSettings {
       toggle.addEventListener('change', () => this.app.run(async () => {
         try {
           const saved = await this.app.api.setIntegration(this.app.home.id, row.id, toggle.checked);
-          if (['rheem_econet', 'samsung_tv', 'frigate', 'cync'].includes(saved.id)) {
+          if (['rheem_econet', 'samsung_tv', 'roku_tv', 'frigate', 'cync'].includes(saved.id)) {
             this.app.settings.shown = null; // redraw to show or hide the account panel
             this.app.route();
           }
@@ -219,6 +219,10 @@ class HomeSettings {
     const samsungRow = rows.find((row) => row.id === 'samsung_tv');
     if (samsungRow && samsungRow.enabled && this.app.can('operator')) {
       await new SamsungPanel(this.app).render(container);
+    }
+    const rokuRow = rows.find((row) => row.id === 'roku_tv');
+    if (rokuRow && rokuRow.enabled && this.app.can('operator')) {
+      await new RokuPanel(this.app).render(container);
     }
 
   }

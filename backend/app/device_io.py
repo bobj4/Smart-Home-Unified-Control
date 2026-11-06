@@ -11,6 +11,8 @@ from app.cync_home import send_command as send_cync_command
 from app.models import Device
 from app.rheem_home import RheemUnavailable
 from app.rheem_home import send_command as send_rheem_command
+from app.roku_home import RokuUnavailable
+from app.roku_home import send_tv_command as send_roku_command
 from app.samsung_home import SamsungUnavailable, send_tv_command
 from app.verbose import ms_since, note_apart
 
@@ -30,7 +32,7 @@ def send_to_device(
 ) -> None:
     """Raise DeviceUnavailable if the device refused or could not be reached;
     the caller then leaves the stored state unchanged."""
-    if device.integration not in ("rheem_econet", "samsung_tv", "cync"):
+    if device.integration not in ("rheem_econet", "samsung_tv", "roku_tv", "cync"):
         return  # simulated: nothing to send
     start = time.monotonic()
     result: dict[str, Any] = {"result": "ok"}
@@ -69,6 +71,11 @@ def _send(
         try:
             send_rheem_command(db, device, command, payload, state)
         except RheemUnavailable as error:
+            raise DeviceUnavailable(error.status_code, error.reason) from None
+    elif device.integration == "roku_tv":
+        try:
+            send_roku_command(device, command, payload)
+        except RokuUnavailable as error:
             raise DeviceUnavailable(error.status_code, error.reason) from None
     elif device.integration == "samsung_tv":
         try:
