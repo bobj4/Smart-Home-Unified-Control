@@ -217,7 +217,10 @@ body:has(.overlay:not([hidden])) .layout-open { display: none; }
 .dpad .dpad-select { grid-area: select; background: #1f6feb; border-color: #1f6feb; }
 .dpad .dpad-right { grid-area: right; }
 .dpad .dpad-down { grid-area: down; }
-.remote-apps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+/* Three to a row; a short last row shares the width evenly. */
+.remote-apps { display: flex; flex-wrap: wrap; gap: 6px; }
+.remote-apps > button { flex: 1 1 calc((100% - 12px) / 3); min-width: 0; }
+.quick-apps-list { display: grid; gap: 6px; max-height: 50vh; overflow-y: auto; }
 .remote .key:disabled, .remote .app:disabled { opacity: 0.35; }
 
 @media (max-width: 720px) {

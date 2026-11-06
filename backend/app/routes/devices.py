@@ -99,6 +99,9 @@ def _device_out(device: Device) -> dict[str, Any]:
         "protocol": caps.get("protocol")
         if device.integration == "samsung_tv"
         else None,
+        "quick_apps": (caps.get("quick_apps") or [])
+        if device.integration == "samsung_tv"
+        else None,
     }
 
 

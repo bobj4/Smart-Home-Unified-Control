@@ -61,7 +61,8 @@ class TvRemote {
       return;
     }
     const same = JSON.stringify(fresh.state || {}) === JSON.stringify(this.device.state)
-      && fresh.name === this.device.name;
+      && fresh.name === this.device.name
+      && JSON.stringify(fresh.quick_apps || []) === JSON.stringify(this.device.quick_apps || []);
     this.device = { ...fresh, state: { ...(fresh.state || {}) } };
     // Redraw only when something changed, so the open remote keeps its
     // buttons (and focus) between the 5-second refreshes.
@@ -86,6 +87,13 @@ class TvRemote {
     return !d || d.integration !== 'samsung_tv' || d.protocol === 'tizen';
   }
 
+  /** The quick-app buttons: [id, name, command]. The TV's chosen apps (⋯ on its tile), else the usual six. */
+  apps() {
+    const chosen = (this.device && this.device.quick_apps) || [];
+    if (chosen.length) return chosen.map((a) => [a.id, a.name, 'open_app']);
+    return TV_APPS.map(([id, name]) => [id, name, 'launch_app']);
+  }
+
   button(testid, text, onclick, { label, className = 'key', always = false } = {}) {
     return el('button', {
       type: 'button', className, testid, text, onclick,
@@ -97,7 +105,7 @@ class TvRemote {
     const s = this.state;
     const off = !s.on;
     const source = s.app
-      ? TV_APPS.find(([id]) => id === s.app)[1]
+      ? (this.apps().find(([id]) => id === s.app) || TV_APPS.find(([id]) => id === s.app) || [s.app, 'App'])[1]
       : (TV_INPUTS.find(([id]) => id === s.input) || [s.input, s.input])[1];
     const screen = el('div', { className: `tv-screen${off ? ' off' : ''}`, testid: 'remote-screen' }, [
       el('strong', { text: off ? 'Off' : source }),
@@ -160,7 +168,7 @@ class TvRemote {
       this.device.integration === 'simulated' ? field('Volume', level) : null,
       el('div', { className: 'remote-row' }, [field('Channel', channel), this.button('remote-channel-go', 'Go', goTo, { className: 'key' })]),
       field('Input', input),
-      this.canLaunchApps() ? el('div', { className: 'remote-apps', testid: 'remote-apps' }, TV_APPS.map(([id, name]) => this.button(`remote-app-${id}`, name, () => this.send('launch_app', { app: id }), { className: `app${s.app === id ? ' active' : ''}` }))) : null,
+      this.canLaunchApps() ? el('div', { className: 'remote-apps', testid: 'remote-apps' }, this.apps().map(([id, name, command]) => this.button(`remote-app-${id}`, name, () => this.send(command, command === 'open_app' ? { app_id: id } : { app: id }), { className: `app${s.app === id ? ' active' : ''}` }))) : null,
     ]);
     const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.testid : null;
     this.overlay.replaceChildren(panel);
