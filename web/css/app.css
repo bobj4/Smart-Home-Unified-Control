@@ -152,6 +152,12 @@ body:has(.overlay:not([hidden])) .layout-open { display: none; }
 .chip { border-radius: 999px; padding: 6px 12px; font-weight: 500; font-size: 0.9rem; }
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; display: grid; gap: 12px; box-shadow: var(--shadow); scroll-margin-top: 80px; min-width: 0; }
 .subpanel { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+/* Foldable sections (settings-sections.js). */
+.section-toggle { cursor: pointer; display: flex; align-items: center; gap: 8px; }
+.section-toggle::before { content: '▾'; color: var(--muted); transition: transform 0.15s; }
+.subpanel.collapsed > .section-toggle::before { transform: rotate(-90deg); }
+.subpanel.collapsed > :not(.section-toggle) { display: none !important; }
+.section-jump { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
 .field { display: grid; gap: 4px; font-size: 0.9rem; color: var(--muted); min-width: 0; }
 .field input, .field select { color: var(--text); width: 100%; }
 .grid-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 8px; }

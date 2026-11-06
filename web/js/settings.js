@@ -13,6 +13,13 @@ const SETTINGS_SECTIONS = [
   { id: 'activity', label: 'Activity log', intro: 'Logins, setting changes and device commands, newest first.', role: 'admin' },
 ];
 
+/** What a page shows: its text and the values of its fields. */
+function pageSignature(panel) {
+  if (!panel) return '';
+  const values = [...panel.querySelectorAll('input, select, textarea')].map((f) => (f.type === 'checkbox' ? String(f.checked) : f.value));
+  return `${panel.textContent}\u0000${values.join('\u0001')}`;
+}
+
 class SettingsView {
   constructor(app, root) {
     this.app = app;
@@ -46,7 +53,7 @@ class SettingsView {
         text: s.label,
       })));
     const panel = section(`settings-${current.id}`, current.label, current.intro);
-    // Live refresh redraws Integrations only while nothing has been typed.
+    // Live refresh redraws the page only while nothing has been typed.
     this.dirty = false;
     panel.addEventListener('input', () => { this.dirty = true; });
     const page = [menu, el('div', { className: 'settings-content' }, [panel])];
@@ -56,10 +63,16 @@ class SettingsView {
     this.drawToken = token;
     if (redraw && live) {
       // Built off screen and swapped in whole: no blank page, no jump. Not
-      // swapped if someone typed meanwhile or a newer draw started.
+      // swapped if someone typed meanwhile or a newer draw started, nor
+      // when nothing changed (the page stays exactly as it is).
+      const before = this.panel;
       await this.renderSection(current.id, panel);
-      if (token !== this.drawToken || this.dirty) {
-        if (token === this.drawToken) this.shown = null; // try again next tick
+      if (token !== this.drawToken || this.dirty || pageSignature(before) === pageSignature(panel)) {
+        if (before && before.isConnected) {
+          this.panel = before;
+          this.formsAtDraw = before.querySelectorAll('form').length;
+        }
+        if (token === this.drawToken) this.shown = key; // still showing this page
         return;
       }
       const { scrollX, scrollY } = window; // where it is now, not when loading began
@@ -88,7 +101,28 @@ class SettingsView {
     await new AdminSection(this.app).render(panel);
   }
 
-  renderSection(id, panel) {
+  /** Draw a page; pages with several sections get foldable headings. */
+  async renderSection(id, panel) {
+    await this.renderSectionBody(id, panel);
+    makeCollapsible(this.app, id, panel);
+    this.panel = panel;
+    this.formsAtDraw = panel.querySelectorAll('form').length;
+  }
+
+  /** Every page updates by itself (every third refresh, the Integrations
+   * page every refresh), but never while someone is typing, editing in
+   * place, has a popup open or is looking at a code shown once. */
+  liveDue() {
+    this.ticks = (this.ticks || 0) + 1;
+    const panel = this.panel;
+    if (!panel || !panel.isConnected || this.dirty) return false;
+    if (!panel.dataset.testid.endsWith('integrations') && this.ticks % 3 !== 0) return false;
+    if (panel.querySelector('.secret:not([hidden]), .codes, img.qr, [data-testid$="-confirm"]')) return false;
+    if (panel.querySelectorAll('form').length !== this.formsAtDraw) return false;
+    return !document.querySelector('.overlay:not([hidden])');
+  }
+
+  renderSectionBody(id, panel) {
     switch (id) {
       case 'account': return this.account.render(panel);
       case 'devices': return this.home.renderDevices(panel);

@@ -99,6 +99,8 @@ class User(Base):
     background_image: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
     background_type: Mapped[str | None] = mapped_column(String(20))
     motd_dismissed: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Settings sections this person folded shut: JSON list of "page/section".
+    settings_collapsed: Mapped[str | None] = mapped_column(Text)
     background_on: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa_false()
     )
