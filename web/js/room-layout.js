@@ -179,11 +179,26 @@ function roomSection(view, room, tiles) {
   return section;
 }
 
-/** Rooms side by side: the columns chosen in Edit layout (one on phones). */
+/** Rooms side by side: the columns chosen in Edit layout (one on phones).
+ * Packed like bricks: each room is as tall as it needs, and the next room
+ * moves up into any space beside a taller one (the grid's rows are a few
+ * pixels each, and each room spans as many as its height). */
+const MASONRY_ROW = 4; // px, matches grid-auto-rows in app.css
+
 function roomsGrid(view, sections) {
   const columns = (view.grid && view.grid.columns) || 1;
   const box = el('div', { className: 'rooms-grid', testid: 'rooms-grid', 'data-columns': String(columns) }, sections);
   box.style.setProperty('--room-columns', String(columns));
+  if (view.roomSizer) view.roomSizer.disconnect();
+  if (columns > 1 && window.ResizeObserver) {
+    const fit = (section) => {
+      const inner = section.firstElementChild ? section.scrollHeight : 0;
+      const margin = parseFloat(getComputedStyle(section).marginTop) || 0;
+      section.style.gridRowEnd = `span ${Math.max(1, Math.ceil((inner + margin) / MASONRY_ROW))}`;
+    };
+    view.roomSizer = new ResizeObserver((entries) => entries.forEach((entry) => fit(entry.target)));
+    sections.forEach((section) => view.roomSizer.observe(section));
+  }
   return box;
 }
 

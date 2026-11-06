@@ -108,9 +108,11 @@ input[type="color"].swatch::-moz-color-swatch { border: none; border-radius: 50%
 .garage-state { font-weight: 600; }
 .garage-state.open, .garage-state.opening { color: var(--warm); }
 .rooms-grid { display: grid; grid-template-columns: repeat(var(--room-columns, 1), minmax(0, 1fr)); column-gap: 24px; align-items: start; }
+/* Side by side: bricks (room-layout.js sets each room's row span). */
+.rooms-grid:not([data-columns="1"]) { grid-auto-rows: 4px; grid-auto-flow: row dense; }
 @media (max-width: 700px) {
-  .rooms-grid { grid-template-columns: 1fr; }
-  .rooms-grid > .room { grid-column: auto !important; }
+  .rooms-grid { grid-template-columns: 1fr; grid-auto-rows: auto !important; }
+  .rooms-grid > .room { grid-column: auto !important; grid-row-end: auto !important; }
 }
 .layout-row select { max-width: 9rem; }
 .room { margin-top: 20px; }
