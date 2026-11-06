@@ -29,6 +29,7 @@ from app.routes import (
     https_admin,
     hue,
     integrations,
+    kasa,
     layout,
     lg,
     login_failures,
@@ -131,6 +132,7 @@ app.include_router(home_security.router)
 app.include_router(samsung.router)
 app.include_router(roku.router)
 app.include_router(hue.router)
+app.include_router(kasa.router)
 app.include_router(lg.router)
 app.include_router(ratgdo.router)
 app.include_router(tv_sources.router)

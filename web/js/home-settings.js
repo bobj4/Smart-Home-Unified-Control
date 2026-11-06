@@ -182,7 +182,7 @@ class HomeSettings {
       toggle.addEventListener('change', () => this.app.run(async () => {
         try {
           const saved = await this.app.api.setIntegration(this.app.home.id, row.id, toggle.checked);
-          if (['rheem_econet', 'samsung_tv', 'lg_tv', 'roku_tv', 'hue', 'ratgdo', 'frigate', 'cync'].includes(saved.id)) {
+          if (['rheem_econet', 'samsung_tv', 'lg_tv', 'roku_tv', 'hue', 'kasa', 'ratgdo', 'frigate', 'cync'].includes(saved.id)) {
             this.app.settings.shown = null; // redraw to show or hide the account panel
             this.app.route();
           }
@@ -227,6 +227,10 @@ class HomeSettings {
     const hueRow = rows.find((row) => row.id === 'hue');
     if (hueRow && hueRow.enabled && this.app.can('operator')) {
       await new HuePanel(this.app).render(container);
+    }
+    const kasaRow = rows.find((row) => row.id === 'kasa');
+    if (kasaRow && kasaRow.enabled && this.app.can('operator')) {
+      await new KasaPanel(this.app).render(container);
     }
     const lgRow = rows.find((row) => row.id === 'lg_tv');
     if (lgRow && lgRow.enabled && this.app.can('operator')) {
