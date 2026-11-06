@@ -21,6 +21,7 @@ from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
 from app.device_io import DeviceUnavailable, send_to_device
 from app.features import BY_ID, integration_enabled
+from app.garage import GarageError, garage_state
 from app.lights import LightError, light_state
 from app.models import Device, DeviceSafetyLimits, Role, User, utcnow
 from app.safety import LIMITED_TYPES, initial_state
@@ -36,7 +37,14 @@ from app.water_heater import WATER_HEATER_COMMANDS, WaterHeaterError, water_heat
 router = APIRouter(prefix="/api/v1/homes/{home_id}/devices", tags=["devices"])
 
 DeviceType = Literal[
-    "light", "plug", "thermostat", "tv", "water_heater", "camera", "sensor"
+    "light",
+    "plug",
+    "thermostat",
+    "tv",
+    "water_heater",
+    "camera",
+    "sensor",
+    "garage_door",
 ]
 
 
@@ -198,6 +206,11 @@ def _new_state(db: Session, device: Device, cmd: DeviceCommand) -> dict[str, Any
         try:
             return tv_state(state, cmd.command, cmd.payload)
         except RemoteError as error:
+            raise CommandRejected(error.status_code, error.reason) from None
+    if device.type == "garage_door":
+        try:
+            return garage_state(state, cmd.command, cmd.payload)
+        except GarageError as error:
             raise CommandRejected(error.status_code, error.reason) from None
     if device.type in ("light", "plug"):
         try:

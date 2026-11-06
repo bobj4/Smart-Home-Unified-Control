@@ -36,6 +36,7 @@ from app.routes import (
     member_access,
     members,
     motd,
+    ratgdo,
     rheem,
     roku,
     safety_limits,
@@ -130,6 +131,7 @@ app.include_router(samsung.router)
 app.include_router(roku.router)
 app.include_router(hue.router)
 app.include_router(lg.router)
+app.include_router(ratgdo.router)
 app.include_router(tv_sources.router)
 app.include_router(background.router)
 app.include_router(motd.router)

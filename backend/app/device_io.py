@@ -13,6 +13,8 @@ from app.hue_home import send_command as send_hue_command
 from app.lg_home import LgUnavailable
 from app.lg_home import send_tv_command as send_lg_command
 from app.models import Device
+from app.ratgdo_home import RatgdoUnavailable
+from app.ratgdo_home import send_command as send_ratgdo_command
 from app.rheem_home import RheemUnavailable
 from app.rheem_home import send_command as send_rheem_command
 from app.roku_home import RokuUnavailable
@@ -42,6 +44,7 @@ def send_to_device(
         "roku_tv",
         "lg_tv",
         "hue",
+        "ratgdo",
         "cync",
     ):
         return  # simulated: nothing to send
@@ -92,6 +95,11 @@ def _send(
         try:
             send_lg_command(db, device, command, payload)
         except LgUnavailable as error:
+            raise DeviceUnavailable(error.status_code, error.reason) from None
+    elif device.integration == "ratgdo":
+        try:
+            send_ratgdo_command(device, command)
+        except RatgdoUnavailable as error:
             raise DeviceUnavailable(error.status_code, error.reason) from None
     elif device.integration == "roku_tv":
         try:

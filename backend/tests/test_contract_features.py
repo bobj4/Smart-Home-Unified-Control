@@ -14,7 +14,7 @@ import segno
 from app.models import AuditEvent, Device
 
 ACCOUNT = "/api/v1/account"
-# Hue, LG and Roku added with the owner's approval (new integrations, 2026-11-05).
+# Hue, LG, Roku and ratgdo added with the owner's approval (new integrations, 2026-11-05).
 INTEGRATION_IDS = [
     "simulated",
     "cync",
@@ -23,6 +23,7 @@ INTEGRATION_IDS = [
     "lg_tv",
     "roku_tv",
     "rheem_econet",
+    "ratgdo",
     "frigate",
 ]
 
