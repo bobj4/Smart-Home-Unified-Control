@@ -1,16 +1,17 @@
 """Each user's order of the rooms on a home's Devices page.
 
-  GET /api/v1/homes/{home_id}/layout   {"room_order": [...]}
-  PUT /api/v1/homes/{home_id}/layout   {"room_order": [...]}
+  GET /api/v1/homes/{home_id}/layout?screen=phone|wide
+  PUT /api/v1/homes/{home_id}/layout   {"room_order"?, "collapsed"?, "screen"?}
 
-Only the order is stored, per user and home; it changes nothing for anyone
+Stored per user, home and screen type ("phone" or "wide"), with the rooms
+the user folded shut; it changes nothing for anyone
 else. The thermostats are shown in their own room, "Thermostats", which
 starts at the top until the user moves it. Rooms missing from the list
 (new ones) follow the listed rooms in name order.
 """
 
 import json
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -29,9 +30,14 @@ THERMOSTATS_ROOM = "Thermostats"
 DEFAULT_ORDER = [THERMOSTATS_ROOM]
 
 
+Screen = Literal["phone", "wide"]
+
+
 class Layout(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    room_order: list[str] = Field(max_length=200)
+    room_order: list[str] | None = Field(default=None, max_length=200)
+    collapsed: list[str] | None = Field(default=None, max_length=200)
+    screen: Screen = "wide"
 
 
 def _require_member_or_guest(db: Session, user: User, home_id: str) -> None:
@@ -43,22 +49,49 @@ def _require_member_or_guest(db: Session, user: User, home_id: str) -> None:
         require_role(db, user.id, home_id, Role.MEMBER)
 
 
-def _row(db: Session, user_id: str, home_id: str) -> RoomLayout | None:
+def _row(db: Session, user_id: str, home_id: str, screen: str) -> RoomLayout | None:
     return db.scalars(
         select(RoomLayout).where(
-            RoomLayout.user_id == user_id, RoomLayout.home_id == home_id
+            RoomLayout.user_id == user_id,
+            RoomLayout.home_id == home_id,
+            RoomLayout.screen == screen,
         )
     ).first()
 
 
+def _names(names: list[str]) -> list[str]:
+    out: list[str] = []
+    for name in names:
+        if not isinstance(name, str) or len(name) > 50:
+            raise HTTPException(422, "Room names are at most 50 characters")
+        if name not in out:
+            out.append(name)
+    return out
+
+
+def _out(db: Session, user_id: str, home_id: str, screen: str) -> dict[str, Any]:
+    row = _row(db, user_id, home_id, screen)
+    # A phone with no layout of its own starts from the wide-screen order.
+    fallback = row or (
+        _row(db, user_id, home_id, "wide") if screen == "phone" else None
+    )
+    return {
+        "room_order": json.loads(fallback.room_order) if fallback else DEFAULT_ORDER,
+        "collapsed": json.loads(row.collapsed) if row and row.collapsed else [],
+        "screen": screen,
+        "thermostats_room": THERMOSTATS_ROOM,
+    }
+
+
 @router.get("")
 def get_layout(
-    home_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+    home_id: str,
+    screen: Screen = "wide",
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     _require_member_or_guest(db, user, home_id)
-    row = _row(db, user.id, home_id)
-    order = json.loads(row.room_order) if row else DEFAULT_ORDER
-    return {"room_order": order, "thermostats_room": THERMOSTATS_ROOM}
+    return _out(db, user.id, home_id, screen)
 
 
 @router.put("", dependencies=[Depends(require_csrf)])
@@ -69,25 +102,32 @@ def set_layout(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """The room order, the folded rooms, or both, for one screen type."""
     _require_member_or_guest(db, user, home_id)
-    order = []
-    for name in body.room_order:
-        if not isinstance(name, str) or len(name) > 50:
-            raise HTTPException(422, "Room names are at most 50 characters")
-        if name not in order:
-            order.append(name)
-    row = _row(db, user.id, home_id)
+    if body.room_order is None and body.collapsed is None:
+        raise HTTPException(422, "Send room_order, collapsed or both")
+    current = _out(db, user.id, home_id, body.screen)
+    row = _row(db, user.id, home_id, body.screen)
     if row is None:
-        row = RoomLayout(user_id=user.id, home_id=home_id)
+        row = RoomLayout(
+            user_id=user.id,
+            home_id=home_id,
+            screen=body.screen,
+            room_order=json.dumps(current["room_order"]),
+        )
         db.add(row)
-    row.room_order = json.dumps(order)
+    if body.room_order is not None:
+        row.room_order = json.dumps(_names(body.room_order))
+    if body.collapsed is not None:
+        row.collapsed = json.dumps(_names(body.collapsed))
     db.commit()
-    record_event(
-        db,
-        "room_layout_changed",
-        user_id=user.id,
-        home_id=home_id,
-        ip_address=client_ip(request),
-        details={"rooms": len(order)},
-    )
-    return {"room_order": order, "thermostats_room": THERMOSTATS_ROOM}
+    if body.room_order is not None:  # folding a room open or shut is not audited
+        record_event(
+            db,
+            "room_layout_changed",
+            user_id=user.id,
+            home_id=home_id,
+            ip_address=client_ip(request),
+            details={"rooms": len(body.room_order), "screen": body.screen},
+        )
+    return _out(db, user.id, home_id, body.screen)
