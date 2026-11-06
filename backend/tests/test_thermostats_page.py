@@ -60,3 +60,21 @@ def test_ui_no_link_without_thermostats(open_page, db, owner, make_device):
     expect(_ui.card(page, "Lamp")).to_be_visible()
     expect(page.get_by_test_id("nav-thermostats")).to_be_hidden()
     assert db.query(Device).count() == 1
+
+
+def test_ui_water_heaters_on_the_thermostats_page(open_page, db, owner, make_device):
+    make_device(owner.home_id, name="Lamp")
+    make_device(owner.home_id, device_type="water_heater", name="Basement heater")
+    page = open_page()
+    _ui.ui_login(page, owner)
+    link = page.get_by_test_id("nav-thermostats")
+    expect(link).to_be_visible()  # a water heater alone shows the link
+    link.click()
+    expect(_ui.card(page, "Basement heater")).to_be_visible()
+    expect(_ui.card(page, "Lamp")).to_have_count(0)
+    page.get_by_test_id("nav-devices").click()
+    page.get_by_test_id("layout-open").click()
+    page.get_by_test_id("layout-thermostats-apart").check()
+    page.get_by_test_id("layout-save").click()
+    expect(_ui.card(page, "Basement heater")).to_have_count(0)
+    expect(_ui.card(page, "Lamp")).to_be_visible()
