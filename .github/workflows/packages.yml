@@ -1,0 +1,92 @@
+# Builds the .rpm and .deb and publishes them as package repositories on
+# GitHub Pages (the gh-pages branch):
+#   a tag v1.2.3      -> the stable channel (version 1.2.3)
+#   a push to dev     -> the dev channel (version 0.0.<run number>)
+# Servers install once with install.sh (published alongside) and then get
+# updates from dnf-automatic or unattended-upgrades.
+#
+# One-time setup (see packaging/README.md): the secrets PACKAGE_GPG_KEY (an
+# armored private key) and PACKAGE_GPG_PASSPHRASE, and Pages set to deploy
+# from the gh-pages branch.
+name: packages
+
+on:
+  push:
+    branches: [dev]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: packages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version and channel
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "channel=stable" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.0.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+            echo "channel=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Signing key
+        env:
+          KEY: ${{ secrets.PACKAGE_GPG_KEY }}
+        run: |
+          printf '%s\n' "$KEY" > "$RUNNER_TEMP/key.asc"
+          gpg --batch --import "$RUNNER_TEMP/key.asc"
+
+      - name: Build packages
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          RELEASE: "1"
+          RPM_SIGNING_KEY_FILE: /keys/key.asc
+          NFPM_RPM_PASSPHRASE: ${{ secrets.PACKAGE_GPG_PASSPHRASE }}
+        run: |
+          mkdir -p dist
+          for packager in rpm deb; do
+            docker run --rm -v "$PWD:/src" -v "$RUNNER_TEMP:/keys:ro" -w /src \
+              -e VERSION -e RELEASE -e RPM_SIGNING_KEY_FILE -e NFPM_RPM_PASSPHRASE \
+              goreleaser/nfpm:v2.41.1 package --config packaging/nfpm.yaml --packager "$packager" --target dist/
+          done
+          ls -l dist
+
+      - name: Repository metadata
+        env:
+          CHANNEL: ${{ steps.version.outputs.channel }}
+          PASSPHRASE: ${{ secrets.PACKAGE_GPG_PASSPHRASE }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq createrepo-c apt-utils
+          site="$RUNNER_TEMP/site"
+          mkdir -p "$site/$CHANNEL/rpm" "$site/$CHANNEL/deb"
+          cp dist/*.rpm "$site/$CHANNEL/rpm/"
+          cp dist/*.deb "$site/$CHANNEL/deb/"
+          sign() { gpg --batch --yes --pinentry-mode loopback --passphrase "$PASSPHRASE" "$@"; }
+          createrepo_c "$site/$CHANNEL/rpm"
+          sign --detach-sign --armor -o "$site/$CHANNEL/rpm/repodata/repomd.xml.asc" "$site/$CHANNEL/rpm/repodata/repomd.xml"
+          (cd "$site/$CHANNEL/deb" && apt-ftparchive packages . > Packages && gzip -kf Packages \
+            && apt-ftparchive -o APT::FTPArchive::Release::Origin=smart-home-unified-control release . > Release)
+          sign --clearsign -o "$site/$CHANNEL/deb/InRelease" "$site/$CHANNEL/deb/Release"
+          sign --detach-sign --armor -o "$site/$CHANNEL/deb/Release.gpg" "$site/$CHANNEL/deb/Release"
+          gpg --armor --export > "$site/KEY.asc"
+          cp packaging/install.sh "$site/install.sh"
+          echo "site=$site" >> "$GITHUB_ENV"
+
+      - name: Publish to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ${{ env.site }}
+          keep_files: true
+          commit_message: "packages ${{ steps.version.outputs.channel }} ${{ steps.version.outputs.version }}"
