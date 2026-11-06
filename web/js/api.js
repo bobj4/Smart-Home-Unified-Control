@@ -186,6 +186,11 @@ class SmartHomeAPI {
   findTvs(homeId, network) { return this.post(`/homes/${enc(homeId)}/tv-scan`, network ? { network } : {}); }
   getHttpsAutoImport() { return this.get('/admin/https/auto-import'); }
   setHttpsAutoImport(enabled) { return this.put('/admin/https/auto-import', { enabled }); }
+  getKasa(homeId) { return this.get(`/homes/${enc(homeId)}/integrations/kasa`); }
+  addKasa(homeId, host) { return this.post(`/homes/${enc(homeId)}/integrations/kasa/devices`, { host }); }
+  removeKasa(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/integrations/kasa/devices/${enc(deviceId)}`); }
+  setKasaLogin(homeId, email, password) { return this.put(`/homes/${enc(homeId)}/integrations/kasa/login`, { email, password }); }
+  removeKasaLogin(homeId) { return this.del(`/homes/${enc(homeId)}/integrations/kasa/login`); }
   getRokus(homeId) { return this.get(`/homes/${enc(homeId)}/integrations/roku_tv/tvs`); }
   addRoku(homeId, tv) { return this.post(`/homes/${enc(homeId)}/integrations/roku_tv/tvs`, tv); }
   removeRoku(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/integrations/roku_tv/tvs/${enc(deviceId)}`); }

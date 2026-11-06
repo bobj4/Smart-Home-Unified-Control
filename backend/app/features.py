@@ -45,6 +45,13 @@ INTEGRATIONS: tuple[Integration, ...] = (
         True,
     ),
     Integration(
+        "kasa",
+        "TP-Link Kasa",
+        "Kasa plugs, power strips, switches, dimmers and bulbs on your network.",
+        False,
+        True,
+    ),
+    Integration(
         "samsung_tv", "Samsung TV", "Samsung smart TVs on your network.", False, True
     ),
     Integration(
