@@ -79,3 +79,32 @@ def test_ui_admin_device_search(open_page, db, owner, make_device):
                     f'[data-device-id="{made[name]}"][data-testid="device-row"]'
                 )
             ).to_be_visible()
+
+
+def test_ui_on_only_hides_offline_devices_and_groups(open_page, db, owner, make_device):
+    """An offline device whose last report said on shows as off, so On only
+    hides it; a group of such devices too."""
+    from app.models import DeviceGroup
+
+    a = make_device(owner.home_id, name="Ceiling 1")
+    b = make_device(owner.home_id, name="Ceiling 2")
+    c = make_device(owner.home_id, name="Hallway Downlight")
+    d = make_device(owner.home_id, name="Desk lamp")
+    for device_id in (a, b, c):
+        device = db.get(Device, device_id)
+        device.online = False
+        device.state = json.dumps({"on": True})
+    db.get(Device, d).state = json.dumps({"on": True})
+    db.add(
+        DeviceGroup(
+            home_id=owner.home_id, name="Down Lights", device_ids=json.dumps([a, b])
+        )
+    )
+    db.commit()
+    page = open_page()
+    _ui.ui_login(page, owner)
+    expect(page.get_by_test_id("group-card")).to_be_visible()
+    page.get_by_test_id("filter-on").check()
+    expect(_ui.card(page, "Desk lamp")).to_be_visible()  # online and on
+    expect(_ui.card(page, "Hallway Downlight")).to_have_count(0)
+    expect(page.get_by_test_id("group-card")).to_have_count(0)
