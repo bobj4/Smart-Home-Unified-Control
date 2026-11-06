@@ -517,6 +517,10 @@ class RoomLayout(Base):
     thermostats_apart: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa_false()
     )
+    # Remote doors (garage doors) only on their own page (#/devices/doors).
+    doors_apart: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )

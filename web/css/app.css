@@ -183,6 +183,7 @@ body:has(.overlay:not([hidden])) .layout-open { display: none; }
 .field input, .field select { color: var(--text); width: 100%; }
 .grid-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 8px; }
 .check { display: flex; gap: 8px; align-items: center; }
+.stack { display: grid; gap: 6px; }
 /* The box keeps its size however long the label is. */
 .check input[type="checkbox"] { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; }
 .limits { display: grid; gap: 12px; }

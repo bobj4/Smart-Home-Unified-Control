@@ -65,6 +65,7 @@ class Layout(BaseModel):
     collapsed: list[str] | None = Field(default=None, max_length=200)
     filters: Filters | None = None
     thermostats_apart: StrictBool | None = None
+    doors_apart: StrictBool | None = None
     grid: Grid | None = None
     screen: Screen = "wide"
 
@@ -112,6 +113,7 @@ def _out(db: Session, user_id: str, home_id: str, screen: str) -> dict[str, Any]
         else Filters().model_dump(),
         "screen": screen,
         "thermostats_apart": bool(row.thermostats_apart) if row else False,
+        "doors_apart": bool(row.doors_apart) if row else False,
         "grid": json.loads(row.grid) if row and row.grid else _default_grid(screen),
         "thermostats_room": THERMOSTATS_ROOM,
     }
@@ -143,11 +145,13 @@ def set_layout(
         body.collapsed,
         body.filters,
         body.thermostats_apart,
+        body.doors_apart,
         body.grid,
     )
     if all(change is None for change in changes):
         raise HTTPException(
-            422, "Send room_order, collapsed, filters or thermostats_apart"
+            422,
+            "Send room_order, collapsed, filters, thermostats_apart or doors_apart",
         )
     current = _out(db, user.id, home_id, body.screen)
     row = _row(db, user.id, home_id, body.screen)
@@ -167,6 +171,8 @@ def set_layout(
         row.filters = json.dumps(body.filters.model_dump())
     if body.thermostats_apart is not None:
         row.thermostats_apart = body.thermostats_apart
+    if body.doors_apart is not None:
+        row.doors_apart = body.doors_apart
     if body.grid is not None:
         row.grid = json.dumps(_grid(body.grid))
     db.commit()

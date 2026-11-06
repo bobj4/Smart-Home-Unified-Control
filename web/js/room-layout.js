@@ -95,19 +95,28 @@ class RoomLayoutEditor {
     return select;
   }
 
-  /** Only for homes with thermostats: keep them on their own page. */
+  /** Only for homes with thermostats (or doors): keep them on their own page. */
   thermostatsChoice() {
-    this.apart = null;
-    if (!(this.view.lastDevices || []).some((d) => THERMOSTAT_PAGE_TYPES.includes(d.type))) return null;
-    this.apart = el('input', { type: 'checkbox', testid: 'layout-thermostats-apart', checked: Boolean(this.view.thermostatsApart) });
-    return el('label', { className: 'check' }, [this.apart, ' Thermostats and water heaters only on their own page (the Thermostats link)']);
+    const have = (types) => (this.view.lastDevices || []).some((d) => types.includes(d.type));
+    const choice = (types, testid, now, text) => {
+      if (!have(types)) return null;
+      const box = el('input', { type: 'checkbox', testid, checked: Boolean(now) });
+      return { box, label: el('label', { className: 'check' }, [box, text]) };
+    };
+    const thermostats = choice(THERMOSTAT_PAGE_TYPES, 'layout-thermostats-apart', this.view.thermostatsApart, ' Thermostats and water heaters only on their own page (the Thermostats link)');
+    const doors = choice(DOOR_PAGE_TYPES, 'layout-doors-apart', this.view.doorsApart, ' Doors only on their own page (the Doors link)');
+    this.apart = thermostats && thermostats.box;
+    this.doorsApart = doors && doors.box;
+    const labels = [thermostats, doors].filter(Boolean).map((c) => c.label);
+    return labels.length ? el('div', { className: 'stack' }, labels) : null;
   }
 
   save(order) {
     const { app } = this.view;
     return app.run(async () => {
       const apart = this.apart ? this.apart.checked : this.view.thermostatsApart;
-      const layout = { room_order: order, screen: this.view.layoutScreen, thermostats_apart: apart };
+      const doors = this.doorsApart ? this.doorsApart.checked : this.view.doorsApart;
+      const layout = { room_order: order, screen: this.view.layoutScreen, thermostats_apart: apart, doors_apart: doors };
       if (this.wide()) {
         const sizes = Object.fromEntries(Object.entries(this.sizes).filter(([room, span]) => order.includes(room) && span > 1));
         layout.grid = { columns: this.columns, sizes };
@@ -116,6 +125,7 @@ class RoomLayoutEditor {
       this.view.grid = saved.grid;
       this.view.roomOrder = saved.room_order;
       this.view.thermostatsApart = saved.thermostats_apart;
+      this.view.doorsApart = saved.doors_apart;
       this.close();
       this.view.render(this.view.lastDevices);
       app.status.success('Room order saved.');
@@ -146,6 +156,7 @@ async function loadLayout(view, homeId) {
     view.collapsed = new Set(layout.collapsed || []);
     view.layoutFilters = layout.filters;
     view.thermostatsApart = Boolean(layout.thermostats_apart);
+    view.doorsApart = Boolean(layout.doors_apart);
     view.grid = layout.grid || null;
   } catch (error) {
     view.roomOrder = null; // the default order
