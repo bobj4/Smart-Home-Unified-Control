@@ -41,7 +41,46 @@ def test_ui_fold_sections_and_jump(open_page, owner):
     expect(page.get_by_test_id("motd-input")).to_be_visible()
     page.get_by_test_id("section-fold-all").click()
     expect(page.get_by_test_id("motd-input")).to_be_hidden()
-    expect(page.get_by_test_id("login-failures")).to_have_class("subpanel collapsed")
+    expect(page.get_by_test_id("login-rules")).to_have_class("subpanel collapsed")
+    expect(page.get_by_test_id("login-failures")).to_be_hidden()
+
+
+def test_ui_grouped_sections(open_page, owner):
+    """Login rules holds the account rules, failed logins and login times;
+    2 Factor Login holds approved devices (Admin) and the status,
+    authenticator app and recovery codes (My account); the background
+    picture is part of Appearance."""
+    page = open_page()
+    _ui.ui_login(page, owner)
+    _ui.go_settings(page, "admin")
+    jump = page.get_by_test_id("section-jump")
+    expect(jump.get_by_role("button", name="Login rules", exact=True)).to_be_visible()
+    expect(jump.get_by_role("button", name="2 Factor Login")).to_be_visible()
+    for gone in ("Failed logins", "Login times", "Approved devices"):
+        expect(jump.get_by_role("button", name=gone)).to_have_count(0)
+    rules = page.get_by_test_id("login-rules")
+    for part in ("login-failures", "login-times"):
+        expect(rules.get_by_test_id(part)).to_have_class("subsection")
+    expect(rules.get_by_test_id("login-policy-save")).to_be_visible()
+    expect(
+        page.get_by_test_id("admin-two-factor").get_by_test_id("admin-devices")
+    ).to_be_visible()
+    page.get_by_test_id("admin-two-factor").locator(":scope > h3").click()
+    expect(page.get_by_test_id("admin-devices")).to_be_hidden()
+
+    _ui.go_settings(page, "account")
+    jump = page.get_by_test_id("section-jump")
+    expect(jump.get_by_role("button", name="2 Factor Login")).to_be_visible()
+    for gone in ("Recovery codes", "Authenticator app", "Background picture"):
+        expect(jump.get_by_role("button", name=gone)).to_have_count(0)
+    group = page.get_by_test_id("two-factor-login")
+    for part in ("two-factor-status", "totp-start", "recovery-generate"):
+        expect(group.get_by_test_id(part)).to_be_visible()
+    appearance = page.get_by_test_id("theme-select").locator(
+        "xpath=ancestor::div[contains(@class, 'subpanel')][1]"
+    )
+    expect(appearance.get_by_test_id("background")).to_have_class("subsection")
+    expect(appearance).not_to_contain_text("null")
 
 
 def test_ui_settings_update_live(open_page, client, owner, login, csrf):

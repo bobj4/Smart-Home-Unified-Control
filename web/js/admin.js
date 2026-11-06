@@ -31,9 +31,17 @@ class AdminSection {
     ]);
     this.httpsBox = el('div', { className: 'subpanel', testid: 'https-box' });
     this.fillHttps(https);
-    container.append(this.nameForm(), this.displayBox(display), this.twoFactor(security), this.policyForm(policy));
-    await new LoginTimesPanel(this.app).render(container);
-    await new LoginFailuresPanel(this.app).render(container);
+    const times = new LoginTimesPanel(this.app);
+    // 2 Factor Login: the rule, and everyone's approved devices.
+    const twoFactor = this.twoFactor(security);
+    // Login rules: accounts and passwords, failed logins, login times.
+    const rules = groupSections('Login rules', 'login-rules', [this.policyForm(policy)]);
+    container.append(this.nameForm(), this.displayBox(display), twoFactor, rules);
+    await new LoginFailuresPanel(this.app).render(rules);
+    await times.render(rules);
+    await times.renderDevices(twoFactor);
+    nestSections(rules);
+    nestSections(twoFactor);
     await new MotdPanel(this.app).render(container);
     container.append(this.emailForm(email), this.httpsBox);
   }
@@ -216,8 +224,8 @@ class AdminSection {
         ? 'Everyone in this home now needs two-factor login.'
         : 'Two-factor login is now each person\'s choice.');
     }));
-    return el('div', { className: 'subpanel' }, [
-      el('h3', { text: 'Two-factor login' }),
+    return el('div', { className: 'subpanel', testid: 'admin-two-factor' }, [
+      el('h3', { text: '2 Factor Login' }),
       settingRow('Require two-factor login', 'Members without it can only open My account until they set it up.', toggle),
     ]);
   }
@@ -229,7 +237,7 @@ class AdminSection {
     const rules = [['pw-upper', 'upper', 'Uppercase letter'], ['pw-lower', 'lower', 'Lowercase letter'], ['pw-digit', 'digit', 'Number'], ['pw-special', 'special', 'Special character']]
       .map(([testid, key, label]) => [key, switchInput(testid, policy.password[key], `Require ${label.toLowerCase()}`), label]);
     const form = el('form', { className: 'subpanel' }, [
-      el('h3', { text: 'Login rules (every account)' }),
+      el('h3', { text: 'Accounts (every account)' }),
       settingRow('Require an email address', 'When off, new accounts may use a username instead.', email),
       settingRow('Password recovery', 'Owners can give a member a one-time code to set a new password.', recovery),
       el('h3', { text: 'Password requirements' }),

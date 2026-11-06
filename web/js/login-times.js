@@ -1,7 +1,7 @@
 /**
- * Settings > Admin > Login times: how long "Keep me logged in", "Remember
- * me" and "Remember this device" last (for every account), and everyone's
- * approved devices in the admin's homes.
+ * Settings > Admin > Login rules > Login times: how long "Keep me logged in", "Remember
+ * me" and "Remember this device" last (for every account); and everyone's
+ * approved devices in the admin's homes (under 2 Factor Login).
  */
 
 // Each: days; 0 = never expires; blank = turned off (its login checkbox is hidden).
@@ -45,11 +45,16 @@ class LoginTimesPanel {
         this.app.status.success('Login times saved. New logins use them.');
       });
     });
+    container.append(form);
+  }
+
+  /** Everyone's approved devices (shown under 2 Factor Login). */
+  async renderDevices(container) {
     const devices = el('div', { className: 'subpanel', testid: 'admin-devices' }, [
       el('h3', { text: 'Approved devices' }),
       el('p', { className: 'muted', text: 'Devices that skip the two-factor code, and whose they are. Remove one to ask for the code there again.' }),
     ]);
-    container.append(form, devices);
+    container.append(devices);
     await new TrustedDevicesList(this.app, { all: true }).render(devices);
   }
 }
