@@ -18,6 +18,7 @@ from app import (
     cync_home,
     hue_home,
     integration_status,
+    lg_home,
     rheem_home,
     roku_home,
     samsung_home,
@@ -124,6 +125,7 @@ def refresh_all(db: Session) -> None:
             (refresh_tvs, "samsung_tv"),
             (roku_home.refresh, "roku_tv"),
             (hue_home.refresh, "hue"),
+            (lg_home.refresh, "lg_tv"),
             (refresh_rheem, "rheem_econet"),
             (refresh_cync, "cync"),
         )

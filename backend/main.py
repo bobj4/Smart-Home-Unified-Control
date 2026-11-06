@@ -30,6 +30,7 @@ from app.routes import (
     hue,
     integrations,
     layout,
+    lg,
     login_failures,
     login_times,
     member_access,
@@ -128,6 +129,7 @@ app.include_router(home_security.router)
 app.include_router(samsung.router)
 app.include_router(roku.router)
 app.include_router(hue.router)
+app.include_router(lg.router)
 app.include_router(tv_sources.router)
 app.include_router(background.router)
 app.include_router(motd.router)

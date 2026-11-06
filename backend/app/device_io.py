@@ -10,6 +10,8 @@ from app.cync_home import CyncUnavailable
 from app.cync_home import send_command as send_cync_command
 from app.hue_home import HueUnavailable
 from app.hue_home import send_command as send_hue_command
+from app.lg_home import LgUnavailable
+from app.lg_home import send_tv_command as send_lg_command
 from app.models import Device
 from app.rheem_home import RheemUnavailable
 from app.rheem_home import send_command as send_rheem_command
@@ -38,6 +40,7 @@ def send_to_device(
         "rheem_econet",
         "samsung_tv",
         "roku_tv",
+        "lg_tv",
         "hue",
         "cync",
     ):
@@ -84,6 +87,11 @@ def _send(
         try:
             send_hue_command(db, device, command, state)
         except HueUnavailable as error:
+            raise DeviceUnavailable(error.status_code, error.reason) from None
+    elif device.integration == "lg_tv":
+        try:
+            send_lg_command(db, device, command, payload)
+        except LgUnavailable as error:
             raise DeviceUnavailable(error.status_code, error.reason) from None
     elif device.integration == "roku_tv":
         try:
