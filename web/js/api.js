@@ -162,6 +162,8 @@ class SmartHomeAPI {
   editTv(homeId, deviceId, tv) { return this.put(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}`, tv); }
   pairTv(homeId, deviceId) { return this.post(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}/pair`); }
   sendTvPin(homeId, deviceId, pin) { return this.post(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}/pin`, { pin }); }
+  getTvApps(homeId, deviceId) { return this.get(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}/apps`); }
+  setQuickApps(homeId, deviceId, apps) { return this.put(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}/quick-apps`, { apps }); }
   removeTv(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}`); }
 
   // Frigate: server settings (owner) and events (members)

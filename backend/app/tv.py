@@ -4,6 +4,7 @@ Pure functions: the caller stores the new state. A real TV integration maps
 the same commands to its own protocol later.
 """
 
+import re
 from typing import Any
 
 DEFAULTS: dict[str, Any] = {
@@ -34,6 +35,7 @@ KEYS = (
     "fast_forward",
 )
 APPS = ("netflix", "youtube", "prime_video", "disney_plus", "hulu", "spotify")
+APP_ID = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 MAX_VOLUME = 100
 MAX_CHANNEL = 9999
 
@@ -114,6 +116,7 @@ def tv_state(
             lambda: {"input": _choice(payload, "source", INPUTS), "app": None},
         ),
         "launch_app": ({"app"}, lambda: {"app": _choice(payload, "app", APPS)}),
+        "open_app": ({"app_id"}, lambda: {"app": _app_id(payload)}),
         "press_key": ({"key"}, lambda: _key(payload)),
     }
     if command not in handlers:
@@ -131,3 +134,11 @@ def _key(payload: dict[str, Any]) -> dict[str, Any]:
     if key == "home":
         change["app"] = None
     return change
+
+
+def _app_id(payload: dict[str, Any]) -> str:
+    """An app installed on the TV, by the TV's own id (a quick app)."""
+    value = payload["app_id"]
+    if not isinstance(value, str) or not APP_ID.match(value):
+        raise RemoteError(422, "app_id must be the TV's id for the app")
+    return value

@@ -51,6 +51,7 @@ class DevicesView {
     this.limits = {};
     this.integrationsOn = new Set();
     this.remote = new TvRemote(app);
+    this.quickApps = new QuickAppsPanel(app);
     this.lightPanel = new LightPanel(app);
     this.groups = new GroupsUI(app);
     this.lastDevices = [];
@@ -180,6 +181,8 @@ class DevicesView {
     }
     if (device.type === 'light' && on) card.style.setProperty('--light', lightColor(state));
     if (device.type === 'tv') {
+      const menu = this.quickApps.menuButton(device);
+      if (menu) card.querySelector('.card-head').append(menu);
       card.append(el('button', {
         type: 'button', className: 'secondary', testid: 'tv-remote-open', text: 'Remote',
         disabled: !device.controllable, onclick: () => this.remote.open(device),
