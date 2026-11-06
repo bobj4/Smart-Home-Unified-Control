@@ -56,9 +56,9 @@ class SmartHomeApp {
     try {
       if (view === 'devices' && !this.devices.lightPanel.device && !this.devices.remote.device) {
         await this.devices.load();
-      } else if (view === 'settings' && sub === 'integrations' && !this.settings.dirty) {
-        this.settings.shown = null; // redraw the device lists, unless someone is editing
-        await this.settings.load('integrations', { live: true });
+      } else if (view === 'settings' && this.settings.liveDue()) {
+        this.settings.shown = null; // redraw the page, unless someone is in the middle of something
+        await this.settings.load(sub, { live: true });
       } else if (view === 'cameras' && this.cameras.grid && this.cameras.player.hidden) {
         await this.cameras.fillEvents();
       }

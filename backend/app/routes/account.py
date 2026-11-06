@@ -116,7 +116,24 @@ def get_account(
         "background": background_out(db, user),
         "motd": motd_for(db, user),
         "can_edit_info": bool(settings(db).users_edit_own_info),
+        "collapsed_sections": json.loads(user.settings_collapsed or "[]"),
     }
+
+
+class Collapsed(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    sections: list[str] = Field(max_length=200)
+
+
+@router.put("/collapsed", dependencies=[Depends(require_csrf)])
+def set_collapsed(
+    body: Collapsed, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict[str, list[str]]:
+    """The Settings sections folded shut, remembered for this person."""
+    sections = list(dict.fromkeys(s for s in body.sections if 0 < len(s) <= 100))
+    user.settings_collapsed = json.dumps(sections)
+    db.commit()
+    return {"sections": sections}
 
 
 @router.put("/preferences", dependencies=[Depends(require_csrf)])

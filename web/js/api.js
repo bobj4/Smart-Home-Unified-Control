@@ -212,6 +212,7 @@ class SmartHomeAPI {
   setMemberPassword(homeId, userId, password) { return this.post(`/homes/${enc(homeId)}/members/${enc(userId)}/password`, { password }); }
   createResetCode(homeId, userId) { return this.post(`/homes/${enc(homeId)}/members/${enc(userId)}/reset-code`); }
   setPreferences(prefs) { return this.put('/account/preferences', prefs); }
+  setCollapsed(sections) { return this.put('/account/collapsed', { sections }); }
   getSetupSteps(homeId) { return this.get(homeId ? `/admin/setup?home_id=${enc(homeId)}` : '/admin/setup'); }
   editOwnInfo(info) { return this.put('/account/info', info); }
   getSelfEdit() { return this.get('/admin/self-edit'); }
