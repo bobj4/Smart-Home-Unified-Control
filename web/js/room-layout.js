@@ -98,10 +98,13 @@ async function loadLayout(view, homeId) {
     const layout = await view.app.api.getLayout(homeId, screen);
     view.roomOrder = layout.room_order;
     view.collapsed = new Set(layout.collapsed || []);
+    view.layoutFilters = layout.filters;
   } catch (error) {
     view.roomOrder = null; // the default order
     view.collapsed = new Set();
+    view.layoutFilters = null;
   }
+  if (view.filters) view.filters.use(view.layoutFilters);
   view.layoutHome = homeId;
   view.layoutScreen = screen;
 }

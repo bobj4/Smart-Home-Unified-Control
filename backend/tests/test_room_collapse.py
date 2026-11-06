@@ -31,6 +31,7 @@ def test_collapsed_and_screens_api(client, owner, login, csrf):
     assert r.json() == {
         "room_order": ["Lab", "Kitchen"],
         "collapsed": ["Lab"],
+        "filters": {"text": "", "type": "", "on": False},
         "screen": "phone",
         "thermostats_room": "Thermostats",
     }

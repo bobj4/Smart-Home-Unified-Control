@@ -33,10 +33,18 @@ DEFAULT_ORDER = [THERMOSTATS_ROOM]
 Screen = Literal["phone", "wide"]
 
 
+class Filters(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    text: str = Field(default="", max_length=100)
+    type: str = Field(default="", max_length=30, pattern=r"^[a-z_]*$")
+    on: bool = False
+
+
 class Layout(BaseModel):
     model_config = ConfigDict(extra="forbid")
     room_order: list[str] | None = Field(default=None, max_length=200)
     collapsed: list[str] | None = Field(default=None, max_length=200)
+    filters: Filters | None = None
     screen: Screen = "wide"
 
 
@@ -78,6 +86,9 @@ def _out(db: Session, user_id: str, home_id: str, screen: str) -> dict[str, Any]
     return {
         "room_order": json.loads(fallback.room_order) if fallback else DEFAULT_ORDER,
         "collapsed": json.loads(row.collapsed) if row and row.collapsed else [],
+        "filters": json.loads(row.filters)
+        if row and row.filters
+        else Filters().model_dump(),
         "screen": screen,
         "thermostats_room": THERMOSTATS_ROOM,
     }
@@ -104,8 +115,8 @@ def set_layout(
 ) -> dict[str, Any]:
     """The room order, the folded rooms, or both, for one screen type."""
     _require_member_or_guest(db, user, home_id)
-    if body.room_order is None and body.collapsed is None:
-        raise HTTPException(422, "Send room_order, collapsed or both")
+    if body.room_order is None and body.collapsed is None and body.filters is None:
+        raise HTTPException(422, "Send room_order, collapsed or filters")
     current = _out(db, user.id, home_id, body.screen)
     row = _row(db, user.id, home_id, body.screen)
     if row is None:
@@ -120,6 +131,8 @@ def set_layout(
         row.room_order = json.dumps(_names(body.room_order))
     if body.collapsed is not None:
         row.collapsed = json.dumps(_names(body.collapsed))
+    if body.filters is not None:
+        row.filters = json.dumps(body.filters.model_dump())
     db.commit()
     if body.room_order is not None:  # folding a room open or shut is not audited
         record_event(

@@ -492,6 +492,7 @@ class RoomLayout(Base):
         String(10), default="wide", server_default="wide"
     )
     collapsed: Mapped[str | None] = mapped_column(Text)  # JSON list of room names
+    filters: Mapped[str | None] = mapped_column(Text)  # JSON {"text", "type", "on"}
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
