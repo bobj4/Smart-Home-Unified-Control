@@ -20,6 +20,9 @@
   --shadow: none; color-scheme: dark;
 }
 :root[data-theme="light"] { color-scheme: light; }
+/* Custom: every colour is set by theme-custom.js from the chosen one. */
+:root[data-theme="custom-light"] { color-scheme: light; }
+:root[data-theme="custom-dark"] { color-scheme: dark; }
 /* Red: black with red */
 :root[data-theme="red"] {
   --bg: #0b0b0c; --surface: #161617; --surface-2: #212124; --text: #f2f2f3; --muted: #a6a6ad;

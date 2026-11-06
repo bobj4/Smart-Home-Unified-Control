@@ -33,7 +33,7 @@ def test_ui_red_and_violet(open_page, owner):
     _ui.ui_login(page, owner)
     select = _ui.go_settings(page, "account").get_by_test_id("theme-select")
     expect(select.locator("option")).to_have_text(
-        ["Device Theme", "Light", "Dark", "Red", "Purple"]
+        ["Device Theme", "Light", "Dark", "Red", "Purple", "Custom"]
     )
     html = page.locator("html")
 
@@ -61,3 +61,74 @@ def test_ui_red_and_violet(open_page, owner):
     select = _ui.go_settings(page, "account").get_by_test_id("theme-select")
     select.select_option("system")
     expect(html).not_to_have_attribute("data-theme", "violet")
+
+
+def test_custom_theme_api(client, db, owner, login, csrf):
+    assert login(client, owner).status_code == 200
+    # Custom needs a colour the first time.
+    assert (
+        client.put(URL, json={"theme": "custom"}, headers=csrf(client)).status_code
+        == 422
+    )
+    body = {"theme": "custom", "custom": {"accent": "#2E8B57", "base": "light"}}
+    r = client.put(URL, json=body, headers=csrf(client))
+    assert r.status_code == 200, r.text
+    assert r.json() == {
+        "theme": "custom",
+        "custom": {"accent": "#2e8b57", "base": "light"},
+    }
+    account = client.get("/api/v1/account").json()
+    assert account["theme"] == "custom"
+    assert account["theme_custom"] == {"accent": "#2e8b57", "base": "light"}
+    # Another theme keeps the colours for next time; custom alone reuses them.
+    assert client.put(URL, json={"theme": "dark"}, headers=csrf(client)).json() == {
+        "theme": "dark"
+    }
+    assert client.get("/api/v1/account").json()["theme_custom"]["accent"] == "#2e8b57"
+    r = client.put(URL, json={"theme": "custom"}, headers=csrf(client))
+    assert r.status_code == 200 and r.json()["custom"]["base"] == "light"
+    for bad in (
+        {"accent": "red", "base": "dark"},
+        {"accent": "#12345", "base": "dark"},
+        {"accent": "#123456", "base": "grey"},
+        {"accent": "#123456"},
+    ):
+        r = client.put(
+            URL, json={"theme": "custom", "custom": bad}, headers=csrf(client)
+        )
+        assert r.status_code == 422, bad
+
+
+def test_ui_custom_theme(open_page, db, owner):
+    page = open_page()
+    _ui.ui_login(page, owner)
+    account = _ui.go_settings(page, "account")
+    expect(account.get_by_test_id("theme-custom")).to_be_hidden()
+    account.get_by_test_id("theme-select").select_option("custom")
+    expect(account.get_by_test_id("theme-custom")).to_be_visible()
+    html = page.locator("html")
+    account.get_by_test_id("theme-colour").fill("#2e8b57")
+    expect(html).to_have_attribute("data-theme", "custom-dark")  # a preview
+
+    def var(name):
+        return page.evaluate(
+            f"getComputedStyle(document.documentElement).getPropertyValue('{name}').trim()"
+        )
+
+    assert var("--accent") == "#2e8b57"
+    account.get_by_test_id("theme-base").select_option("light")
+    expect(html).to_have_attribute("data-theme", "custom-light")
+    assert var("--surface") == "#ffffff"
+    account.get_by_test_id("theme-custom-save").click()
+    expect(page.get_by_test_id("status")).to_contain_text("Appearance saved")
+    db.expire_all()
+    assert db.get(User, owner.id).theme_custom == "#2e8b57 light"
+
+    page.reload()
+    expect(page.get_by_test_id("app-shell")).to_be_visible()
+    expect(html).to_have_attribute("data-theme", "custom-light")
+    assert var("--accent") == "#2e8b57"
+    # Back to a named theme: the custom colours are gone from the page.
+    _ui.go_settings(page, "account").get_by_test_id("theme-select").select_option("red")
+    expect(html).to_have_attribute("data-theme", "red")
+    assert var("--accent") == "#d91a1a"

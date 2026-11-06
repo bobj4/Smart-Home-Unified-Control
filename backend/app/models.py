@@ -92,6 +92,8 @@ class User(Base):
     theme: Mapped[str] = mapped_column(
         String(10), default="system", server_default="system"
     )
+    # theme "custom": "#rrggbb dark" or "#rrggbb light".
+    theme_custom: Mapped[str | None] = mapped_column(String(16))
     # JSON list of Argon2id hashes; a used code is replaced by null.
     recovery_codes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
