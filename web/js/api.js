@@ -186,6 +186,7 @@ class SmartHomeAPI {
   findTvs(homeId, network) { return this.post(`/homes/${enc(homeId)}/tv-scan`, network ? { network } : {}); }
   getHttpsAutoImport() { return this.get('/admin/https/auto-import'); }
   setHttpsAutoImport(enabled) { return this.put('/admin/https/auto-import', { enabled }); }
+  requestHttpsImport() { return this.post('/admin/https/auto-import/request', {}); }
   getKasa(homeId) { return this.get(`/homes/${enc(homeId)}/integrations/kasa`); }
   addKasa(homeId, host) { return this.post(`/homes/${enc(homeId)}/integrations/kasa/devices`, { host }); }
   removeKasa(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/integrations/kasa/devices/${enc(deviceId)}`); }

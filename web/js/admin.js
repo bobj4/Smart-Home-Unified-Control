@@ -142,36 +142,9 @@ class AdminSection {
       settingRow('Use HTTPS', 'Needs a certificate. Takes effect when the server restarts (scripts/serve.py).', toggle),
       el('p', { className: https.restart_needed ? 'warning' : 'muted', testid: 'https-state', text: https.restart_needed ? `${now} Restart the server to apply the change.` : now }),
       details,
-      this.autoImportRow(),
+      certAutoImportRow(this.app), // cert-auto.js
       upload,
     );
-  }
-
-  /** Take the certificate the server's web server (Apache, nginx, Caddy or
-   * certbot) uses; deploy/linux/smarthome cert-import reads it on the server. */
-  autoImportRow() {
-    const box = el('div', { testid: 'https-auto' });
-    const draw = (auto) => {
-      const toggle = switchInput('https-auto-import', Boolean(auto.on), "Take the certificate from this server's web server");
-      toggle.addEventListener('change', () => this.app.run(async () => {
-        try {
-          draw(await this.app.api.setHttpsAutoImport(toggle.checked));
-        } catch (error) {
-          toggle.checked = !toggle.checked;
-          throw error;
-        }
-        this.app.status.success(toggle.checked ? 'On. The server imports the certificate within 6 hours (or now: smarthome cert-import).' : 'Off. The certificate stays as it is.');
-      }));
-      const status = auto.imported_at
-        ? `Imported from ${auto.source || 'the web server'} on ${new Date(auto.imported_at).toLocaleString()}.`
-        : 'Not imported yet. On the server, run once: deploy/linux/smarthome cert-auto-setup';
-      box.replaceChildren(
-        settingRow("Use the web server's certificate", 'For a server running Apache (httpd), nginx, Caddy or certbot: the app takes the same certificate and picks up renewals by itself.', toggle),
-        auto.on ? el('p', { className: 'muted', testid: 'https-auto-status', text: status }) : '',
-      );
-    };
-    this.app.api.getHttpsAutoImport().then(draw).catch((error) => this.app.handleError(error));
-    return box;
   }
 
   nameForm() {

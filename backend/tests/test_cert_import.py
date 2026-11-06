@@ -21,10 +21,12 @@ URL = "/api/v1/admin/https"
 
 def test_setting(client, owner, make_user, new_client, login, csrf):
     assert login(client, owner).status_code == 200
-    assert client.get(f"{URL}/auto-import").json() == {
+    got = client.get(f"{URL}/auto-import").json()
+    assert {k: got[k] for k in ("on", "source", "imported_at", "pending")} == {
         "on": False,
         "source": None,
         "imported_at": None,
+        "pending": False,
     }
     r = client.put(f"{URL}/auto-import", json={"enabled": True}, headers=csrf(client))
     assert r.status_code == 200 and r.json()["on"] is True
@@ -138,13 +140,79 @@ def test_finding_nginx_and_caddy(tmp_path):
     assert find(tmp_path) == "/etc/ssl/n.crt /etc/ssl/n.key /etc/nginx/conf.d/home.conf"
 
 
-def test_ui_toggle(open_page, owner):
+def test_ui_toggle_without_a_shared_folder(open_page, owner, monkeypatch):
+    from app.routes import https_admin
+
+    def no_folder():
+        raise https_admin.BackupError("not SQLite")
+
+    monkeypatch.setattr(https_admin, "database_path", no_folder)
     page = open_page()
     _ui.ui_login(page, owner)
     _ui.go_settings(page, "admin")
     page.get_by_test_id("https-auto-import").check()
-    expect(page.get_by_test_id("status")).to_contain_text("imports the certificate")
-    expect(page.get_by_test_id("https-auto-status")).to_contain_text("cert-auto-setup")
+    expect(page.get_by_test_id("cert-popup-text")).to_contain_text("cert-import")
+    expect(page.get_by_test_id("cert-popup-retry")).to_be_visible()
+    page.get_by_test_id("cert-popup-close").click()
+    expect(page.get_by_test_id("cert-popup")).to_have_count(0)
+    expect(page.get_by_test_id("https-auto-status")).to_contain_text("Not imported")
+
+
+def test_ui_popup_shows_the_servers_answer(open_page, owner, tmp_path, monkeypatch):
+    from app.routes import https_admin
+
+    monkeypatch.setattr(
+        https_admin, "database_path", lambda: tmp_path / "smart_home.db"
+    )
+    (tmp_path / "cert-import-result").write_text("same\nold\n")  # cleared
+    page = open_page()
+    _ui.ui_login(page, owner)
+    _ui.go_settings(page, "admin")
+    page.evaluate("window.smartHomeApp.certPollMs = 200")
+    page.get_by_test_id("https-auto-import").check()
+    expect(page.get_by_test_id("cert-popup-text")).to_contain_text("Asking the server")
+    assert (tmp_path / "cert-import-requested").exists()
+    assert not (tmp_path / "cert-import-result").exists()
+    # What smarthome-cert.service does on the server.
+    (tmp_path / "cert-import-result").write_text(
+        "refused\nFrom /etc/httpd/conf.d/ssl.conf: the key does not match\n"
+    )
+    (tmp_path / "cert-import-requested").unlink()
+    text = page.get_by_test_id("cert-popup-text")
+    expect(text).to_contain_text("The app refused the certificate. From /etc/httpd")
+    expect(text).to_have_attribute("data-result", "refused")
+    # Try again asks the server once more, in the same popup.
+    page.get_by_test_id("cert-popup-retry").click()
+    expect(text).to_contain_text("Asking the server")
+    expect(page.get_by_test_id("cert-popup-retry")).to_be_hidden()
+    assert (tmp_path / "cert-import-requested").exists()
+    (tmp_path / "cert-import-result").write_text("changed\nFrom /etc/x.\n")
+    (tmp_path / "cert-import-requested").unlink()
+    expect(text).to_contain_text("Imported")
+    expect(page.get_by_test_id("cert-popup-retry")).to_be_hidden()
+    page.get_by_test_id("cert-popup-close").click()
+    # Fetch now asks again.
+    page.get_by_test_id("https-auto-fetch").click()
+    expect(page.get_by_test_id("cert-popup-text")).to_contain_text("Asking the server")
+    (tmp_path / "cert-import-result").write_text("same\nFrom /etc/x.\n")
+    (tmp_path / "cert-import-requested").unlink()
+    expect(page.get_by_test_id("cert-popup-text")).to_contain_text("already has")
+
+
+def test_fetch_now_needs_it_on(client, owner, login, csrf):
+    assert login(client, owner).status_code == 200
+    r = client.post(f"{URL}/auto-import/request", json={}, headers=csrf(client))
+    assert r.status_code == 409
+
+
+def test_last_check_is_read_safely(tmp_path):
+    from app.routes import https_admin
+
+    (tmp_path / "cert-import-result").write_text("<script>\n" + "x" * 900)
+    check = https_admin._last_check(tmp_path)
+    assert check is not None
+    assert check["status"] == "unknown" and len(check["message"]) == 500
+    assert https_admin._last_check(tmp_path / "missing") is None
 
 
 def test_switching_on_asks_the_server(
@@ -180,7 +248,11 @@ def test_units_watch_for_the_request(tmp_path):
     path_unit = (units / "smarthome-cert.path").read_text()
     assert f"PathExists={data}/cert-import-requested" in path_unit
     service = (units / "smarthome-cert.service").read_text()
-    assert "cert-import --quiet" in service
+    # bash runs the script: SELinux does not let systemd run one in /root.
+    assert (
+        f"ExecStart=/bin/bash {REPO}/deploy/linux/smarthome cert-import --quiet --report"
+        in service
+    )
     assert f"ExecStopPost=/bin/rm -f {data}/cert-import-requested" in service
     calls = (units / "calls").read_text()
     assert (
@@ -191,3 +263,37 @@ def test_units_watch_for_the_request(tmp_path):
     (units / "calls").unlink()
     subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=30)  # noqa: S603, S607
     assert not (units / "calls").exists()
+
+
+def run_import(tmp_path, stubs):
+    data = tmp_path / "volume"
+    data.mkdir(exist_ok=True)
+    script = (
+        f'ROOT="{REPO}"; SELF=smarthome; SERVICE=smart-home; '
+        'say() { :; }; die() { echo "$*" >&2; exit 1; }; need_docker() { :; }; '
+        'as_root() { "$@"; }; wait_healthy() { :; }; '
+        f'docker() {{ echo "{data}"; }}; '
+        f'. "{REPO}/deploy/linux/certificates.sh"; '
+        f"{stubs}; cmd_cert_import --quiet --report"
+    )
+    r = subprocess.run(
+        ["bash", "-c", script], capture_output=True, text=True, timeout=30
+    )  # noqa: S603, S607
+    return r, (data / "cert-import-result").read_text().splitlines()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Linux deploy script")
+def test_import_reports_for_the_popup(tmp_path):
+    r, lines = run_import(
+        tmp_path, "cert_find() { return 1; }; compose() { echo abc123; }"
+    )
+    assert r.returncode == 1 and lines[0] == "not_found"
+    found = "cert_find() { echo /c.crt /c.key /etc/httpd/conf.d/ssl.conf; }; cert_read() { echo PEM; }"
+    refuse = 'compose() { [[ $1 == ps ]] && { echo abc; return; }; cat >/dev/null; echo "refused: no match" >&2; return 2; }'
+    r, lines = run_import(tmp_path, f"{found}; {refuse}")
+    assert r.returncode == 1
+    assert lines == ["refused", "From /etc/httpd/conf.d/ssl.conf: no match"]
+    accept = "compose() { [[ $1 == ps ]] && { echo abc; return; }; [[ $1 == exec ]] && { cat >/dev/null; echo changed; }; return 0; }"
+    r, lines = run_import(tmp_path, f"{found}; {accept}")
+    assert r.returncode == 0, r.stderr
+    assert lines == ["changed", "From /etc/httpd/conf.d/ssl.conf."]

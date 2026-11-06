@@ -55,7 +55,8 @@ Wants=network-online.target
 Type=oneshot
 User=$(id -un)
 WorkingDirectory=$ROOT
-ExecStart=$ROOT/deploy/linux/smarthome offsite-backup $dest
+# bash reads the script: SELinux may not let systemd run one in a home folder.
+ExecStart=/bin/bash $ROOT/deploy/linux/smarthome offsite-backup $dest
 EOF
 }
 
