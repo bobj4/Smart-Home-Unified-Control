@@ -198,6 +198,7 @@ class SmartHomeApp {
       return;
     }
     this.showPage('app');
+    showMotd(this);
     const [view, sub] = this.currentRoute();
     for (const name of VIEWS) {
       byTestId(`view-${name}`).hidden = name !== view;
