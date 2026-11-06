@@ -132,7 +132,9 @@ def test_ui_edit_member_and_own_details(open_page, db, owner, make_user):
     ).to_contain_text("Sam Lee")
 
     _ui.go_settings(page, "admin")
-    page.get_by_test_id("self-edit").check()
+    users = page.get_by_test_id("settings-members")  # under Users, a toggle
+    expect(users.get_by_test_id("self-edit")).to_have_attribute("role", "switch")
+    users.get_by_test_id("self-edit").check()
     expect(page.get_by_test_id("status")).to_contain_text("can now change")
     other = open_page()
     _ui.ui_login(other, member)

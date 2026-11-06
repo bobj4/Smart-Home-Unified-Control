@@ -98,6 +98,7 @@ class SettingsView {
     const users = el('div', { className: 'subpanel', testid: 'settings-members' }, [el('h3', { text: 'Users' })]);
     panel.append(users);
     await this.members.render(users);
+    await new SelfEditPanel(this.app).render(users);
     await new AdminSection(this.app).render(panel);
   }
 
