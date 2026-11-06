@@ -33,6 +33,7 @@ def test_collapsed_and_screens_api(client, owner, login, csrf):
         "collapsed": ["Lab"],
         "filters": {"text": "", "type": "", "on": False},
         "screen": "phone",
+        "thermostats_apart": False,
         "thermostats_room": "Thermostats",
     }
     wide = client.get(url).json()

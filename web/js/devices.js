@@ -82,8 +82,10 @@ class DevicesView {
     this.groups.refresh(groups, devices);
   }
 
-  render(devices) {
-    if (devices.length === 0) {
+  render(everything) {
+    if (drawThermostatsPage(this, everything)) return;
+    const devices = devicesPageDevices(this, everything);
+    if (everything.length === 0) {
       this.root.replaceChildren(el('p', { className: 'empty', testid: 'devices-empty', text: 'No devices yet. An admin can add them.' }));
       return;
     }

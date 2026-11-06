@@ -493,6 +493,10 @@ class RoomLayout(Base):
     )
     collapsed: Mapped[str | None] = mapped_column(Text)  # JSON list of room names
     filters: Mapped[str | None] = mapped_column(Text)  # JSON {"text", "type", "on"}
+    # Thermostats only on their own page (#/devices/thermostats), not with the rest.
+    thermostats_apart: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )

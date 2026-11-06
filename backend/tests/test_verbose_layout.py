@@ -134,6 +134,7 @@ def test_layout_defaults_to_thermostats_first(client, owner, login):
         "collapsed": [],
         "filters": {"text": "", "type": "", "on": False},
         "screen": "wide",
+        "thermostats_apart": False,
         "thermostats_room": "Thermostats",
     }
 
