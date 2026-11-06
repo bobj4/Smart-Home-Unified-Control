@@ -81,6 +81,18 @@ cert_read() {  # the file's text; keys are root's, so ask for sudo if needed
 }
 
 # shellcheck disable=SC2120  # smarthome passes the command line
+# With --report: the outcome, for the app's popup ("status" line, then a
+# message), in the app's data folder.
+CERT_REPORT=""
+cert_report() {
+    [[ -n "$CERT_REPORT" ]] || return 0
+    local data
+    data="$(cert_data_dir || true)"
+    [[ -n "$data" && -d "$data" ]] || return 0
+    printf '%s\n%s\n' "$1" "$2" | as_root tee "$data/cert-import-result" >/dev/null || return 0
+    as_root chmod 644 "$data/cert-import-result" 2>/dev/null || true
+}
+
 cmd_cert_import() {
     local cert="" key="" source="" quiet=""
     while [[ $# -gt 0 ]]; do
@@ -88,26 +100,38 @@ cmd_cert_import() {
             --cert) cert="$2"; shift 2 ;;
             --key) key="$2"; shift 2 ;;
             --quiet) quiet=1; shift ;;
-            *) die "cert-import [--cert FILE --key FILE] [--quiet]" ;;
+            --report) CERT_REPORT=1; shift ;;
+            *) die "cert-import [--cert FILE --key FILE] [--quiet] [--report]" ;;
         esac
     done
+    need_docker
     if [[ -z "$cert" ]]; then
         local found
-        found="$(cert_find)" || die "No web server certificate found (Apache, nginx, Caddy or certbot). Give it: $SELF cert-import --cert FILE --key FILE"
+        if ! found="$(cert_find)"; then
+            cert_report not_found "Apache, nginx, Caddy and certbot were checked. Import one by hand: $SELF cert-import --cert FILE --key FILE"
+            die "No web server certificate found (Apache, nginx, Caddy or certbot). Give it: $SELF cert-import --cert FILE --key FILE"
+        fi
         read -r cert key source <<<"$found"
     else
         source="$cert"
     fi
-    need_docker
     local result
     # One text: the source, the certificate, a dividing line, the key.
-    result="$( { printf '%s\n' "$source"; cert_read "$cert"; printf '%s\n' "$CERT_SPLIT"; cert_read "$key"; } \
-        | compose exec -T "$SERVICE" python scripts/import_certificate.py)" || die "The app refused the certificate from $cert."
+    if ! result="$( { printf '%s\n' "$source"; cert_read "$cert"; printf '%s\n' "$CERT_SPLIT"; cert_read "$key"; } \
+        | compose exec -T "$SERVICE" python scripts/import_certificate.py 2>&1)"; then
+        cert_report refused "From $source: ${result#refused: }"
+        die "The app refused the certificate from $cert: $result"
+    fi
     case "$result" in
-        off) [[ -n "$quiet" ]] || say "Turn it on first: Settings > Admin > HTTPS > Take the certificate from this server's web server." ;;
-        same) [[ -n "$quiet" ]] || say "The app already has the certificate from $source." ;;
+        off)
+            cert_report off ""
+            [[ -n "$quiet" ]] || say "Turn it on first: Settings > Admin > HTTPS > Take the certificate from this server's web server." ;;
+        same)
+            cert_report same "From $source."
+            [[ -n "$quiet" ]] || say "The app already has the certificate from $source." ;;
         changed)
             say "Imported the certificate from $source."
+            cert_report changed "From $source."
             compose restart "$SERVICE" >/dev/null && wait_healthy && say "Restarted the app to use it." ;;
         *) die "Unexpected answer from the app: $result" ;;
     esac
@@ -124,6 +148,8 @@ cert_data_dir() {  # the app's data folder on this server (the Docker volume)
 # renewal, and at once when the toggle is switched on in the app (the app
 # leaves cert-import-requested in its data folder; the .path unit sees it).
 # Installed with the service (install, update), so nothing else is needed.
+# systemd starts bash, which reads the script: SELinux does not let systemd
+# run a script kept in a home folder (such as /root) directly.
 cert_units_install() {
     command -v systemctl >/dev/null 2>&1 || return 0
     local tmp data
@@ -138,7 +164,7 @@ After=docker.service
 [Service]
 Type=oneshot
 WorkingDirectory=$ROOT
-ExecStart=$ROOT/deploy/linux/smarthome cert-import --quiet
+ExecStart=/bin/bash $ROOT/deploy/linux/smarthome cert-import --quiet --report
 UNIT
     [[ -n "$data" ]] && printf 'ExecStopPost=/bin/rm -f %s/cert-import-requested\n' "$data" >> "$tmp"
     cert_unit_put "$tmp" "$CERT_UNIT.service"
@@ -192,7 +218,7 @@ cert_unit_put() {  # install the unit only when it differs
 
 cmd_cert_auto_setup() {
     command -v systemctl >/dev/null 2>&1 || die "No systemd here: run $SELF cert-import from cron instead."
-    cmd_cert_import
+    cmd_cert_import --report
     CERT_CHANGED=1
     cert_units_install
     say "The certificate is imported when you switch it on in the app, every 6 hours, and after each certbot renewal."

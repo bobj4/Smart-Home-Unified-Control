@@ -4,6 +4,8 @@ Owner of any home only (like the login rules). A change takes effect when
 the server is restarted with scripts/serve.py.
 """
 
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -21,17 +23,50 @@ from app.routes.admin import _require_owner_somewhere
 from app.vault import VaultError
 
 router = APIRouter(prefix="/api/v1/admin/https", tags=["admin"])
-# Left in the data folder when the toggle is switched on; on the server,
-# smarthome-cert.path sees it and runs the import at once (then removes it).
+# Left in the data folder when the toggle is switched on (or "Fetch now");
+# on the server, smarthome-cert.path sees it and runs the import at once,
+# which writes its outcome to RESULT_FILE ("status\nmessage") and removes
+# the request. The app shows the outcome in a popup.
 REQUEST_FILE = "cert-import-requested"
+RESULT_FILE = "cert-import-result"
+RESULTS = ("changed", "same", "off", "not_found", "refused")
 
 
-def request_import() -> None:
+def _data_folder() -> Path | None:
     try:
-        folder = database_path().parent
+        return database_path().parent
+    except BackupError:
+        return None  # not SQLite: no shared folder with the server
+
+
+def request_import() -> bool:
+    """Ask the server to import now. False if the request could not be left
+    (the 6-hourly check still runs)."""
+    folder = _data_folder()
+    if folder is None:
+        return False
+    try:
+        (folder / RESULT_FILE).unlink(missing_ok=True)
         (folder / REQUEST_FILE).write_text("requested\n", encoding="utf-8")
-    except (BackupError, OSError):
-        pass  # not SQLite, or not writable: the 6-hourly check still runs
+    except OSError:
+        return False
+    return True
+
+
+def _last_check(folder: Path) -> dict[str, str] | None:
+    path = folder / RESULT_FILE
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")[:2000]
+        at = datetime.fromtimestamp(path.stat().st_mtime, UTC)
+    except OSError:
+        return None
+    status, _, message = text.partition("\n")
+    status = status.strip()
+    return {
+        "status": status if status in RESULTS else "unknown",
+        "message": message.strip()[:500],
+        "at": at.isoformat(),
+    }
 
 
 class Certificate(BaseModel):
@@ -60,12 +95,16 @@ def _out(db: Session, request: Request) -> dict[str, Any]:
 
 def _auto(db: Session) -> dict[str, Any]:
     row = settings(db)
+    folder = _data_folder()
     return {
         "on": bool(row.cert_auto_import),
         "source": row.cert_import_source,
         "imported_at": row.cert_imported_at.isoformat()
         if row.cert_imported_at
         else None,
+        # Waiting for the server to take the request, and its last answer.
+        "pending": bool(folder and (folder / REQUEST_FILE).exists()),
+        "last_check": _last_check(folder) if folder else None,
     }
 
 
@@ -146,6 +185,18 @@ def switch_auto_import(
         ip_address=client_ip(request),
         details={"enabled": body.enabled},
     )
+    return _auto(db)
+
+
+@router.post("/auto-import/request", dependencies=[Depends(require_csrf)])
+def request_auto_import(
+    user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """Fetch now: ask the server to import the certificate at once."""
+    _require_owner_somewhere(db, user)
+    if not settings(db).cert_auto_import:
+        raise HTTPException(status_code=409, detail="Switch it on first.")
+    request_import()
     return _auto(db)
 
 
