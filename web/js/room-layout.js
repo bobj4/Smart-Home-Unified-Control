@@ -15,8 +15,10 @@ function orderRooms(names, order) {
 }
 
 /** The room a device is shown in. */
+/** The room a device is shown in: thermostats and water heaters together
+ * in "Thermostats" (THERMOSTAT_PAGE_TYPES, thermostats-page.js). */
 function displayRoom(device) {
-  return device.type === 'thermostat' ? THERMOSTATS_ROOM : (device.room || '');
+  return THERMOSTAT_PAGE_TYPES.includes(device.type) ? THERMOSTATS_ROOM : (device.room || '');
 }
 
 class RoomLayoutEditor {
