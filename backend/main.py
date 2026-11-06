@@ -17,6 +17,7 @@ from app.routes import (
     admin,
     audit_log,
     auth,
+    background,
     cync,
     devices,
     email_admin,
@@ -121,6 +122,7 @@ app.include_router(cync.router)
 app.include_router(home_security.router)
 app.include_router(samsung.router)
 app.include_router(tv_sources.router)
+app.include_router(background.router)
 app.include_router(frigate.settings_router)
 app.include_router(frigate.router)
 

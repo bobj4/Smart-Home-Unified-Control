@@ -19,6 +19,7 @@ class AccountSection {
       el('p', { className: 'muted', text: `Logged in as ${this.app.account.email}` }),
       this.passwordForm(),
       this.themeBox(),
+      new BackgroundBox(this.app).element(),
       this.twoFactorBox(),
       this.recoveryForm(),
       this.totpForm(),

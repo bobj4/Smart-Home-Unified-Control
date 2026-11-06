@@ -29,6 +29,7 @@ from app.login_times import forget_all
 from app.models import Home, HomeMembership, User
 from app.models import Session as SessionModel
 from app.rate_limiter import check_login_allowed, record_login_failure
+from app.routes.background import background_out
 from app.sessions import as_utc
 
 router = APIRouter(prefix="/api/v1/account", tags=["account"])
@@ -111,6 +112,7 @@ def get_account(
         "theme": user.theme or "system",
         # The last custom colours, kept when another theme is chosen.
         "theme_custom": _custom(user),
+        "background": background_out(db, user),
     }
 
 

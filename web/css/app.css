@@ -38,6 +38,11 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--text); line-height: 1.45; }
+/* My account > Appearance > Background picture, softened so text stays readable. */
+body.has-background {
+  background-image: linear-gradient(color-mix(in srgb, var(--bg) 55%, transparent), color-mix(in srgb, var(--bg) 55%, transparent)), var(--bg-image);
+  background-size: cover; background-position: center; background-attachment: fixed;
+}
 h1, h2, h3 { margin: 0; line-height: 1.2; }
 h1 { font-size: 1.35rem; }
 h2 { font-size: 1.1rem; }
