@@ -19,6 +19,7 @@ import asyncio
 import base64
 import concurrent.futures
 import socket
+import time
 from typing import Any
 
 import aiohttp
@@ -72,6 +73,7 @@ PRESS_KEYS = {
     "rewind": "KEY_REWIND",
     "fast_forward": "KEY_FF",
 }
+APP_SETTLE_SECONDS = 0.5
 # Tizen app ids (Samsung's own store ids). Legacy TVs cannot launch apps.
 APP_IDS = {
     "netflix": "3201907018807",
@@ -295,10 +297,47 @@ def send_keys(host: str, protocol: str, token: str | None, keys: list[str]) -> N
     _tizen_call(host, token, press)
 
 
+def _start_app(tv: Any, app_id: str) -> None:
+    """Start an app the way this TV expects. The TV ignores a launch of the
+    wrong kind without an error, which is why the quick-app buttons did
+    nothing: its app list says which kind (2 = DEEP_LINK, else
+    NATIVE_LAUNCH); an app it does not list is started over its REST API."""
+    kinds: dict[str, Any] = {}
+    try:
+        for entry in tv.app_list() or []:
+            kinds[str(entry.get("appId"))] = entry.get("app_type")
+    except Exception:  # noqa: BLE001 (not every TV answers; carry on)
+        kinds = {}
+    if app_id in kinds:
+        tv.run_app(app_id, "DEEP_LINK" if kinds[app_id] == 2 else "NATIVE_LAUNCH")
+        time.sleep(APP_SETTLE_SECONDS)  # let the TV read it before the socket closes
+        return
+    try:
+        tv.rest_app_run(app_id)
+    except Exception:  # noqa: BLE001 (older firmware: the websocket way)
+        tv.run_app(app_id, "NATIVE_LAUNCH")
+        time.sleep(APP_SETTLE_SECONDS)
+
+
 def launch_app(host: str, protocol: str, token: str | None, app: str) -> None:
     if protocol != "tizen":
         raise TvUnsupported("only 2016 and newer TVs can launch apps")
-    _tizen_call(host, token, lambda tv: tv.run_app(APP_IDS[app]))
+    _tizen_call(host, token, lambda tv: _start_app(tv, APP_IDS[app]))
+
+
+def installed_apps(host: str, protocol: str, token: str | None) -> list[dict[str, str]]:
+    """The apps on a 2016+ TV: [{"id", "name"}], or [] if it does not say."""
+    if protocol != "tizen":
+        return []
+    found: list[dict[str, str]] = []
+
+    def read(tv: Any) -> None:
+        for entry in tv.app_list() or []:
+            if entry.get("appId") and entry.get("name"):
+                found.append({"id": str(entry["appId"]), "name": str(entry["name"])})
+
+    _tizen_call(host, token, read)
+    return found
 
 
 def wake(mac: str) -> None:
