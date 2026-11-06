@@ -69,6 +69,13 @@ INTEGRATIONS: tuple[Integration, ...] = (
         True,
     ),
     Integration(
+        "ratgdo",
+        "ratgdo garage doors",
+        "Garage door openers with a ratgdo (ESPHome firmware) on your network.",
+        False,
+        True,
+    ),
+    Integration(
         "frigate",
         "Frigate cameras",
         "Camera feeds and events from your Frigate server.",

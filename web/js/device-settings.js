@@ -4,7 +4,7 @@
  * the top and the bottom for every changed row; Delete per device.
  */
 
-const DEVICE_TYPE_LABELS = { light: 'Lights', plug: 'Plugs', tv: 'TVs', thermostat: 'Thermostats', water_heater: 'Water heaters', camera: 'Cameras', sensor: 'Sensors' };
+const DEVICE_TYPE_LABELS = { light: 'Lights', plug: 'Plugs', tv: 'TVs', thermostat: 'Thermostats', water_heater: 'Water heaters', camera: 'Cameras', sensor: 'Sensors', garage_door: 'Garage doors' };
 
 class DeviceSettings {
   constructor(app) {

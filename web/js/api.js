@@ -180,6 +180,9 @@ class SmartHomeAPI {
   addLgTv(homeId, tv) { return this.post(`/homes/${enc(homeId)}/integrations/lg_tv/tvs`, tv); }
   pairLgTv(homeId, deviceId) { return this.post(`/homes/${enc(homeId)}/integrations/lg_tv/tvs/${enc(deviceId)}/pair`); }
   removeLgTv(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/integrations/lg_tv/tvs/${enc(deviceId)}`); }
+  getDoors(homeId) { return this.get(`/homes/${enc(homeId)}/integrations/ratgdo/doors`); }
+  addDoor(homeId, door) { return this.post(`/homes/${enc(homeId)}/integrations/ratgdo/doors`, door); }
+  removeDoor(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/integrations/ratgdo/doors/${enc(deviceId)}`); }
   getRokus(homeId) { return this.get(`/homes/${enc(homeId)}/integrations/roku_tv/tvs`); }
   addRoku(homeId, tv) { return this.post(`/homes/${enc(homeId)}/integrations/roku_tv/tvs`, tv); }
   removeRoku(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/integrations/roku_tv/tvs/${enc(deviceId)}`); }
