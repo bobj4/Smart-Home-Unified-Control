@@ -209,6 +209,9 @@ class SmartHomeAPI {
   setMemberPassword(homeId, userId, password) { return this.post(`/homes/${enc(homeId)}/members/${enc(userId)}/password`, { password }); }
   createResetCode(homeId, userId) { return this.post(`/homes/${enc(homeId)}/members/${enc(userId)}/reset-code`); }
   setPreferences(prefs) { return this.put('/account/preferences', prefs); }
+  dismissMotd(version) { return this.post('/account/motd/dismiss', { version }); }
+  getMotd() { return this.get('/admin/motd'); }
+  setMotd(text) { return this.put('/admin/motd', { text }); }
   setBackground(image) { return this.put('/account/background', { image }); }
   switchBackground(on) { return this.put('/account/background/on', { on }); }
   removeBackground() { return this.del('/account/background'); }

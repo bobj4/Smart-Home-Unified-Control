@@ -91,6 +91,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 /* Devices */
 .device-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
 .device-filters input[type="search"] { flex: 1 1 200px; }
+.motd-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .room { margin-top: 20px; }
 .room-toggle { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 0; background: none; border: 0; color: var(--text); text-align: left; font-weight: inherit; }
 .room-toggle h2 { flex: 0 1 auto; }

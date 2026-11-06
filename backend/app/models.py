@@ -98,6 +98,7 @@ class User(Base):
     # A picture behind the dashboard (loaded only when asked for: deferred).
     background_image: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
     background_type: Mapped[str | None] = mapped_column(String(20))
+    motd_dismissed: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     background_on: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa_false()
     )
@@ -375,6 +376,10 @@ class SystemSettings(Base):
         Integer, default=15, server_default="15", nullable=True
     )
     login_lockdown_after: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Message of the day: shown after login until each person dismisses it
+    # for good; a new text (new version) shows again to everyone.
+    motd_text: Mapped[str | None] = mapped_column(Text)
+    motd_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # Settings > Activity log: also record integration detail (app/verbose.py).
     verbose_logging: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa_false()

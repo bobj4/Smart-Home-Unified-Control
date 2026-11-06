@@ -33,6 +33,7 @@ from app.routes import (
     login_times,
     member_access,
     members,
+    motd,
     rheem,
     safety_limits,
     samsung,
@@ -123,6 +124,7 @@ app.include_router(home_security.router)
 app.include_router(samsung.router)
 app.include_router(tv_sources.router)
 app.include_router(background.router)
+app.include_router(motd.router)
 app.include_router(frigate.settings_router)
 app.include_router(frigate.router)
 
