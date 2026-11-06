@@ -172,6 +172,8 @@ class HomeSettings {
     const problems = this.app.can('operator') ? await this.app.api.getIntegrationProblems(this.app.home.id) : {};
     const add = addIntegrationRow(this, rows);
     if (add) container.append(add);
+    const scanBox = tvScanPanel(this);
+    if (scanBox) container.append(scanBox);
     container.append(el('div', { className: 'integration-list' }, rows.flatMap((row) => {
       const toggle = el('input', {
         type: 'checkbox', role: 'switch', className: 'switch', testid: 'integration-toggle',

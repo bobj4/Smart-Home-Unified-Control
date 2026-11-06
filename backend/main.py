@@ -43,6 +43,7 @@ from app.routes import (
     samsung,
     setup_steps,
     thermostat,
+    tv_scan,
     tv_sources,
     user_info,
     verbose,
@@ -137,6 +138,7 @@ app.include_router(background.router)
 app.include_router(motd.router)
 app.include_router(user_info.router)
 app.include_router(setup_steps.router)
+app.include_router(tv_scan.router)
 app.include_router(frigate.settings_router)
 app.include_router(frigate.router)
 
