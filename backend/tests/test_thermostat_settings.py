@@ -1,5 +1,5 @@
 """A Cync thermostat's own settings (the Settings window under Schedule):
-read by name, yes/no ones changed and read back. Nothing talks to Cync."""
+read by name, changed and read back. Nothing talks to Cync."""
 
 import json
 
@@ -49,7 +49,10 @@ def held(thermostat, monkeypatch):
         state["writes"].append(entries)
         if state["keep"]:
             for index, value in entries:
-                stored[by_index[index]] = int(value)  # as 1/0
+                # yes/no come back as 1/0; text and numbers as written
+                stored[by_index[index]] = (
+                    int(value) if isinstance(value, bool) else value
+                )
         return read(api, loop, cloud_id, names)
 
     monkeypatch.setattr(cync, "thermostat_settings_on_open", read)
@@ -73,10 +76,13 @@ def test_read_and_change(client, db, owner, csrf, thermostat, held):
         True,
     )
     assert settings["min_fan_runtime"] == 10
-    assert settings["temperature_offset"] == "-1.0F"
+    assert settings["temperature_offset"] == "-1F"
+    assert settings["auto_deadband"] == "3F"
     assert settings["humidity_offset"] is None  # not a plain value: not shown
     assert "heat_pump_changeover" in body["missing"]
-    assert body["editable"] == ["early_on", "celsius", "auto_dst"]
+    assert "raw" not in body
+    assert set(body["editable"]) == set(thermostat_settings.SETTINGS)
+    assert body["limits"]["min_fan_runtime"] == [0, 60]
 
     r = client.put(
         url(owner, thermostat), json={"early_on": True}, headers=csrf(client)
@@ -90,6 +96,15 @@ def test_read_and_change(client, db, owner, csrf, thermostat, held):
         == 1
     )
 
+    # Numbers: whole ones as numbers, text ones in the form they are kept in.
+    r = client.put(
+        url(owner, thermostat),
+        json={"min_fan_runtime": 15, "temperature_offset": 1.5},
+        headers=csrf(client),
+    )
+    assert r.status_code == 200, r.text
+    assert held["writes"][-1] == [(26, 15), (21, "1.5F")]
+    assert r.json()["settings"]["temperature_offset"] == "1.5F"
     held["keep"] = False  # the thermostat ignores the write
     r = client.put(
         url(owner, thermostat), json={"auto_dst": False}, headers=csrf(client)
@@ -102,13 +117,18 @@ def test_read_and_change(client, db, owner, csrf, thermostat, held):
     )
 
 
-def test_only_yes_no_settings_change(client, owner, csrf, thermostat, held):
+def test_refused_values_write_nothing(client, owner, csrf, thermostat, held):
     for body in (
         {},
         {"early_on": "yes"},
         {"early_on": 1},
-        {"min_fan_runtime": 5},
-        {"temperature_offset": "2.0F"},
+        {"min_fan_runtime": 61},  # outside its range
+        {"min_fan_runtime": 5.5},  # minutes are whole
+        {"temperature_offset": "2.0F"},  # a number, not text
+        {"temperature_offset": 9},
+        {"temperature_offset": 1.25},  # steps of 0.5
+        {"humidity_offset": 2},  # not reported in a known form
+        {"firmware": "x"},
     ):
         r = client.put(url(owner, thermostat), json=body, headers=csrf(client))
         assert r.status_code == 422, body
@@ -143,16 +163,18 @@ def test_ui_settings_window(open_page, db, owner, monkeypatch):
     db.add(hall)
     db.commit()
     features.set_integration(db, owner.home_id, "cync", True, None, None)
-    now = {"early_on": False, "celsius": False, "auto_dst": None}
+    now = {"early_on": False, "celsius": False, "auto_dst": None, "min_fan_runtime": 10}
     sent = []
 
     def answer():
         info = {k: None for k in thermostat_settings.SETTINGS}
-        info.update(now, min_fan_runtime=10, temperature_offset="-1.0F")
+        info.update(now, temperature_offset="-1F")
+        limits = {k: list(v) for k, v in thermostat_settings.LIMITS.items()}
         return {
             "settings": info,
             "missing": [],
-            "editable": ["early_on", "celsius", "auto_dst"],
+            "editable": list(thermostat_settings.SETTINGS),
+            "limits": limits,
         }
 
     def fake_read(db_, device, refresh=False):
@@ -176,11 +198,34 @@ def test_ui_settings_window(open_page, db, owner, monkeypatch):
     expect(panel.get_by_test_id("thermo-setting-auto_dst")).to_contain_text(
         "not reported"
     )
-    expect(panel.get_by_test_id("thermo-info-min_fan_runtime")).to_have_text("10")
-    expect(panel.get_by_test_id("thermo-info-dehumidify")).to_have_text("Not reported")
+    # The installer settings are in sub menus, folded at first.
+    fan = panel.get_by_test_id("thermo-group-fan")
+    expect(panel.get_by_test_id("thermo-setting-min_fan_runtime")).to_be_hidden()
+    expect(early).to_be_visible()  # the top three are not in a sub menu
+    fan.locator("summary").click()
+    for group in ("calibration", "humidity"):
+        panel.get_by_test_id(f"thermo-group-{group}").locator("summary").click()
+    expect(panel.get_by_test_id("thermo-setting-min_fan_runtime")).to_have_value("10")
+    expect(panel.get_by_test_id("thermo-setting-temperature_offset")).to_have_value(
+        "-1"
+    )
+    expect(panel.get_by_test_id("thermo-setting-dehumidify")).to_contain_text(
+        "not reported"
+    )
     early.check()
     expect(page.get_by_test_id("status")).to_contain_text("took the change")
     expect(panel.get_by_test_id("thermo-setting-early_on")).to_be_checked()
-    assert sent == [{"early_on": True}]
+    panel.get_by_test_id("thermo-setting-min_fan_runtime").fill("20")
+    panel.get_by_test_id("thermo-save-min_fan_runtime").click()
+    for _ in range(50):  # the change is sent, then the window is drawn again
+        if len(sent) == 2:
+            break
+        page.wait_for_timeout(100)
+    expect(panel.get_by_test_id("thermo-setting-min_fan_runtime")).to_have_value("20")
+    expect(fan).to_have_attribute("open", "")  # still open after the redraw
+    expect(panel.get_by_test_id("thermo-group-heat-pump")).not_to_have_attribute(
+        "open", ""
+    )
+    assert sent == [{"early_on": True}, {"min_fan_runtime": 20}]
     panel.get_by_test_id("thermo-settings-close").click()
     expect(panel).to_have_count(0)
