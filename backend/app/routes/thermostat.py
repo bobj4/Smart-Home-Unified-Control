@@ -23,6 +23,7 @@ from app.models import Device, User
 from app.routes.devices import CommandRejected, _device_bounds, _limits
 from app.routes.thermostat_access import may_change_installer
 from app.thermostat_history import history
+from app.thermostat_runs import cloud_runs
 from app.thermostat_schedule import read_schedule, write_schedule
 from app.thermostat_settings import INSTALLER, read_settings, write_settings
 
@@ -223,7 +224,8 @@ def thermostat_history(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """The readings the app kept for its History window (members and up)."""
+    """The readings the app kept for its History window (members and up),
+    and run time from the thermostat's own reports when Cync gives them."""
     require_role(db, user.id, home_id)
     if days not in (1, 7, 30):
         raise HTTPException(422, "days must be 1, 7 or 30")
@@ -232,4 +234,4 @@ def thermostat_history(
     ).first()
     if device is None or device.type != "thermostat":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
-    return history(db, device, days)
+    return history(db, device, days, cloud_runs(db, device, days))

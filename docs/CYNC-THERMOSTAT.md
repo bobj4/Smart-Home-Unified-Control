@@ -72,7 +72,7 @@ Device types: 122 (Gen 2), 224 (Gen 1), both data-point protocol. W = written by
 | 61 | Filter_Replacement_Method | bytes | |
 | 62 | Auto_OTA_En | bool | |
 | 84 | ReadSetting | string | write a setting name to request it; reply is JSON `{name: value}` |
-| 86 | EnergyReportStatus | bytes | not decoded |
+| 86 | EnergyReportStatus | bytes | heating/cooling start or stop (see Energy reports) |
 | 87 | SensorRawDataReport | string | JSON `sensorsData:[...]` |
 | 88 | Filter_Replacement_Reset | bool | |
 | 89 / 90 | OtaUpdateControl / Status | string | do not touch |
@@ -97,7 +97,7 @@ Device types: 122 (Gen 2), 224 (Gen 1), both data-point protocol. W = written by
 ## Unknowns
 - Whether the device pushes state after login or needs a probe first (probe is the documented path).
 - Exact precision/range limits and the Eco-mode rule enforced by firmware vs only by the app.
-- Names/order of the six relay terminals, error code meanings, energy report layout.
+- Names/order of the six relay terminals, error code meanings.
 - Whether a second (home-shared) account avoids the one-session limit.
 ## Schedules (from the Cync app 6.24; reading confirmed on the owner's thermostat 2026-10-24, writing not yet tried)
 Source: `com.gelighting.cbygekit.services.devices.datapoint` (ThermostatScheduleSetDataPoint,
@@ -133,3 +133,22 @@ same period bytes as above, or `FF` to clear the day. The app (`app/thermostat_s
 asks for each written day by name and only reports success when the answer holds exactly what
 was sent. Up to 6 set point periods a day are accepted here (the app's limit is not in the
 decompiled code; the sensor schedule answer is padded to 10 periods).
+
+## Energy reports (run history)
+
+Point 86 is sent each time the thermostat starts heating, starts cooling or stops: six bytes,
+year (since 2000), month, day, hour, minute, then 0 stopped, 1 heating, 2 cooling (app 6.20,
+EnergyReportStatusDataPoint). Cync's cloud keeps them; the app does not ask the thermostat.
+It asks the cloud (ThermostatHistoryManager, read from the APK's bytecode as the method does not
+decompile):
+
+    POST https://api.gelighting.com/v2/product/{product_id}/device/{device_id}/snapshot
+    Access-Token: <the login's token>
+    {"rule_id": "61d3e8eaefe8266240c306ee", "datapoint": [86], "offset": page * 100,
+     "limit": 100, "date": {"begin": <ms>, "end": <ms>}}
+
+The answer is `{"count": n, "list": [{"86": "<hex>", "snapshot_date": "2026-11-06_22_05_09",
+...}]}` with snapshot_date in UTC. The app times each run by snapshot_date, from one report to the
+next (GEThermostatHistoryDataSource); the report's own date bytes are only checked (year > 0,
+month 1 to 12). `app/integrations/cync_runtime.py` does the same for the History window, and
+falls back to the app's own readings when the cloud does not answer.

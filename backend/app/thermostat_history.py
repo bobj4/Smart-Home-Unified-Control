@@ -1,11 +1,12 @@
 """A thermostat's history (its History window), from the readings the app
 keeps: every RECORD_SECONDS while its state comes in, and whenever it starts
 or stops heating or cooling, or its mode or set points change. Readings are
-kept KEEP_DAYS. The thermostat's own energy report is not decoded yet.
+kept KEEP_DAYS.
 
-Run time is worked out from the readings: the time from a heating (or
-cooling) reading to the next reading, at most GAP_SECONDS (a longer gap is
-missing data, not running)."""
+Run time comes from the thermostat's own reports when Cync gives them
+(app.thermostat_runs). Otherwise it is worked out from the readings: the
+time from a heating (or cooling) reading to the next reading, at most
+GAP_SECONDS (a longer gap is missing data, not running)."""
 
 import time
 from collections import defaultdict
@@ -82,10 +83,36 @@ def _aware(at: datetime) -> datetime:
     return at if at.tzinfo else at.replace(tzinfo=UTC)
 
 
-def history(db: Session, device: Device, days: int) -> dict[str, Any]:
+def _split_by_day(
+    runs: list[tuple[datetime, datetime, str]],
+) -> dict[str, dict[str, float]]:
+    """Hours per UTC date, a run across midnight split between the days."""
+    run: dict[str, dict[str, float]] = defaultdict(
+        lambda: {"heating": 0.0, "cooling": 0.0}
+    )
+    for start, stop, status in runs:
+        while start < stop:
+            midnight = datetime.combine(
+                start.date() + timedelta(days=1), datetime.min.time(), UTC
+            )
+            part = min(stop, midnight)
+            run[start.date().isoformat()][status] += (
+                part - start
+            ).total_seconds() / 3600
+            start = part
+    return run
+
+
+def history(
+    db: Session,
+    device: Device,
+    days: int,
+    runs: list[tuple[datetime, datetime, str]] | None = None,
+) -> dict[str, Any]:
     """Readings for the last `days` days: every reading for one day, hourly
     averages for longer; and heating and cooling hours per day (UTC dates,
-    which the page shows in local time)."""
+    which the page shows in local time), from the thermostat's own `runs`
+    when given, else from the readings."""
     since = utcnow() - timedelta(days=days)
     rows = list(
         db.scalars(
@@ -99,14 +126,16 @@ def history(db: Session, device: Device, days: int) -> dict[str, Any]:
     run: dict[str, dict[str, float]] = defaultdict(
         lambda: {"heating": 0.0, "cooling": 0.0}
     )
-    for row, following in zip(rows, rows[1:] + [None], strict=True):
-        if row.status not in RUNNING:
+    for row, following in zip(rows, [*rows[1:], None][: len(rows)], strict=True):
+        if runs is not None or row.status not in RUNNING:
             continue
         end = _aware(following.at) if following else utcnow()
         seconds = min((end - _aware(row.at)).total_seconds(), GAP_SECONDS)
         run[_aware(row.at).date().isoformat()][str(row.status)] += (
             max(seconds, 0) / 3600
         )
+    if runs is not None:
+        run = _split_by_day(runs)
     points: list[dict[str, Any]] = []
     if days <= 1:
         points = [_point(_aware(r.at), [r]) for r in rows]
@@ -129,6 +158,11 @@ def history(db: Session, device: Device, days: int) -> dict[str, Any]:
             for date, hours in sorted(run.items())
         ],
         "since": _aware(first).isoformat() if first else None,
+        "run_source": "thermostat" if runs is not None else "readings",
+        "runs": [
+            {"start": a.isoformat(), "end": b.isoformat(), "status": status}
+            for a, b, status in runs or []
+        ],
     }
 
 
