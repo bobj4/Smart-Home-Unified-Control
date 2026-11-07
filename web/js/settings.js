@@ -9,7 +9,7 @@ const SETTINGS_SECTIONS = [
   { id: 'admin', label: 'Admin', intro: 'Users, home name, login rules, email server and HTTPS.', role: 'admin' },
   { id: 'devices', label: 'Devices', intro: 'Rename devices and choose their room.', role: 'operator' },
   { id: 'integrations', label: 'Integrations', intro: 'Device brands this home uses. A brand that is off accepts no commands and no new devices.', role: 'operator' },
-  { id: 'safety', label: 'Safety limits', intro: 'Thermostats and water heaters only accept targets inside these limits. New devices start at the default target.', role: 'operator' },
+  { id: 'safety', label: 'Safety Settings', intro: 'Thermostats and water heaters only accept targets inside these limits (new devices start at the default target), and who may change thermostat installer settings.', role: 'operator' },
   { id: 'activity', label: 'Activity log', intro: 'Logins, setting changes and device commands, newest first.', role: 'admin' },
 ];
 

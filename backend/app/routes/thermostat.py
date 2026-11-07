@@ -19,8 +19,9 @@ from app.authorization import require_role
 from app.cync_home import CyncUnavailable
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
-from app.models import Device, Role, User
+from app.models import Device, User
 from app.routes.devices import CommandRejected, _device_bounds, _limits
+from app.routes.thermostat_access import may_change_installer
 from app.thermostat_schedule import read_schedule, write_schedule
 from app.thermostat_settings import INSTALLER, read_settings, write_settings
 
@@ -162,9 +163,10 @@ def thermostat_settings(
     require_role(db, user.id, home_id)
     device = _thermostat(db, home_id, device_id)
     try:
-        return read_settings(db, device, refresh)
+        result = read_settings(db, device, refresh)
     except CyncUnavailable as error:
         raise HTTPException(error.status_code, error.reason) from None
+    return {**result, "installer_allowed": may_change_installer(db, user, home_id)}
 
 
 @router.put("/{device_id}/settings", dependencies=[Depends(require_csrf)])
@@ -183,8 +185,11 @@ def save_thermostat_settings(
     changes = body.model_dump(exclude_none=True)
     if not changes:
         raise HTTPException(422, "Send a setting to change")
-    if INSTALLER.intersection(changes):  # how the equipment is set up: admins
-        require_role(db, user.id, home_id, Role.ADMIN)
+    # How the equipment is set up: the role chosen in Safety Settings.
+    if INSTALLER.intersection(changes) and not may_change_installer(db, user, home_id):
+        raise HTTPException(
+            403, "Only people allowed in Settings > Safety Settings can change this"
+        )
     details = {"device_id": device.id, "changes": changes}
     try:
         result = write_settings(db, device, changes)
@@ -206,4 +211,4 @@ def save_thermostat_settings(
         ip_address=client_ip(request),
         details=details,
     )
-    return result
+    return {**result, "installer_allowed": may_change_installer(db, user, home_id)}

@@ -1,5 +1,5 @@
 /**
- * Settings that belong to the current home: safety limits, devices,
+ * Settings that belong to the current home: safety settings, devices,
  * integrations and the activity log.
  */
 
@@ -34,6 +34,8 @@ class HomeSettings {
       container.append(el('p', { className: 'muted empty', testid: 'limits-none', text: 'No thermostats or water heaters yet.' }));
       return;
     }
+    // Who may change installer settings, for homes with a thermostat (thermostat-access.js).
+    const access = present.has('thermostat') ? await thermostatAccessBox(this.app) : null;
     const list = el('div', { className: 'limits' }, types.map(([type, label]) => this.limitsRow(type, label, byType[type], owner)));
     container.append(list);
     // Each thermostat and water heater can have narrower limits of its own.
@@ -42,6 +44,7 @@ class HomeSettings {
       el('h3', { text: 'Per device (optional, inside the limits above)' }),
       ...limited.map((d) => this.deviceLimitsRow(d, byType[d.type], owner)),
     ]));
+    if (access) container.append(access);
     if (owner) {
       container.append(el('div', { className: 'actions' }, [
         el('button', {
