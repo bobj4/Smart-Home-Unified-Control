@@ -97,6 +97,9 @@ function thermostatExtras(view, device, state) {
   // The schedule sits right under the hold button: the hold decides whether it is followed.
   if (device.integration === 'cync' && !view.app.isGuest()) { // schedules: members and up
     box.append(el('button', { type: 'button', className: 'secondary', testid: 'thermo-schedule-open', text: 'Schedule', onclick: () => thermostatSchedulePanel(view).open(device) }));
+  }
+  // Settings: members and up, and guests allowed them in their Access window.
+  if (device.integration === 'cync' && guestMay(view.app, 'thermostat_settings')) {
     box.append(el('button', { type: 'button', className: 'secondary', testid: 'thermo-settings-open', text: 'Settings', onclick: () => thermostatSettingsPanel(view).open(device) }));
   }
   if (state.mode === 'eco') box.append(el('p', { className: 'muted', testid: 'thermo-eco', text: 'Eco mode: the thermostat keeps its own energy-saving range. Change the mode to set a temperature.' }));

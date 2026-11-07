@@ -12,13 +12,14 @@ the integration, the device answering) after the guest check.
 import json
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit import record_event
 from app.authorization import require_role
+from app.cync_home import CyncUnavailable
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
 from app.features import list_integrations
@@ -38,7 +39,9 @@ from app.routes.devices import (
     _device_out,
     apply_command,
 )
+from app.routes.thermostat import SettingChanges
 from app.safety import limits_out
+from app.thermostat_settings import INSTALLER, read_settings, write_settings
 
 router = APIRouter(prefix="/api/v1/homes/{home_id}", tags=["guests"])
 
@@ -50,6 +53,8 @@ class GuestAccessIn(BaseModel):
     cameras: StrictBool
     water_heater: StrictBool
     show_blocked: StrictBool
+    thermostat_settings: StrictBool = False
+    thermostat_installer: StrictBool = False
     thermostat_ids: list[str] = Field(max_length=100)
 
 
@@ -184,3 +189,70 @@ def set_guest_access(
         details={"guest_id": user_id, **out},
     )
     return out
+
+
+# ------------------------------------------------------------ thermostat settings
+
+
+def _guest_thermostat(
+    db: Session, user: User, home_id: str, device_id: str
+) -> tuple[Any, Device]:
+    """A thermostat this guest may use, with its Settings allowed, or raise."""
+    access = require_guest(db, user, home_id)
+    device = db.scalars(
+        select(Device).where(Device.id == device_id, Device.home_id == home_id)
+    ).first()
+    if device is None or not can_see(access, device) or device.type != "thermostat":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    if not access.thermostat_settings:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Guests cannot do that here")
+    if device.integration != "cync":
+        raise HTTPException(409, "settings are read from Cync thermostats only")
+    return access, device
+
+
+@router.get("/guest/devices/{device_id}/settings")
+def guest_thermostat_settings(
+    home_id: str,
+    device_id: str,
+    refresh: bool = Query(False),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    access, device = _guest_thermostat(db, user, home_id, device_id)
+    try:
+        result = read_settings(db, device, refresh)
+    except CyncUnavailable as error:
+        raise HTTPException(error.status_code, error.reason) from None
+    return {**result, "installer_allowed": bool(access.thermostat_installer)}
+
+
+@router.put("/guest/devices/{device_id}/settings", dependencies=[Depends(require_csrf)])
+def guest_save_thermostat_settings(
+    home_id: str,
+    device_id: str,
+    body: SettingChanges,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    access, device = _guest_thermostat(db, user, home_id, device_id)
+    changes = body.model_dump(exclude_none=True)
+    if not changes:
+        raise HTTPException(422, "Send a setting to change")
+    if INSTALLER.intersection(changes) and not access.thermostat_installer:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Guests cannot do that here")
+    details = {"device_id": device.id, "changes": changes, "guest": True}
+    try:
+        result = write_settings(db, device, changes)
+    except CyncUnavailable as error:
+        raise HTTPException(error.status_code, error.reason) from None
+    record_event(
+        db,
+        "thermostat_settings_saved",
+        user_id=user.id,
+        home_id=home_id,
+        ip_address=client_ip(request),
+        details=details,
+    )
+    return {**result, "installer_allowed": bool(access.thermostat_installer)}

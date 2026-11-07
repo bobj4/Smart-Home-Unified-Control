@@ -8,6 +8,8 @@ const GUEST_FLAGS = [
   ['light_settings', 'Change light brightness and colour'],
   ['cameras', 'See the cameras'],
   ['water_heater', 'Use the water heater'],
+  ['thermostat_settings', 'Change thermostat settings (Early On, °C, daylight saving) on the thermostats below'],
+  ['thermostat_installer', 'Change thermostat installer settings (system, wires, thresholds) on the thermostats below'],
   ['show_blocked', 'Show devices they cannot use, greyed out (otherwise hidden)'],
 ];
 

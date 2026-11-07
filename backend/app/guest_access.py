@@ -10,6 +10,10 @@ What each permission allows:
   light_settings  brightness and colour of lights
   thermostat_ids  full control of those thermostats (mode, set points, fan,
                   hold), within the safety limits; not their schedule
+  thermostat_settings   those thermostats' Settings window (Early On, the
+                  screen's unit, daylight saving)
+  thermostat_installer  and the installer settings there (system type,
+                  wires, thresholds, calibration...)
   water_heater    control of the water heaters, within the safety limits
   cameras         the Cameras page (Frigate cameras and events)
   show_blocked    devices they may not use are shown greyed out (True) or
@@ -29,7 +33,15 @@ from app.models import GUEST_ROLE, Device, GuestAccess, Home, HomeMembership, Ro
 LIGHT_POWER_TYPES = ("light", "plug")
 LIGHT_POWER_COMMANDS = ("turn_on", "turn_off")
 LIGHT_SETTING_COMMANDS = ("set_brightness", "set_color_temp", "set_color")
-FLAGS = ("light_power", "light_settings", "cameras", "water_heater", "show_blocked")
+FLAGS = (
+    "light_power",
+    "light_settings",
+    "cameras",
+    "water_heater",
+    "show_blocked",
+    "thermostat_settings",
+    "thermostat_installer",
+)
 
 
 def membership(db: Session, user_id: str, home_id: str) -> HomeMembership | None:
