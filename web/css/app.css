@@ -260,6 +260,20 @@ body:has(.overlay:not([hidden])) .layout-open { display: none; }
 /* Folded sub menus of installer settings (thermostat-settings.js). */
 .settings-group { display: grid; gap: 6px; border: 1px solid #3a3f4a; border-radius: 12px; padding: 8px 10px; }
 .settings-group > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+/* Thermostat History (thermostat-history.js): temperature solid, set points dashed. */
+.history-chart { width: 100%; height: auto; background: #23262e; border-radius: 10px; touch-action: pan-y; }
+.history-chart path { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.history-temp { stroke: #e8eaed; }
+.history-heat { stroke: #ff8a3d; stroke-dasharray: 4 3; }
+.history-cool { stroke: #4c8dff; stroke-dasharray: 4 3; }
+.history-band.heating { fill: rgba(255, 138, 61, 0.18); }
+.history-band.cooling { fill: rgba(76, 141, 255, 0.18); }
+.history-key { display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.85rem; }
+.history-key span::before { content: ''; display: inline-block; width: 14px; height: 0; border-top: 2px solid; margin-right: 4px; vertical-align: middle; }
+.key-temp::before { border-color: #e8eaed; }
+.key-heat::before { border-top-style: dashed; border-color: #ff8a3d; }
+.key-cool::before { border-top-style: dashed; border-color: #4c8dff; }
+.key-run::before { border-top-width: 8px; border-color: rgba(255, 138, 61, 0.35); }
 /* A long list choice goes under its name, not beside it. */
 .integration-row.stacked { flex-direction: column; align-items: stretch; }
 .choice-row { flex-wrap: nowrap; }

@@ -81,13 +81,17 @@ class ThermostatSettingsPanel {
 
   async load(refresh) {
     const { device } = this;
-    this.render(el('p', { className: 'muted', testid: 'thermo-settings-loading', text: 'Asking the thermostat… this takes a few seconds.' }));
+    this.render(el('div', { className: 'stack' }, [
+      el('p', { className: 'muted', testid: 'thermo-settings-loading', text: 'Asking the thermostat… this takes a few seconds.' }), this.infoBox(),
+    ]));
     try {
       const data = await this.view.app.api.get(`${this.path()}${refresh ? '?refresh=true' : ''}`);
       if (this.device !== device || this.overlay.hidden) return;
       this.render(this.body(data));
     } catch (error) {
-      this.render(el('p', { className: 'warning', testid: 'thermo-settings-error', text: error.message }));
+      this.render(el('div', { className: 'stack' }, [
+        el('p', { className: 'warning', testid: 'thermo-settings-error', text: error.message }), this.infoBox(),
+      ]));
     }
   }
 
@@ -166,6 +170,7 @@ class ThermostatSettingsPanel {
     const canEdit = this.device.controllable;
     return el('div', { className: 'stack' }, [
       ...THERMO_SWITCHES.map((row) => this.switchRow(settings, canEdit, row)),
+      this.infoBox(),
       canEdit ? null : el('p', { className: 'muted', text: 'The thermostat is offline or its integration is off: settings can be read, not changed.' }),
       el('h3', { text: 'Installer settings' }),
       el('p', { className: 'muted', text: 'Set when the thermostat was put in. Change them only if you know the system needs it.' }),
@@ -173,6 +178,11 @@ class ThermostatSettingsPanel {
       ...THERMO_INSTALLER_GROUPS.map((group) => this.installerGroup(data, canEdit, group)),
       (data.missing || []).length ? el('p', { className: 'warning', testid: 'thermo-settings-missing', text: `The thermostat did not answer for ${data.missing.length} of the settings; read again to ask once more.` }) : null,
     ]);
+  }
+
+  /** The thermostat's Info (system, filter, firmware, Wi-Fi), from its report. */
+  infoBox() {
+    return el('div', { className: 'settings-info', testid: 'thermo-settings-info' }, [el('h3', { text: 'Info' }), thermostatInfoList(this.device)]);
   }
 
   /** Send one change; on failure put the control back (undo). */
