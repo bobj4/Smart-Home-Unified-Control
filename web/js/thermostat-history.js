@@ -6,6 +6,10 @@
  */
 
 const HISTORY_RANGES = [[1, 'Day'], [7, 'Week'], [30, 'Month']];
+// Which set points a mode uses: a line is only drawn while it was in use
+// (no cooling line in heat mode, neither when off). Unknown mode: both.
+const MODE_USES = { heat: ['heat'], emergency: ['heat'], cool: ['cool'], auto: ['heat', 'cool'], off: [], eco: [] };
+const inUse = (p, key) => key === 'temperature' || !MODE_USES[p.mode] || MODE_USES[p.mode].includes(key);
 
 function historyTime(iso, days) {
   const at = new Date(iso);
@@ -18,7 +22,7 @@ function historyTime(iso, days) {
 function historyChart(points, days) {
   const W = 320;
   const H = 150;
-  const values = points.flatMap((p) => [p.temperature, p.heat, p.cool]).filter((v) => typeof v === 'number');
+  const values = points.flatMap((p) => ['temperature', 'heat', 'cool'].filter((k) => inUse(p, k)).map((k) => p[k])).filter((v) => typeof v === 'number');
   if (values.length === 0) return el('p', { className: 'muted', testid: 'history-empty', text: 'No readings in this time yet.' });
   const low = Math.floor(Math.min(...values)) - 1;
   const high = Math.ceil(Math.max(...values)) + 1;
@@ -26,8 +30,18 @@ function historyChart(points, days) {
   const span = Math.max(new Date(points[points.length - 1].at).getTime() - start, 1);
   const x = (p) => ((new Date(p.at).getTime() - start) / span) * W;
   const y = (v) => H - ((v - low) / (high - low)) * H;
+  // A break in the line where the set point was not in use.
   const line = (key, className) => {
-    const d = points.filter((p) => typeof p[key] === 'number').map((p, i) => `${i ? 'L' : 'M'}${x(p).toFixed(1)},${y(p[key]).toFixed(1)}`).join('');
+    let drawing = false;
+    const d = points.map((p) => {
+      if (typeof p[key] !== 'number' || !inUse(p, key)) {
+        drawing = false;
+        return '';
+      }
+      const step = `${drawing ? 'L' : 'M'}${x(p).toFixed(1)},${y(p[key]).toFixed(1)}`;
+      drawing = true;
+      return step;
+    }).join('');
     return d ? svg('path', { d, className }) : null;
   };
   // Shaded where it was heating or cooling.
@@ -38,15 +52,25 @@ function historyChart(points, days) {
     return svg('rect', { x: x(p).toFixed(1), y: '0', width: width.toFixed(1), height: String(H), className: `history-band ${p.status}` });
   });
   const readout = el('p', { className: 'muted', testid: 'history-readout', 'aria-live': 'polite', text: `${low + 1}–${high - 1} °F` });
+  // Dots too while there are few readings (one reading makes no line).
+  const dots = points.length > 60 ? [] : points.flatMap((p) => [
+    typeof p.heat === 'number' && inUse(p, 'heat') ? svg('circle', { cx: x(p).toFixed(1), cy: y(p.heat).toFixed(1), r: '2.5', className: 'history-dot heat' }) : null,
+    typeof p.cool === 'number' && inUse(p, 'cool') ? svg('circle', { cx: x(p).toFixed(1), cy: y(p.cool).toFixed(1), r: '2.5', className: 'history-dot cool' }) : null,
+    typeof p.temperature === 'number' ? svg('circle', { cx: x(p).toFixed(1), cy: y(p.temperature).toFixed(1), r: '3', className: 'history-dot' }) : null,
+  ]).filter(Boolean);
+  const labels = [
+    svg('text', { x: '3', y: '10', className: 'history-label', text: `${high} °F` }),
+    svg('text', { x: '3', y: String(H - 3), className: 'history-label', text: `${low} °F` }),
+  ];
   const chart = svg('svg', { viewBox: `0 0 ${W} ${H}`, className: 'history-chart', testid: 'history-chart', role: 'img', 'aria-label': 'Temperature and set points' }, [
-    ...bands.filter(Boolean), line('heat', 'history-heat'), line('cool', 'history-cool'), line('temperature', 'history-temp'),
+    ...bands.filter(Boolean), line('heat', 'history-heat'), line('cool', 'history-cool'), line('temperature', 'history-temp'), ...dots, ...labels,
   ]);
   chart.addEventListener('pointermove', (event) => {
     const box = chart.getBoundingClientRect();
     const at = start + ((event.clientX - box.left) / box.width) * span;
     const near = points.reduce((a, b) => (Math.abs(new Date(b.at).getTime() - at) < Math.abs(new Date(a.at).getTime() - at) ? b : a));
     readout.textContent = `${historyTime(near.at, days)}: ${near.temperature != null ? `${near.temperature} °F` : '—'}`
-      + `${near.heat != null ? ` · heat to ${near.heat}` : ''}${near.cool != null ? ` · cool to ${near.cool}` : ''}${near.status ? ` · ${near.status}` : ''}`;
+      + `${near.heat != null && inUse(near, 'heat') ? ` · heat to ${near.heat}` : ''}${near.cool != null && inUse(near, 'cool') ? ` · cool to ${near.cool}` : ''}${near.mode ? ` · ${near.mode}` : ''}${near.status ? ` · ${near.status}` : ''}`;
   });
   return el('div', {}, [chart, readout]);
 }

@@ -264,16 +264,20 @@ body:has(.overlay:not([hidden])) .layout-open { display: none; }
 .history-chart { width: 100%; height: auto; background: #23262e; border-radius: 10px; touch-action: pan-y; }
 .history-chart path { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .history-temp { stroke: #e8eaed; }
+.history-dot { fill: #e8eaed; }
+.history-dot.heat { fill: #ff8a3d; }
+.history-dot.cool { fill: #4c8dff; }
+.history-label { fill: #9aa1ad; font-size: 9px; }
 .history-heat { stroke: #ff8a3d; stroke-dasharray: 4 3; }
 .history-cool { stroke: #4c8dff; stroke-dasharray: 4 3; }
 .history-band.heating { fill: rgba(255, 138, 61, 0.18); }
 .history-band.cooling { fill: rgba(76, 141, 255, 0.18); }
 .history-key { display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.85rem; }
 .history-key span::before { content: ''; display: inline-block; width: 14px; height: 0; border-top: 2px solid; margin-right: 4px; vertical-align: middle; }
-.key-temp::before { border-color: #e8eaed; }
-.key-heat::before { border-top-style: dashed; border-color: #ff8a3d; }
-.key-cool::before { border-top-style: dashed; border-color: #4c8dff; }
-.key-run::before { border-top-width: 8px; border-color: rgba(255, 138, 61, 0.35); }
+.history-key .key-temp::before { border-color: #e8eaed; }
+.history-key .key-heat::before { border-top-style: dashed; border-color: #ff8a3d; }
+.history-key .key-cool::before { border-top-style: dashed; border-color: #4c8dff; }
+.history-key .key-run::before { border-top-width: 8px; border-color: rgba(255, 138, 61, 0.35); }
 /* A long list choice goes under its name, not beside it. */
 .integration-row.stacked { flex-direction: column; align-items: stretch; }
 .choice-row { flex-wrap: nowrap; }
