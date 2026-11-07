@@ -487,10 +487,9 @@ def test_ui_frigate_setup_and_events(open_page, owner, frigate_fake, secrets_key
     ui_login(page, owner)
     expect(page.get_by_test_id("nav-cameras")).to_be_hidden()  # Frigate is off
 
-    section = go_settings(page, "integrations")
-    section.locator(
-        '[data-testid="integration-row"][data-integration="frigate"]'
-    ).get_by_test_id("integration-toggle").check()
+    _ui.add_integration(
+        page, "frigate"
+    )  # added from the dropdown (owner's approval, 2026-11-06)
     panel = page.get_by_test_id("frigate-server")
     expect(panel).to_be_visible()
     panel.get_by_test_id("frigate-url").fill(URL)
@@ -554,10 +553,9 @@ def test_ui_frigate_bad_password_shows_error(
 ):
     page = open_page()
     ui_login(page, owner)
-    section = go_settings(page, "integrations")
-    section.locator(
-        '[data-testid="integration-row"][data-integration="frigate"]'
-    ).get_by_test_id("integration-toggle").check()
+    _ui.add_integration(
+        page, "frigate"
+    )  # added from the dropdown (owner's approval, 2026-11-06)
     panel = page.get_by_test_id("frigate-server")
     panel.get_by_test_id("frigate-url").fill(URL)
     panel.get_by_test_id("frigate-username").fill(USER)

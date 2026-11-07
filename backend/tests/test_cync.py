@@ -308,9 +308,9 @@ def test_adapter_times_out(monkeypatch):
 def test_ui_cync_login_and_find_devices(open_page, db, owner, fake, secrets_key):
     page = open_page()
     ui_login(page, owner)
-    section = go_settings(page, "integrations")
-    row = section.locator('[data-testid="integration-row"][data-integration="cync"]')
-    row.get_by_test_id("integration-toggle").check()
+    _ui.add_integration(
+        page, "cync"
+    )  # added from the dropdown (owner's approval, 2026-11-06)
     panel = page.get_by_test_id("cync-account")
     expect(panel.get_by_test_id("cync-configured")).to_contain_text("No Cync account")
     expect(panel.get_by_test_id("cync-code")).to_be_hidden()
