@@ -22,6 +22,7 @@ from app.dependencies import client_ip, current_user, require_csrf
 from app.models import Device, User
 from app.routes.devices import CommandRejected, _device_bounds, _limits
 from app.routes.thermostat_access import may_change_installer
+from app.thermostat_history import history
 from app.thermostat_schedule import read_schedule, write_schedule
 from app.thermostat_settings import INSTALLER, read_settings, write_settings
 
@@ -212,3 +213,23 @@ def save_thermostat_settings(
         details=details,
     )
     return {**result, "installer_allowed": may_change_installer(db, user, home_id)}
+
+
+@router.get("/{device_id}/history")
+def thermostat_history(
+    home_id: str,
+    device_id: str,
+    days: int = Query(1),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """The readings the app kept for its History window (members and up)."""
+    require_role(db, user.id, home_id)
+    if days not in (1, 7, 30):
+        raise HTTPException(422, "days must be 1, 7 or 30")
+    device = db.scalars(
+        select(Device).where(Device.id == device_id, Device.home_id == home_id)
+    ).first()
+    if device is None or device.type != "thermostat":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    return history(db, device, days)

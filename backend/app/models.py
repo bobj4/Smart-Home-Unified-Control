@@ -579,3 +579,25 @@ class GuestAccess(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
+
+
+class ThermostatReading(Base):
+    """A thermostat's reading, kept for its History window: every few
+    minutes, and whenever it starts or stops heating or cooling. Readings
+    older than thermostat_history.KEEP_DAYS are deleted."""
+
+    __tablename__ = "thermostat_readings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    device_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("devices.id", ondelete="CASCADE"), index=True
+    )
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    temperature: Mapped[float | None] = mapped_column(Float)  # F
+    heat_setpoint: Mapped[float | None] = mapped_column(Float)
+    cool_setpoint: Mapped[float | None] = mapped_column(Float)
+    humidity: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str | None] = mapped_column(
+        String(10)
+    )  # heating, cooling, idle, off
+    mode: Mapped[str | None] = mapped_column(String(12))

@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import credentials, cync_live
+from app import credentials, cync_live, thermostat_history
 from app.features import integration_enabled
 from app.groups import import_cync
 from app.integrations import cync, cync_thermostat
@@ -164,6 +164,7 @@ def store_states(db: Session, home_id: str, states: dict[str, dict[str, Any]]) -
         if "thermostat" in reported:  # a full report from the thermostat
             state = {**json.loads(device.state or "{}"), **reported["thermostat"]}
             device.state = json.dumps(state)
+            thermostat_history.record(db, device, state)  # its History window
             device.online = True
             device.last_updated = utcnow()
             changed += 1

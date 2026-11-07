@@ -89,7 +89,7 @@ def test_ui_thermostat_fan_hold_schedule_order(open_page, db, owner, make_device
     tile = _tile.show(page, db, hall, _tile.report(fan="auto", hold="schedule"))
     order = tile.evaluate(
         """t => ['thermo-mode', 'thermo-fan', 'thermo-hold', 'thermo-schedule-open',
-        'thermo-info-open'].map(id => [...t.querySelectorAll('[data-testid]')]
+        'thermo-settings-open', 'thermo-history-open'].map(id => [...t.querySelectorAll('[data-testid]')]
         .findIndex(n => n.dataset.testid === id))"""
     )
     assert -1 not in order and order == sorted(order), order
