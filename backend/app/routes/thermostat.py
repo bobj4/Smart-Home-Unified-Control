@@ -10,7 +10,7 @@ writing is refused until limits are configured; every write is audited.
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -50,6 +50,14 @@ class SettingChanges(BaseModel):
     early_on: StrictBool | None = None
     celsius: StrictBool | None = None
     auto_dst: StrictBool | None = None
+    dehumidify: StrictBool | None = None
+    heat_pump_changeover: StrictBool | None = None
+    # Ranges are checked in thermostat_settings (LIMITS).
+    dehumidify_to: StrictInt | None = None
+    min_fan_runtime: StrictInt | None = None
+    temperature_offset: StrictFloat | StrictInt | None = None
+    humidity_offset: StrictFloat | StrictInt | None = None
+    auto_deadband: StrictFloat | StrictInt | None = None
 
 
 router = APIRouter(prefix="/api/v1/homes/{home_id}/devices", tags=["thermostat"])
@@ -151,13 +159,13 @@ def save_thermostat_settings(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """Change Early On, the unit the thermostat's screen shows, or daylight
-    saving time. The thermostat reads them back before this succeeds."""
+    """Change the thermostat's own settings. The thermostat reads them back
+    before this succeeds."""
     require_role(db, user.id, home_id)
     device = _thermostat(db, home_id, device_id)
     changes = body.model_dump(exclude_none=True)
     if not changes:
-        raise HTTPException(422, "Send early_on, celsius or auto_dst")
+        raise HTTPException(422, "Send a setting to change")
     details = {"device_id": device.id, "changes": changes}
     try:
         result = write_settings(db, device, changes)

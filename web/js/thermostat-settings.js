@@ -1,9 +1,9 @@
 /**
  * Thermostat settings window (the Settings button under Schedule): the Cync
- * thermostat's own settings. Early On, the unit its screen shows and
- * daylight saving time can be switched; the installer settings are shown as
- * the thermostat reports them. Each setting is asked for by name, so
- * reading takes a few seconds; the result is kept for a few minutes.
+ * thermostat's own settings, each changed on the thermostat and read back.
+ * Each setting is asked for by name, so reading takes a few seconds; the
+ * result is kept for a few minutes. A setting the thermostat does not
+ * report is shown as such and cannot be changed.
  */
 
 const THERMO_SWITCHES = [
@@ -11,17 +11,32 @@ const THERMO_SWITCHES = [
   ['celsius', 'Show °C on the thermostat', 'The unit on the thermostat\'s own screen. This app keeps showing °F.'],
   ['auto_dst', 'Daylight saving time', 'The thermostat moves its clock for daylight saving time by itself.'],
 ];
-const THERMO_INFO = [
-  ['dehumidify', 'Dehumidify'], ['dehumidify_to', 'Dehumidify to (%)'], ['min_fan_runtime', 'Minimum fan run time'],
-  ['temperature_offset', 'Temperature offset'], ['humidity_offset', 'Humidity offset'],
-  ['auto_deadband', 'Auto mode gap (heat to cool)'], ['heat_pump_changeover', 'Heat pump changeover'],
+const THERMO_INSTALLER_SWITCHES = [
+  ['dehumidify', 'Dehumidify', 'Runs the air conditioning to bring the humidity down.'],
+  ['heat_pump_changeover', 'Heat pump changeover', 'Which way the heat pump\'s valve is wired (O/B). The wrong setting swaps heating and cooling: change it only to match the wiring.'],
+];
+// [key, label, help, step, unit]
+const THERMO_NUMBERS = [
+  ['dehumidify_to', 'Dehumidify to', 'The humidity to bring the house down to.', 1, '%'],
+  ['min_fan_runtime', 'Minimum fan run time', 'Minutes an hour the fan runs even when not heating or cooling.', 1, 'min'],
+  ['temperature_offset', 'Temperature offset', 'Corrects the thermostat\'s reading (in its own unit).', 0.5, ''],
+  ['humidity_offset', 'Humidity offset', 'Corrects the thermostat\'s humidity reading.', 0.5, '%'],
+  ['auto_deadband', 'Auto mode gap', 'How far apart heating and cooling must be in Auto (in its own unit).', 0.5, ''],
 ];
 
-function settingText(value) {
-  if (value === null || value === undefined || value === '') return 'Not reported';
-  if (value === true) return 'On';
-  if (value === false) return 'Off';
-  return String(value);
+// The installer settings in folded sub menus: [id, title, switch keys, number keys].
+const THERMO_INSTALLER_GROUPS = [
+  ['humidity', 'Humidity', ['dehumidify'], ['dehumidify_to']],
+  ['fan', 'Fan', [], ['min_fan_runtime']],
+  ['calibration', 'Calibration', [], ['temperature_offset', 'humidity_offset']],
+  ['heat-pump', 'Heat pump & Auto', ['heat_pump_changeover'], ['auto_deadband']],
+];
+
+/** '-1.0F' -> -1; 3 -> 3; anything else -> null. */
+function settingNumber(value) {
+  if (typeof value === 'number') return value;
+  const found = typeof value === 'string' ? value.match(/^(-?[0-9.]+)/) : null;
+  return found ? Number(found[1]) : null;
 }
 
 class ThermostatSettingsPanel {
@@ -39,6 +54,7 @@ class ThermostatSettingsPanel {
 
   open(device) {
     this.device = device;
+    this.opened = new Set(); // every sub menu starts folded
     this.overlay.hidden = false;
     this.load(false);
   }
@@ -55,42 +71,73 @@ class ThermostatSettingsPanel {
     }
   }
 
+  switchRow(settings, canEdit, [key, label, help]) {
+    if (typeof settings[key] !== 'boolean') {
+      return el('p', { className: 'muted', testid: `thermo-setting-${key}`, text: `${label}: not reported by this thermostat.` });
+    }
+    const toggle = switchInput(`thermo-setting-${key}`, settings[key], label);
+    toggle.disabled = !canEdit;
+    toggle.addEventListener('change', () => this.change({ [key]: toggle.checked }, () => { toggle.checked = !toggle.checked; }));
+    return settingRow(label, help, toggle);
+  }
+
+  numberRow(data, canEdit, [key, label, help, step, unit]) {
+    const value = settingNumber(data.settings[key]);
+    if (value === null) {
+      return el('p', { className: 'muted', testid: `thermo-setting-${key}`, text: `${label}: not reported by this thermostat.` });
+    }
+    const [low, high] = (data.limits || {})[key] || [null, null];
+    const input = el('input', {
+      type: 'number', testid: `thermo-setting-${key}`, step: String(step), min: String(low), max: String(high), value: String(value),
+      disabled: !canEdit, 'aria-label': label,
+    });
+    const save = el('button', {
+      type: 'submit', className: 'secondary', testid: `thermo-save-${key}`, text: 'Save', disabled: !canEdit,
+    });
+    const form = el('form', { className: 'row' }, [input, unit ? el('span', { className: 'muted', text: unit }) : null, save]);
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      this.change({ [key]: Number(input.value) }, () => { input.value = String(value); });
+    });
+    return settingRow(label, help, form);
+  }
+
+  /** One folded sub menu of installer settings; it stays open once opened
+   * (while the window is open), also after a change redraws the window. */
+  installerGroup(data, canEdit, [id, title, switches, numbers]) {
+    const box = el('details', { className: 'settings-group', testid: `thermo-group-${id}`, open: this.opened.has(id) }, [
+      el('summary', { text: title }),
+      ...THERMO_INSTALLER_SWITCHES.filter(([key]) => switches.includes(key)).map((row) => this.switchRow(data.settings, canEdit, row)),
+      ...THERMO_NUMBERS.filter(([key]) => numbers.includes(key)).map((row) => this.numberRow(data, canEdit, row)),
+    ]);
+    box.addEventListener('toggle', () => { if (box.open) this.opened.add(id); else this.opened.delete(id); });
+    return box;
+  }
+
   body(data) {
     const { settings } = data;
     const canEdit = this.device.controllable;
-    const rows = THERMO_SWITCHES.map(([key, label, help]) => {
-      if (typeof settings[key] !== 'boolean') {
-        return el('p', { className: 'muted', testid: `thermo-setting-${key}`, text: `${label}: not reported by this thermostat.` });
-      }
-      const toggle = switchInput(`thermo-setting-${key}`, settings[key], label);
-      toggle.disabled = !canEdit;
-      toggle.addEventListener('change', () => this.change(key, toggle));
-      return settingRow(label, help, toggle);
-    });
-    const info = el('dl', { className: 'readings', testid: 'thermo-settings-info' }, THERMO_INFO.flatMap(([key, label]) => [
-      el('dt', { text: label }), el('dd', { testid: `thermo-info-${key}`, text: settingText(settings[key]) }),
-    ]));
     return el('div', { className: 'stack' }, [
-      ...rows,
+      ...THERMO_SWITCHES.map((row) => this.switchRow(settings, canEdit, row)),
       canEdit ? null : el('p', { className: 'muted', text: 'The thermostat is offline or its integration is off: settings can be read, not changed.' }),
       el('h3', { text: 'Installer settings' }),
-      el('p', { className: 'muted', text: 'As the thermostat reports them. Change these on the thermostat or in the Cync app.' }),
-      info,
+      el('p', { className: 'muted', text: 'Set when the thermostat was put in. Change them only if you know the system needs it.' }),
+      ...THERMO_INSTALLER_GROUPS.map((group) => this.installerGroup(data, canEdit, group)),
       (data.missing || []).length ? el('p', { className: 'warning', testid: 'thermo-settings-missing', text: `The thermostat did not answer for ${data.missing.length} of the settings; read again to ask once more.` }) : null,
     ]);
   }
 
-  change(key, toggle) {
-    const wanted = toggle.checked;
-    this.overlay.querySelectorAll('input').forEach((input) => { input.disabled = true; });
+  /** Send one change; on failure put the control back (undo). */
+  change(changes, undo) {
+    this.overlay.querySelectorAll('input, button[type="submit"]').forEach((input) => { input.disabled = true; });
     this.view.app.run(async () => {
       try {
-        const data = await this.view.app.api.put(this.path(), { [key]: wanted });
+        const data = await this.view.app.api.put(this.path(), changes);
         this.render(this.body(data));
         this.view.app.status.success('The thermostat took the change.');
       } catch (error) {
-        toggle.checked = !wanted;
-        this.overlay.querySelectorAll('input').forEach((input) => { input.disabled = !this.device.controllable; });
+        undo();
+        this.overlay.querySelectorAll('input, button[type="submit"]').forEach((input) => { input.disabled = !this.device.controllable; });
         throw error;
       }
     });

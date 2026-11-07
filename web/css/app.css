@@ -188,6 +188,9 @@ body:has(.overlay:not([hidden])) .layout-open { display: none; }
 .grid-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 8px; }
 .check { display: flex; gap: 8px; align-items: center; }
 .stack { display: grid; gap: 6px; }
+/* A number with its Save button inside a setting row (thermostat settings). */
+.integration-row form.row { flex-wrap: nowrap; }
+.integration-row form.row input[type="number"] { width: 5.5em; }
 /* The box keeps its size however long the label is. */
 .check input[type="checkbox"] { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; }
 .limits { display: grid; gap: 12px; }
@@ -251,6 +254,15 @@ body:has(.overlay:not([hidden])) .layout-open { display: none; }
 .restart-popup { position: fixed; right: 16px; bottom: 16px; z-index: 11; width: calc(100% - 32px); }
 .restart-popup[hidden] { display: none; }
 .remote .field { color: #9aa1ad; }
+/* Setting rows inside a popup (thermostat settings): the popup is dark in every theme. */
+.remote .integration-row { background: #2a2e37; color: #e8eaed; }
+.remote .switch:not(:checked) { background: #4a505c; }
+/* Folded sub menus of installer settings (thermostat-settings.js). */
+.settings-group { display: grid; gap: 6px; border: 1px solid #3a3f4a; border-radius: 12px; padding: 8px 10px; }
+.settings-group > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.settings-group:not([open]) { padding-bottom: 8px; }
+.remote .integration-row .muted, .remote .muted { color: #9aa1ad; }
+.remote input[type="number"] { background: #1d2027; color: #e8eaed; border-color: #3a3f4a; }
 .remote input, .remote select { background: #2a2e37; border-color: #3a3f4a; color: #e8eaed; }
 .remote-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .remote-head h2 { overflow-wrap: anywhere; }
