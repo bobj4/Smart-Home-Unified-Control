@@ -142,7 +142,8 @@ class ThermostatSettingsPanel {
 
   /** One folded sub menu of installer settings; it stays open once opened
    * (while the window is open), also after a change redraws the window. */
-  installerGroup(data, canEdit, [id, title, keys]) {
+  installerGroup(data, canEditAll, [id, title, keys]) {
+    const canEdit = canEditAll && data.installer_allowed !== false; // Safety Settings decides
     const rows = keys.map((key) => {
       const pick = (list) => list.find(([k]) => k === key);
       if (pick(THERMO_INSTALLER_SWITCHES)) return this.switchRow(data.settings, canEdit, pick(THERMO_INSTALLER_SWITCHES));
@@ -167,6 +168,7 @@ class ThermostatSettingsPanel {
       canEdit ? null : el('p', { className: 'muted', text: 'The thermostat is offline or its integration is off: settings can be read, not changed.' }),
       el('h3', { text: 'Installer settings' }),
       el('p', { className: 'muted', text: 'Set when the thermostat was put in. Change them only if you know the system needs it.' }),
+      data.installer_allowed === false ? el('p', { className: 'muted', testid: 'thermo-installer-locked', text: 'Your role cannot change these (Settings > Safety Settings).' }) : null,
       ...THERMO_INSTALLER_GROUPS.map((group) => this.installerGroup(data, canEdit, group)),
       (data.missing || []).length ? el('p', { className: 'warning', testid: 'thermo-settings-missing', text: `The thermostat did not answer for ${data.missing.length} of the settings; read again to ask once more.` }) : null,
     ]);

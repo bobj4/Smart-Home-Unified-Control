@@ -55,6 +55,11 @@ class Home(Base):
     require_two_factor: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa_false()
     )
+    # Settings > Safety Settings: the lowest role that may change a
+    # thermostat's installer settings (system type, wires, thresholds...).
+    thermostat_installer_role: Mapped[str] = mapped_column(
+        String(10), default="admin", server_default="admin"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow
     )

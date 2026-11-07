@@ -44,6 +44,7 @@ from app.routes import (
     samsung,
     setup_steps,
     thermostat,
+    thermostat_access,
     tv_scan,
     tv_sources,
     user_info,
@@ -52,10 +53,11 @@ from app.routes import (
 from app.verbose import VerboseRequestMiddleware
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
-# Only files that exist in web/js and web/css when the app starts are served.
-WEB_SCRIPTS = {p.name for p in (WEB_DIR / "js").glob("*.js")}
-WEB_STYLES = {p.name for p in (WEB_DIR / "css").glob("*.css")}
-WEB_ICONS = {p.name for p in (WEB_DIR / "icons").glob("*.png")}
+# Only files that exist in web/js, web/css and web/icons when the app starts
+# are served, looked up by name: the request never becomes part of a path.
+WEB_SCRIPTS = {p.name: p for p in (WEB_DIR / "js").glob("*.js")}
+WEB_STYLES = {p.name: p for p in (WEB_DIR / "css").glob("*.css")}
+WEB_ICONS = {p.name: p for p in (WEB_DIR / "icons").glob("*.png")}
 
 
 @asynccontextmanager
@@ -141,6 +143,7 @@ app.include_router(motd.router)
 app.include_router(user_info.router)
 app.include_router(setup_steps.router)
 app.include_router(tv_scan.router)
+app.include_router(thermostat_access.router)
 app.include_router(frigate.settings_router)
 app.include_router(frigate.router)
 
@@ -171,27 +174,26 @@ def web_index() -> FileResponse:
 
 @app.get("/js/{name}", include_in_schema=False)
 def web_script(name: str) -> FileResponse:
-    if name not in WEB_SCRIPTS:
+    path = WEB_SCRIPTS.get(name)
+    if path is None:
         raise HTTPException(status_code=404, detail="Not found")
-    return FileResponse(
-        WEB_DIR / "js" / name, media_type="text/javascript", headers=REVALIDATE
-    )
+    return FileResponse(path, media_type="text/javascript", headers=REVALIDATE)
 
 
 @app.get("/css/{name}", include_in_schema=False)
 def web_style(name: str) -> FileResponse:
-    if name not in WEB_STYLES:
+    path = WEB_STYLES.get(name)
+    if path is None:
         raise HTTPException(status_code=404, detail="Not found")
-    return FileResponse(
-        WEB_DIR / "css" / name, media_type="text/css", headers=REVALIDATE
-    )
+    return FileResponse(path, media_type="text/css", headers=REVALIDATE)
 
 
 @app.get("/icons/{name}", include_in_schema=False)
 def web_icon(name: str) -> FileResponse:
-    if name not in WEB_ICONS:
+    path = WEB_ICONS.get(name)
+    if path is None:
         raise HTTPException(status_code=404, detail="Not found")
-    return FileResponse(WEB_DIR / "icons" / name, media_type="image/png")
+    return FileResponse(path, media_type="image/png")
 
 
 @app.get("/sw.js", include_in_schema=False)
