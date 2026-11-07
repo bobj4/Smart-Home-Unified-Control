@@ -1,8 +1,10 @@
 /**
  * Thermostat History window (the History button on a Cync thermostat's
  * tile): the temperature with the heat and cool set points, and the hours
- * it heated or cooled each day, from the readings the app keeps (from when
- * it started keeping them, for up to a month).
+ * it heated or cooled each day. Readings are the app's own (from when it
+ * started keeping them, for up to a month); heating and cooling come from
+ * the thermostat's own record in Cync when it answers (data.runs), else
+ * from the readings.
  */
 
 const HISTORY_RANGES = [[1, 'Day'], [7, 'Week'], [30, 'Month']];
@@ -19,7 +21,7 @@ function historyTime(iso, days) {
 }
 
 /** Temperature (solid) and set points (dashed) over time. */
-function historyChart(points, days) {
+function historyChart(points, days, runs = []) {
   const W = 320;
   const H = 150;
   const values = points.flatMap((p) => ['temperature', 'heat', 'cool'].filter((k) => inUse(p, k)).map((k) => p[k])).filter((v) => typeof v === 'number');
@@ -44,8 +46,13 @@ function historyChart(points, days) {
     }).join('');
     return d ? svg('path', { d, className }) : null;
   };
-  // Shaded where it was heating or cooling.
-  const bands = points.map((p, i) => {
+  // Shaded where it was heating or cooling: the thermostat's runs if given.
+  const runBand = (r) => {
+    const from = Math.max(x({ at: r.start }), 0);
+    const to = Math.min(x({ at: r.end }), W);
+    return to > from ? svg('rect', { x: from.toFixed(1), y: '0', width: Math.max(to - from, 1).toFixed(1), height: String(H), className: `history-band ${r.status}` }) : null;
+  };
+  const bands = runs.length ? runs.map(runBand) : points.map((p, i) => {
     if (p.status !== 'heating' && p.status !== 'cooling') return null;
     const next = points[i + 1];
     const width = Math.max((next ? x(next) : W) - x(p), 1);
@@ -108,13 +115,14 @@ class ThermostatHistoryPanel {
       const data = await this.view.app.api.get(`/homes/${encodeURIComponent(this.view.app.home.id)}/devices/${encodeURIComponent(device.id)}/history?days=${days}`);
       if (this.device !== device || this.days !== days || this.overlay.hidden) return;
       this.render(el('div', { className: 'stack' }, [
-        historyChart(data.points, days),
+        historyChart(data.points, days, data.runs || []),
         el('div', { className: 'history-key muted' }, [
           el('span', { className: 'key-temp', text: 'Temperature' }), el('span', { className: 'key-heat', text: 'Heat to' }),
           el('span', { className: 'key-cool', text: 'Cool to' }), el('span', { className: 'key-run', text: 'Shaded: running' }),
         ]),
         el('h3', { text: 'Heating and cooling' }),
         runTable(data.run_hours),
+        el('p', { className: 'muted', testid: 'history-run-source', text: data.run_source === 'thermostat' ? "From the thermostat's own record in Cync." : 'Worked out from the readings the app keeps.' }),
         el('p', { className: 'muted', testid: 'history-since', text: data.since ? `Kept since ${new Date(data.since).toLocaleDateString()}, for up to a month.` : 'The app keeps readings from now on.' }),
       ]));
     } catch (error) {

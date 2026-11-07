@@ -120,6 +120,8 @@ def test_ui_history_button(open_page, db, owner, make_device):
     expect(panel.get_by_test_id("history-run")).to_contain_text(
         "heating 15 min"
     )  # 25 min apart: capped
+    # Not connected to Cync in the tests: run time from the readings.
+    expect(panel.get_by_test_id("history-run-source")).to_contain_text("readings")
     panel.get_by_test_id("history-range-7").click()
     expect(panel.get_by_test_id("history-range-7")).to_have_attribute(
         "aria-pressed", "true"
