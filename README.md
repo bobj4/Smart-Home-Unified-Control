@@ -10,33 +10,52 @@ through the backend's permission checks and device safety limits.
 
 - **GE Cync**
   - Smart lights (power, brightness, color temperature, color)
-  - Smart plugs
-  - Thermostats (mode, set points, hold, weekly schedules, sensor schedules)
+  - Smart plugs and switches (a dimmer switch works like a light)
+  - Thermostats (mode, set points, fan, hold, weekly schedules, sensor
+    schedules, and the thermostat's own settings such as Early On)
   - Temperature sensors
+- **Philips Hue** lights, through the Hue Bridge on your network
+- **TP-Link Kasa** plugs, power strips, switches, dimmers and bulbs (older
+  and newer firmware)
+- **Rheem EcoNet** water heaters (set point, modes, away, schedule, usage)
+- **Samsung**, **LG** and **Roku** TVs (remote control, apps, inputs; TVs
+  can be found on the network automatically). Samsung TV inputs by name
+  through SmartThings (optional).
+- **ratgdo** garage door openers (open, close, stop)
 - **Frigate** cameras and events
-- **Rheem EcoNet** water heaters (set point, modes, usage)
-- **Samsung** TVs (remote control)
-
-## Planned support
-
-- Google Nest devices
-- myQ garage doors (limited)
+- **Demo devices** to try the app without hardware
 
 ## Features
 
-- One installable web app (PWA) for all devices, grouped by room, with
-  device groups and live state.
+- One installable web app (PWA, with its own icon on phones) for all
+  devices, grouped by room, with device groups and live state. Every page
+  updates by itself.
+- Rooms side by side, packed together, in an order and size of your choice
+  (separately for phones and wide screens); rooms fold shut; search and
+  filters by type or "on only".
+- Thermostats and water heaters on a page of their own, and garage doors
+  on a Doors page, shown while their integration is on.
+- Themes: light, dark, device theme, preset colours or your own accent and
+  background colour, and a background picture.
 - Multiple homes and users, with admin, operator and member roles, and
   guests who get only what an admin ticks for them (lights, light settings,
   cameras, the water heater, and chosen thermostats).
-- Two-factor login (authenticator app), single-use recovery codes,
-  "keep me logged in" and "remember this device" (times set by an admin).
+- Two-factor login (authenticator app) asked for after the password,
+  single-use recovery codes, named "remembered" devices, and "keep me
+  logged in" (times set by an admin).
+- Login rules: account and password requirements, lockouts and lockdowns
+  after failed logins.
+- A setup checklist for new homes, a message of the day, and admins who
+  can edit people's details.
 - Safety limits on thermostats and water heaters, enforced in the backend
   on every command path.
 - Audit log of logins, settings changes and device commands, with secrets
   redacted.
-- Integration logins encrypted at rest; automatic daily database backups.
-- Optional HTTPS with your own certificate.
+- Integration logins encrypted at rest; automatic daily database backups,
+  and optional off-site copies.
+- Optional HTTPS with your own certificate, or the same certificate as the
+  server's web server (Apache, nginx, Caddy or certbot), picked up again
+  after each renewal. The app restarts itself to apply an HTTPS change.
 
 ## Headless Linux server
 
@@ -52,8 +71,26 @@ Ubuntu, Debian and others), set up and kept up to date by one script:
 It runs on your home network (use a VPN such as Tailscale from outside), or,
 with `install --access proxy`, behind a reverse proxy on the same server for
 access from the internet; ready-made Apache, nginx and Caddy configurations
-are in `deploy/proxy/`. The full guide, including moving your database over
-from another computer, is [docs/DEPLOY-LINUX.md](docs/DEPLOY-LINUX.md).
+are in `deploy/proxy/`. A server reachable from the internet can add
+fail2ban (`deploy/linux/smarthome fail2ban-setup`) and daily off-site
+backups (`offsite-setup`). The full guide, including moving your database
+over from another computer, is [docs/DEPLOY-LINUX.md](docs/DEPLOY-LINUX.md).
+
+To use the web server's HTTPS certificate, switch on **Settings > Admin >
+HTTPS > Use the web server's certificate**; `smarthome install` and
+`smarthome update` set up the server side.
+
+### Packages and automatic updates
+
+The app is also published as `.rpm` and `.deb` packages that a server
+updates every night (stable from release tags, dev from every change to
+`dev`):
+
+    curl -fsSL https://bobj4.github.io/Smart-Home-Unified-Control/install.sh | sudo bash -s -- dev
+    sudo smarthome install
+
+Details, and moving a git-checkout install over, are in
+[packaging/README.md](packaging/README.md).
 
 ## Quick start (Docker, any system)
 
@@ -104,7 +141,13 @@ before using other devices.
   (`--host-network`); on Windows, run the app without Docker.
 - With the app's own HTTPS and a self-signed certificate, each device shows a
   browser warning once: choose Advanced, then Proceed.
-- A change in Settings > Admin > HTTPS takes effect after a restart.
+- A change in Settings > Admin > HTTPS takes effect after a restart; the
+  app offers to restart itself when it runs in Docker.
+- Writing the Cync thermostat's schedules and own settings has not been
+  tried on every model: the app reads each change back and reports it if
+  the thermostat did not keep it.
+- Rheem limits how often it can be asked, so water heater readings are
+  up to 5 minutes old.
 - The Samsung 2014-2015 (H and J series) encrypted remote protocol has only
   been tested against a fake TV.
 
@@ -113,12 +156,13 @@ before using other devices.
 | Path | What |
 | --- | --- |
 | `backend/app` | FastAPI server: routes, models, security, device integrations |
-| `backend/app/integrations` | One adapter per vendor (Cync, Rheem, Samsung, Frigate) |
+| `backend/app/integrations` | One adapter per vendor (Cync, Hue, Kasa, Rheem, Samsung, LG, Roku, SmartThings, ratgdo, Frigate) |
 | `backend/alembic` | Database migrations |
 | `backend/tests` | Unit, contract and browser (Playwright) tests |
 | `backend/scripts` | Server start, backups, secrets key, account recovery |
 | `web` | The web app (plain JavaScript, no build step) |
 | `deploy` | Dockerfile, Compose files, the Linux installer (`deploy/linux`) and reverse-proxy examples (`deploy/proxy`) |
+| `packaging` | The `.rpm`/`.deb` packages and nightly updates |
 | `docs` | Deployment, security requirements, integration notes |
 
 ## Development
@@ -147,8 +191,9 @@ real devices or vendor services.
 
 ## Disclaimer
 
-Not affiliated with or endorsed by GE Lighting (Cync), Rheem, Samsung,
-Chamberlain (myQ), Google (Nest) or the Frigate project. Product names are
+Not affiliated with or endorsed by GE Lighting (Cync), Signify (Philips
+Hue), TP-Link (Kasa), Rheem, Samsung, LG, Roku, Chamberlain, the ratgdo or
+Frigate projects. Product names are
 trademarks of their owners.
 
 ## License
