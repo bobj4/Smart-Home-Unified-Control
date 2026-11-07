@@ -676,7 +676,9 @@ def test_ui_integrations_owner_turns_brands_on_and_off(
     expect(
         card(page, "Living room lamp").get_by_test_id("power-toggle")
     ).to_be_enabled()
-    expect(page.get_by_test_id("device-card")).to_have_count(5)  # demo devices back
+    # demo devices back; 7 since the garage door and door sensor (owner's
+    # approval, 2026-11-06)
+    expect(page.get_by_test_id("device-card")).to_have_count(7)
     db.expire_all()
     rheem = (
         db.query(HomeIntegration)

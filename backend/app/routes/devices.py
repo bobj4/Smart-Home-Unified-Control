@@ -209,9 +209,13 @@ def _new_state(db: Session, device: Device, cmd: DeviceCommand) -> dict[str, Any
             raise CommandRejected(error.status_code, error.reason) from None
     if device.type == "garage_door":
         try:
-            return garage_state(state, cmd.command, cmd.payload)
+            new = garage_state(state, cmd.command, cmd.payload)
         except GarageError as error:
             raise CommandRejected(error.status_code, error.reason) from None
+        if device.integration == "simulated":  # a demo door gets there at once
+            settled = {"opening": "open", "closing": "closed"}
+            new["door"] = settled.get(new["door"], new["door"])
+        return new
     if device.type in ("light", "plug"):
         try:
             return light_state(device.type, state, cmd.command, cmd.payload)
