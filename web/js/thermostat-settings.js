@@ -13,7 +13,6 @@ const THERMO_SWITCHES = [
 ];
 const THERMO_INSTALLER_SWITCHES = [
   ['dehumidify', 'Dehumidify', 'Runs the air conditioning to bring the humidity down.'],
-  ['heat_pump_changeover', 'Heat pump changeover', 'Which way the heat pump\'s valve is wired (O/B). The wrong setting swaps heating and cooling: change it only to match the wiring.'],
 ];
 // [key, label, help, step, unit]
 const THERMO_NUMBERS = [
@@ -28,6 +27,7 @@ const THERMO_NUMBERS = [
 const THERMO_CHOICES = [
   ['system_type', 'System type', 'The heating and cooling equipment the thermostat runs. The wrong type can damage it or make it run wrongly: change it only to match the equipment.'],
   ['furnace_type', 'Furnace type', 'Gas, electric or a boiler.'],
+  ['heat_pump_changeover', 'Heat pump changeover valve', 'When the reversing valve is powered: on cooling (an O wire) or on heating (a B wire). The wrong choice swaps heating and cooling: match the wiring.'],
   ['power_wires', 'Power wires', 'The power wires connected to the thermostat. The wrong choice can damage the equipment or make it run wrongly.'],
 ];
 // The stage thresholds (degrees from the set point), as the Cync app's Thresholds.
@@ -50,6 +50,10 @@ const THERMO_INSTALLER_GROUPS = [
   ['calibration', 'Calibration', ['temperature_offset', 'humidity_offset']],
   ['heat-pump', 'Heat pump', ['heat_pump_changeover']],
 ];
+
+// Choices this page names itself (the setting is a yes/no on the thermostat):
+// the Cync app's "On cool" and "On heat", in its order.
+const THERMO_LOCAL_CHOICES = { heat_pump_changeover: { false: 'On cool (O)', true: 'On heat (B)' } };
 
 /** '-1.0F' -> -1; 3 -> 3; anything else -> null. */
 function settingNumber(value) {
@@ -128,7 +132,9 @@ class ThermostatSettingsPanel {
 
   choiceRow(data, canEdit, [key, label, help]) {
     const value = data.settings[key];
-    const options = (data.choices || {})[key] || {};
+    const local = THERMO_LOCAL_CHOICES[key];
+    const options = local || (data.choices || {})[key] || {};
+    const read = local ? (text) => text === 'true' : Number; // what to send
     if (value === null || value === undefined) {
       return el('p', { className: 'muted', testid: `thermo-setting-${key}`, text: `${label}: not reported by this thermostat.` });
     }
@@ -139,8 +145,8 @@ class ThermostatSettingsPanel {
     const form = el('form', { className: 'row choice-row' }, [select, save]);
     form.addEventListener('submit', (event) => {
       event.preventDefault();
-      if (Number(select.value) === value) return;
-      this.change({ [key]: Number(select.value) }, () => { select.value = String(value); });
+      if (read(select.value) === value) return;
+      this.change({ [key]: read(select.value) }, () => { select.value = String(value); });
     });
     return el('div', { className: 'integration-row stacked' }, [el('div', {}, [el('strong', { text: label }), el('p', { className: 'muted', text: help })]), form]);
   }
