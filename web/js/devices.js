@@ -58,7 +58,8 @@ class DevicesView {
     this.lastDevices = [];
   }
 
-  async load() {
+  /** live: a background refresh, which leaves the page alone if nothing changed. */
+  async load({ live = false } = {}) {
     const homeId = this.app.home.id;
     const [devices, limits, integrations, groups, display] = this.app.isGuest() ? await guestDevicesData(this.app, homeId) : await Promise.all([
       this.app.api.getDevices(homeId),
@@ -79,7 +80,11 @@ class DevicesView {
     this.lastDevices = devices;
     this.groupList = groups;
     this.lightPanel.refresh([...devices, ...groups.map((g) => this.groupDevice(g))]);
-    this.render(devices);
+    // Redrawn only when something changed: a live refresh of the same
+    // devices leaves the page exactly as it is.
+    const signature = JSON.stringify([devices, groups, display, limits, integrations, this.roomOrder, this.grid, this.thermostatsApart, this.doorsApart, [...(this.collapsed || [])], window.location.hash]);
+    if (!live || signature !== this.drawnSignature || !this.root.firstChild) this.render(devices);
+    this.drawnSignature = signature;
     this.groups.refresh(groups, devices);
   }
 
@@ -118,11 +123,17 @@ class DevicesView {
     const none = names.length === 0 && this.filters.active ? el('p', { className: 'empty', testid: 'filter-empty' }, [
       'No devices match. ', el('button', { type: 'button', className: 'link', testid: 'filter-clear', text: 'Clear filters', onclick: () => this.filters.clear() }),
     ]) : null;
-    // The filter bar stays put (keeping focus while typing); the rest is redrawn.
+    // The filter bar stays put (keeping focus while typing); the rest is
+    // redrawn, keeping the page's height and where it is scrolled to.
     const bar = this.filters.element;
+    const { scrollX, scrollY } = window;
+    this.root.style.minHeight = `${this.root.offsetHeight}px`;
     if (bar.parentNode !== this.root) this.root.replaceChildren(bar);
     while (this.root.lastChild !== bar) this.root.lastChild.remove();
     this.root.append(...[el('div', { className: 'devices-top' }, [top, layout].filter(Boolean)), none, roomsGrid(this, names.map((room) => roomSection(this, room, rooms.get(room))))].filter(Boolean));
+    if (window.scrollY !== scrollY) window.scrollTo(scrollX, scrollY);
+    // Let go of the height once the rooms have their sizes.
+    requestAnimationFrame(() => requestAnimationFrame(() => { this.root.style.minHeight = ''; }));
   }
 
   /** A group as a device for the card and the light settings window. */
