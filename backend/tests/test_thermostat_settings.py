@@ -37,6 +37,8 @@ def held(thermostat, monkeypatch):
         "Auto_Mode_Deadband": "3.0F",
         "Dehumidification_Enable": None,
         "Humidity_Offset": {"odd": 1},
+        "Furnace_Type_set": 0,
+        "Power_Line": 1,
     }
     state = {"keep": True, "writes": []}
     by_index = {i: name for name, i, _ in thermostat_settings.SETTINGS.values()}
@@ -81,7 +83,9 @@ def test_read_and_change(client, db, owner, csrf, thermostat, held):
     assert settings["humidity_offset"] is None  # not a plain value: not shown
     assert "heat_pump_changeover" in body["missing"]
     assert "raw" not in body
-    assert set(body["editable"]) == set(thermostat_settings.SETTINGS)
+    assert set(body["editable"]) == (
+        set(thermostat_settings.SETTINGS) - {"power_wires"}
+    ) | {"system_type"}
     assert body["limits"]["min_fan_runtime"] == [0, 60]
 
     r = client.put(
@@ -117,6 +121,66 @@ def test_read_and_change(client, db, owner, csrf, thermostat, held):
     )
 
 
+def test_system_and_furnace(
+    client, db, owner, csrf, thermostat, held, make_user, new_client, login, monkeypatch
+):
+    r = client.get(url(owner, thermostat))
+    settings = r.json()["settings"]
+    assert settings["furnace_type"] == 0 and settings["power_wires"] == 1
+    assert settings["system_type"] == 3  # the report: 1 stage heat and cool
+    assert r.json()["choices"]["system_type"]["4"].startswith("1 Compressor Heat Pump")
+    r = client.put(
+        url(owner, thermostat), json={"furnace_type": 2}, headers=csrf(client)
+    )
+    assert r.status_code == 200, r.text
+    assert held["writes"][-1] == [(14, 2)]
+    assert r.json()["settings"]["furnace_type"] == 2
+    assert (
+        client.put(
+            url(owner, thermostat), json={"furnace_type": 7}, headers=csrf(client)
+        ).status_code
+        == 422
+    )
+    # The system type is checked in the thermostat's own report.
+    sent = []
+
+    def write(api, loop, cloud_id, entries):
+        sent.append(entries)
+        points = dict(t.parse_probe_reply(_thermostat.REPLY))
+        points[t.HVAC_TYPE] = entries[0][1]
+        return points
+
+    monkeypatch.setattr(cync, "thermostat_write_on_open", write)
+    r = client.put(
+        url(owner, thermostat), json={"system_type": 4}, headers=csrf(client)
+    )
+    assert r.status_code == 200, r.text
+    assert sent == [[(13, 4)]]
+    assert r.json()["settings"]["system_type"] == 4
+    db.expire_all()
+    stored = json.loads(db.get(Device, thermostat.id).state)
+    assert "emergency" in stored["modes"]  # a heat pump has emergency heat
+    for body in ({"system_type": 10}, {"system_type": 4, "early_on": True}):
+        r = client.put(url(owner, thermostat), json=body, headers=csrf(client))
+        assert r.status_code == 422, body
+    # Installer settings are for admins; members can still use Early On.
+    member = make_user(owner.home_id, role="member")
+    m = new_client()
+    assert login(m, member).status_code == 200
+    assert (
+        m.put(
+            url(owner, thermostat), json={"furnace_type": 0}, headers=csrf(m)
+        ).status_code
+        == 403
+    )
+    assert (
+        m.put(
+            url(owner, thermostat), json={"early_on": True}, headers=csrf(m)
+        ).status_code
+        == 200
+    )
+
+
 def test_refused_values_write_nothing(client, owner, csrf, thermostat, held):
     for body in (
         {},
@@ -129,6 +193,7 @@ def test_refused_values_write_nothing(client, owner, csrf, thermostat, held):
         {"temperature_offset": 1.25},  # steps of 0.5
         {"humidity_offset": 2},  # not reported in a known form
         {"firmware": "x"},
+        {"power_wires": 0},  # shown only
     ):
         r = client.put(url(owner, thermostat), json=body, headers=csrf(client))
         assert r.status_code == 422, body
