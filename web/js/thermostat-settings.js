@@ -68,7 +68,8 @@ class ThermostatSettingsPanel {
   }
 
   path() {
-    return `/homes/${encodeURIComponent(this.view.app.home.id)}/devices/${encodeURIComponent(this.device.id)}/settings`;
+    const guest = this.view.app.isGuest() ? '/guest' : ''; // guests: the route that checks their access
+    return `/homes/${encodeURIComponent(this.view.app.home.id)}${guest}/devices/${encodeURIComponent(this.device.id)}/settings`;
   }
 
   open(device) {
@@ -168,7 +169,7 @@ class ThermostatSettingsPanel {
       canEdit ? null : el('p', { className: 'muted', text: 'The thermostat is offline or its integration is off: settings can be read, not changed.' }),
       el('h3', { text: 'Installer settings' }),
       el('p', { className: 'muted', text: 'Set when the thermostat was put in. Change them only if you know the system needs it.' }),
-      data.installer_allowed === false ? el('p', { className: 'muted', testid: 'thermo-installer-locked', text: 'Your role cannot change these (Settings > Safety Settings).' }) : null,
+      data.installer_allowed === false ? el('p', { className: 'muted', testid: 'thermo-installer-locked', text: this.view.app.isGuest() ? 'Your access does not include these.' : 'Your role cannot change these (Settings > Safety Settings).' }) : null,
       ...THERMO_INSTALLER_GROUPS.map((group) => this.installerGroup(data, canEdit, group)),
       (data.missing || []).length ? el('p', { className: 'warning', testid: 'thermo-settings-missing', text: `The thermostat did not answer for ${data.missing.length} of the settings; read again to ask once more.` }) : null,
     ]);

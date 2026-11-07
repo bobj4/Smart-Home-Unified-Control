@@ -567,6 +567,14 @@ class GuestAccess(Base):
     show_blocked: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa_false()
     )
+    # Their thermostats' Settings window (Early On, screen unit, daylight
+    # saving), and the installer settings there (system, wires, thresholds...).
+    thermostat_settings: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
+    thermostat_installer: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
     thermostat_ids: Mapped[str] = mapped_column(Text, default="[]")  # JSON list
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
