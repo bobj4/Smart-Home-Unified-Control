@@ -260,6 +260,12 @@ body:has(.overlay:not([hidden])) .layout-open { display: none; }
 /* Folded sub menus of installer settings (thermostat-settings.js). */
 .settings-group { display: grid; gap: 6px; border: 1px solid #3a3f4a; border-radius: 12px; padding: 8px 10px; }
 .settings-group > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+/* A long list choice goes under its name, not beside it. */
+.integration-row.stacked { flex-direction: column; align-items: stretch; }
+.choice-row { flex-wrap: nowrap; }
+.choice-row select { flex: 1 1 auto; min-width: 0; width: 100%; }
+/* Long choices never widen a popup past the screen. */
+.remote > *, .remote .stack > *, .settings-group > * { min-width: 0; }
 .settings-group:not([open]) { padding-bottom: 8px; }
 .remote .integration-row .muted, .remote .muted { color: #9aa1ad; }
 .remote input[type="number"] { background: #1d2027; color: #e8eaed; border-color: #3a3f4a; }

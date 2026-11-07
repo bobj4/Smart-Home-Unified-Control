@@ -24,12 +24,20 @@ const THERMO_NUMBERS = [
   ['auto_deadband', 'Auto mode gap', 'How far apart heating and cooling must be in Auto (in its own unit).', 0.5, ''],
 ];
 
-// The installer settings in folded sub menus: [id, title, switch keys, number keys].
+// [key, label, help] for settings chosen from a list (choices come from the server).
+const THERMO_CHOICES = [
+  ['system_type', 'System type', 'The heating and cooling equipment the thermostat runs. The wrong type can damage it or make it run wrongly: change it only to match the equipment.'],
+  ['furnace_type', 'Furnace type', 'Gas, electric or a boiler.'],
+];
+// Shown as the thermostat reports them (what its numbers mean is not known yet).
+const THERMO_INFO = [['power_wires', 'Power wires', 'Rc, or Rc and Rh: change this in the Cync app.']];
+// The installer settings in folded sub menus: [id, title, keys].
 const THERMO_INSTALLER_GROUPS = [
-  ['humidity', 'Humidity', ['dehumidify'], ['dehumidify_to']],
-  ['fan', 'Fan', [], ['min_fan_runtime']],
-  ['calibration', 'Calibration', [], ['temperature_offset', 'humidity_offset']],
-  ['heat-pump', 'Heat pump & Auto', ['heat_pump_changeover'], ['auto_deadband']],
+  ['system', 'System', ['system_type', 'furnace_type', 'power_wires']],
+  ['humidity', 'Humidity', ['dehumidify', 'dehumidify_to']],
+  ['fan', 'Fan', ['min_fan_runtime']],
+  ['calibration', 'Calibration', ['temperature_offset', 'humidity_offset']],
+  ['heat-pump', 'Heat pump & Auto', ['heat_pump_changeover', 'auto_deadband']],
 ];
 
 /** '-1.0F' -> -1; 3 -> 3; anything else -> null. */
@@ -102,13 +110,43 @@ class ThermostatSettingsPanel {
     return settingRow(label, help, form);
   }
 
+  choiceRow(data, canEdit, [key, label, help]) {
+    const value = data.settings[key];
+    const options = (data.choices || {})[key] || {};
+    if (value === null || value === undefined) {
+      return el('p', { className: 'muted', testid: `thermo-setting-${key}`, text: `${label}: not reported by this thermostat.` });
+    }
+    const select = el('select', { testid: `thermo-setting-${key}`, disabled: !canEdit, 'aria-label': label },
+      Object.entries(options).map(([code, name]) => el('option', { value: code, text: name })));
+    select.value = String(value);
+    const save = el('button', { type: 'submit', className: 'secondary', testid: `thermo-save-${key}`, text: 'Save', disabled: !canEdit });
+    const form = el('form', { className: 'row choice-row' }, [select, save]);
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      if (Number(select.value) === value) return;
+      this.change({ [key]: Number(select.value) }, () => { select.value = String(value); });
+    });
+    return el('div', { className: 'integration-row stacked' }, [el('div', {}, [el('strong', { text: label }), el('p', { className: 'muted', text: help })]), form]);
+  }
+
+  infoRow(data, [key, label, help]) {
+    const value = data.settings[key];
+    return settingRow(label, help, el('span', { testid: `thermo-setting-${key}`, text: value === null || value === undefined ? 'Not reported' : String(value) }));
+  }
+
   /** One folded sub menu of installer settings; it stays open once opened
    * (while the window is open), also after a change redraws the window. */
-  installerGroup(data, canEdit, [id, title, switches, numbers]) {
+  installerGroup(data, canEdit, [id, title, keys]) {
+    const rows = keys.map((key) => {
+      const pick = (list) => list.find(([k]) => k === key);
+      if (pick(THERMO_INSTALLER_SWITCHES)) return this.switchRow(data.settings, canEdit, pick(THERMO_INSTALLER_SWITCHES));
+      if (pick(THERMO_NUMBERS)) return this.numberRow(data, canEdit, pick(THERMO_NUMBERS));
+      if (pick(THERMO_CHOICES)) return this.choiceRow(data, canEdit, pick(THERMO_CHOICES));
+      return this.infoRow(data, pick(THERMO_INFO));
+    });
     const box = el('details', { className: 'settings-group', testid: `thermo-group-${id}`, open: this.opened.has(id) }, [
       el('summary', { text: title }),
-      ...THERMO_INSTALLER_SWITCHES.filter(([key]) => switches.includes(key)).map((row) => this.switchRow(data.settings, canEdit, row)),
-      ...THERMO_NUMBERS.filter(([key]) => numbers.includes(key)).map((row) => this.numberRow(data, canEdit, row)),
+      ...rows,
     ]);
     box.addEventListener('toggle', () => { if (box.open) this.opened.add(id); else this.opened.delete(id); });
     return box;
