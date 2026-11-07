@@ -174,24 +174,11 @@ class HomeSettings {
     if (add) container.append(add);
     const scanBox = tvScanPanel(this);
     if (scanBox) container.append(scanBox);
-    container.append(el('div', { className: 'integration-list' }, rows.flatMap((row) => {
-      const toggle = el('input', {
-        type: 'checkbox', role: 'switch', className: 'switch', testid: 'integration-toggle',
-        checked: row.enabled, disabled: !owner, 'aria-label': `${row.name} on or off`,
-      });
-      toggle.addEventListener('change', () => this.app.run(async () => {
-        try {
-          const saved = await this.app.api.setIntegration(this.app.home.id, row.id, toggle.checked);
-          if (['rheem_econet', 'samsung_tv', 'lg_tv', 'roku_tv', 'hue', 'kasa', 'ratgdo', 'frigate', 'cync'].includes(saved.id)) {
-            this.app.settings.shown = null; // redraw to show or hide the account panel
-            this.app.route();
-          }
-          this.app.status.success(`${saved.name} turned ${saved.enabled ? 'on' : 'off'}.`);
-        } catch (error) {
-          toggle.checked = !toggle.checked;
-          throw error;
-        }
-      }));
+    // Only the integrations in use are listed; the rest are in "Add integration".
+    const inUse = rows.filter((row) => row.enabled);
+    if (inUse.length === 0) container.append(el('p', { className: 'muted', testid: 'integrations-none', text: 'No integrations yet.' }));
+    container.append(el('div', { className: 'integration-list' }, inUse.flatMap((row) => {
+      const remove = owner ? integrationRemoveButton(this, row) : null; // integration-add.js
       const rowEl = el('div', { className: 'integration-row', testid: 'integration-row', 'data-integration': row.id, 'data-available': String(row.available) }, [
         el('div', {}, [
           el('strong', { text: row.name }),
@@ -201,7 +188,7 @@ class HomeSettings {
             ? el('p', { className: 'error', testid: 'integration-problem', text: `Connection problem: ${problems[row.id].reason}` })
             : null,
         ]),
-        toggle,
+        remove,
       ]);
       const own = devices.filter((d) => d.integration === row.id);
       if (own.length === 0) return [rowEl];

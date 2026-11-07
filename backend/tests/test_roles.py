@@ -87,10 +87,9 @@ def test_ui_cameras_tab_follows_frigate(open_page, owner):
     page = open_page()
     ui_login(page, owner)
     expect(page.get_by_test_id("nav-cameras")).to_be_hidden()
-    section = go_settings(page, "integrations")
-    section.locator(
-        '[data-testid="integration-row"][data-integration="frigate"]'
-    ).get_by_test_id("integration-toggle").check()
+    _ui.add_integration(
+        page, "frigate"
+    )  # added from the dropdown (owner's approval, 2026-11-06)
     expect(page.get_by_test_id("nav-cameras")).to_be_visible()
 
 

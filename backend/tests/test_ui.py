@@ -625,6 +625,23 @@ def integration_row(section, integration_id):
     )
 
 
+def add_integration(page, integration_id):
+    """Turn an integration on from Settings > Integrations > Add integration
+    (changed from its on/off switch with the owner's approval, 2026-11-06:
+    only integrations in use are listed). Returns the Integrations section."""
+    section = go_settings(page, "integrations")
+    section.get_by_test_id("integration-add").select_option(integration_id)
+    expect(integration_row(section, integration_id)).to_be_visible()
+    return section
+
+
+def remove_integration(section, integration_id):
+    row = integration_row(section, integration_id)
+    row.get_by_test_id("integration-remove").click()
+    row.get_by_test_id("integration-remove-confirm").click()
+    expect(row).to_have_count(0)
+
+
 def test_ui_integrations_owner_turns_brands_on_and_off(
     open_page, db, owner, make_device
 ):
@@ -634,25 +651,24 @@ def test_ui_integrations_owner_turns_brands_on_and_off(
     page = open_page()
     ui_login(page, owner)
     section = go_settings(page, "integrations")
-    # One row per integration (the list grows with approved integrations).
-    expect(section.get_by_test_id("integration-row")).to_have_count(len(INTEGRATIONS))
-    for integration_id in (
-        "simulated",
-        "cync",
-        "samsung_tv",
-        "rheem_econet",
-        "frigate",
-    ):
-        expect(integration_row(section, integration_id)).to_be_visible()
-    expect(integration_row(section, "cync")).to_contain_text("GE Cync")
-    expect(integration_row(section, "cync")).to_have_attribute("data-available", "true")
+    # Only integrations in use are listed; the rest are in Add integration
+    # (owner's approval, 2026-11-06). Only the demo devices start on.
+    expect(section.get_by_test_id("integration-row")).to_have_count(1)
+    expect(integration_row(section, "simulated")).to_be_visible()
+    choices = section.get_by_test_id("integration-add").locator("option")
+    expect(choices).to_have_count(len(INTEGRATIONS))  # the prompt and the rest
+    for integration_id in ("cync", "samsung_tv", "rheem_econet", "frigate"):
+        expect(integration_row(section, integration_id)).to_have_count(0)
+        expect(
+            section.get_by_test_id("integration-add").locator(
+                f'option[value="{integration_id}"]'
+            )
+        ).to_have_count(1)
     expect(
-        integration_row(section, "cync").get_by_test_id("integration-toggle")
-    ).not_to_be_checked()
-    demo = integration_row(section, "simulated").get_by_test_id("integration-toggle")
-    expect(demo).to_be_checked()
+        section.get_by_test_id("integration-add").locator('option[value="cync"]')
+    ).to_have_text("GE Cync")
 
-    demo.uncheck()
+    remove_integration(section, "simulated")
     expect(page.get_by_test_id("status")).to_have_attribute("data-kind", "success")
     db.expire_all()
     row = (
@@ -665,12 +681,9 @@ def test_ui_integrations_owner_turns_brands_on_and_off(
     page.get_by_test_id("nav-devices").click()  # demo devices were deleted
     expect(page.get_by_test_id("device-card")).to_have_count(0)
 
-    section = go_settings(page, "integrations")
-    integration_row(section, "rheem_econet").get_by_test_id(
-        "integration-toggle"
-    ).check()
+    add_integration(page, "rheem_econet")
     expect(page.get_by_test_id("status")).to_have_attribute("data-kind", "success")
-    integration_row(section, "simulated").get_by_test_id("integration-toggle").check()
+    add_integration(page, "simulated")
     expect(page.get_by_test_id("status")).to_have_attribute("data-kind", "success")
     page.get_by_test_id("nav-devices").click()
     expect(
@@ -693,10 +706,11 @@ def test_ui_integrations_read_only_for_admin(open_page, owner, make_user):
     page = open_page()
     ui_login(page, admin)
     section = go_settings(page, "integrations")
-    expect(section.get_by_test_id("integration-row")).to_have_count(len(INTEGRATIONS))
-    toggles = section.get_by_test_id("integration-toggle")
-    for i in range(len(INTEGRATIONS)):
-        expect(toggles.nth(i)).to_be_disabled()
+    # Operators see the integrations in use, and cannot add or remove one
+    # (owner's approval, 2026-11-06: no on/off switches any more).
+    expect(section.get_by_test_id("integration-row")).to_have_count(1)
+    expect(section.get_by_test_id("integration-remove")).to_have_count(0)
+    expect(section.get_by_test_id("integration-add")).to_have_count(0)
 
 
 def limits_row(section, device_type):

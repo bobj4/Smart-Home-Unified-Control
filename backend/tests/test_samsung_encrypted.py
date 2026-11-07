@@ -14,7 +14,6 @@ from app.integrations import samsung
 from app.models import AuditEvent, Device, IntegrationCredential
 from tests import test_samsung as _tv
 from tests import test_ui as _ui
-from tests import test_ui_tv_security as _tvui
 
 tv, secrets_key = _tv.tv, _tv.secrets_key
 card, go_settings, ui_login = _ui.card, _ui.go_settings, _ui.ui_login
@@ -233,9 +232,9 @@ def test_adapter_network_errors(monkeypatch):
 def test_ui_encrypted_tv_pin_pairing(open_page, owner, tv, pin_tv, secrets_key):
     page = open_page()
     ui_login(page, owner)
-    _tvui.samsung_row(go_settings(page, "integrations")).get_by_test_id(
-        "integration-toggle"
-    ).check()
+    _ui.add_integration(
+        page, "samsung_tv"
+    )  # added from the dropdown (owner's approval, 2026-11-06)
     panel = page.get_by_test_id("samsung-tvs")
     panel.get_by_test_id("samsung-name").fill("Bedroom TV")
     panel.get_by_test_id("samsung-host").fill(HOST)
