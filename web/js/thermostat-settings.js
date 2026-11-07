@@ -21,15 +21,34 @@ const THERMO_NUMBERS = [
   ['min_fan_runtime', 'Minimum fan run time', 'Minutes an hour the fan runs even when not heating or cooling.', 1, 'min'],
   ['temperature_offset', 'Temperature offset', 'Corrects the thermostat\'s reading (in its own unit).', 0.5, ''],
   ['humidity_offset', 'Humidity offset', 'Corrects the thermostat\'s humidity reading.', 0.5, '%'],
-  ['auto_deadband', 'Auto mode gap', 'How far apart heating and cooling must be in Auto (in its own unit).', 0.5, ''],
+  ['auto_deadband', 'Auto mode dead band', 'The smallest gap between the heat and cool set points in Auto and Eco (in its own unit).', 0.5, ''],
 ];
 
-// The installer settings in folded sub menus: [id, title, switch keys, number keys].
+// [key, label, help] for settings chosen from a list (choices come from the server).
+const THERMO_CHOICES = [
+  ['system_type', 'System type', 'The heating and cooling equipment the thermostat runs. The wrong type can damage it or make it run wrongly: change it only to match the equipment.'],
+  ['furnace_type', 'Furnace type', 'Gas, electric or a boiler.'],
+  ['power_wires', 'Power wires', 'The power wires connected to the thermostat. The wrong choice can damage the equipment or make it run wrongly.'],
+];
+// The stage thresholds (degrees from the set point), as the Cync app's Thresholds.
+const THERMO_STAGES = [
+  ['heat_stage1_begin', 'Heat stage 1 on', 'below'], ['heat_stage2_begin', 'Heat stage 2 on', 'below'],
+  ['heat_stage2_end', 'Heat stage 2 off', 'below'], ['heat_stage3_begin', 'Heat stage 3 on', 'below'],
+  ['heat_stage3_end', 'Heat stage 3 off', 'below'], ['heat_stage4_begin', 'Heat stage 4 on', 'below'],
+  ['heat_stage4_end', 'Heat stage 4 off', 'below'], ['emergency_stage3_begin', 'Emergency heat stage 3 on', 'below'],
+  ['emergency_stage4_begin', 'Emergency heat stage 4 on', 'below'], ['emergency_stage4_end', 'Emergency heat stage 4 off', 'below'],
+  ['cool_stage1_begin', 'Cool stage 1 on', 'above'], ['cool_stage2_begin', 'Cool stage 2 on', 'above'],
+  ['cool_stage2_end', 'Cool stage 2 off', 'above'],
+].map(([key, label, side]) => [key, label, `Degrees ${side} the ${side === 'below' ? 'heat' : 'cool'} set point at which this stage turns ${label.endsWith('off') ? 'off' : 'on'}.`, 0.5, '°']);
+// The installer settings in folded sub menus: [id, title, keys]. Stage
+// thresholds a thermostat does not report (stages it does not have) are left out.
 const THERMO_INSTALLER_GROUPS = [
-  ['humidity', 'Humidity', ['dehumidify'], ['dehumidify_to']],
-  ['fan', 'Fan', [], ['min_fan_runtime']],
-  ['calibration', 'Calibration', [], ['temperature_offset', 'humidity_offset']],
-  ['heat-pump', 'Heat pump & Auto', ['heat_pump_changeover'], ['auto_deadband']],
+  ['system', 'System', ['system_type', 'furnace_type', 'power_wires']],
+  ['thresholds', 'Thresholds', ['auto_deadband', ...THERMO_STAGES.map(([key]) => key)]],
+  ['humidity', 'Humidity', ['dehumidify', 'dehumidify_to']],
+  ['fan', 'Fan', ['min_fan_runtime']],
+  ['calibration', 'Calibration', ['temperature_offset', 'humidity_offset']],
+  ['heat-pump', 'Heat pump', ['heat_pump_changeover']],
 ];
 
 /** '-1.0F' -> -1; 3 -> 3; anything else -> null. */
@@ -102,13 +121,39 @@ class ThermostatSettingsPanel {
     return settingRow(label, help, form);
   }
 
+  choiceRow(data, canEdit, [key, label, help]) {
+    const value = data.settings[key];
+    const options = (data.choices || {})[key] || {};
+    if (value === null || value === undefined) {
+      return el('p', { className: 'muted', testid: `thermo-setting-${key}`, text: `${label}: not reported by this thermostat.` });
+    }
+    const select = el('select', { testid: `thermo-setting-${key}`, disabled: !canEdit, 'aria-label': label },
+      Object.entries(options).map(([code, name]) => el('option', { value: code, text: name })));
+    select.value = String(value);
+    const save = el('button', { type: 'submit', className: 'secondary', testid: `thermo-save-${key}`, text: 'Save', disabled: !canEdit });
+    const form = el('form', { className: 'row choice-row' }, [select, save]);
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      if (Number(select.value) === value) return;
+      this.change({ [key]: Number(select.value) }, () => { select.value = String(value); });
+    });
+    return el('div', { className: 'integration-row stacked' }, [el('div', {}, [el('strong', { text: label }), el('p', { className: 'muted', text: help })]), form]);
+  }
+
   /** One folded sub menu of installer settings; it stays open once opened
    * (while the window is open), also after a change redraws the window. */
-  installerGroup(data, canEdit, [id, title, switches, numbers]) {
+  installerGroup(data, canEdit, [id, title, keys]) {
+    const rows = keys.map((key) => {
+      const pick = (list) => list.find(([k]) => k === key);
+      if (pick(THERMO_INSTALLER_SWITCHES)) return this.switchRow(data.settings, canEdit, pick(THERMO_INSTALLER_SWITCHES));
+      if (pick(THERMO_NUMBERS)) return this.numberRow(data, canEdit, pick(THERMO_NUMBERS));
+      if (pick(THERMO_CHOICES)) return this.choiceRow(data, canEdit, pick(THERMO_CHOICES));
+      if (data.settings[key] === null || data.settings[key] === undefined) return null; // a stage it does not have
+      return this.numberRow(data, canEdit, pick(THERMO_STAGES));
+    }).filter(Boolean);
     const box = el('details', { className: 'settings-group', testid: `thermo-group-${id}`, open: this.opened.has(id) }, [
       el('summary', { text: title }),
-      ...THERMO_INSTALLER_SWITCHES.filter(([key]) => switches.includes(key)).map((row) => this.switchRow(data.settings, canEdit, row)),
-      ...THERMO_NUMBERS.filter(([key]) => numbers.includes(key)).map((row) => this.numberRow(data, canEdit, row)),
+      ...rows,
     ]);
     box.addEventListener('toggle', () => { if (box.open) this.opened.add(id); else this.opened.delete(id); });
     return box;

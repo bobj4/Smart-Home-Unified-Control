@@ -19,10 +19,10 @@ from app.authorization import require_role
 from app.cync_home import CyncUnavailable
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
-from app.models import Device, User
+from app.models import Device, Role, User
 from app.routes.devices import CommandRejected, _device_bounds, _limits
 from app.thermostat_schedule import read_schedule, write_schedule
-from app.thermostat_settings import read_settings, write_settings
+from app.thermostat_settings import INSTALLER, read_settings, write_settings
 
 Day = Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
@@ -58,6 +58,23 @@ class SettingChanges(BaseModel):
     temperature_offset: StrictFloat | StrictInt | None = None
     humidity_offset: StrictFloat | StrictInt | None = None
     auto_deadband: StrictFloat | StrictInt | None = None
+    furnace_type: StrictInt | None = None
+    system_type: StrictInt | None = None
+    power_wires: StrictInt | None = None
+    # Stage thresholds, degrees (thermostat_settings.STAGE_OFFSETS)
+    heat_stage1_begin: StrictFloat | StrictInt | None = None
+    heat_stage2_begin: StrictFloat | StrictInt | None = None
+    heat_stage2_end: StrictFloat | StrictInt | None = None
+    heat_stage3_begin: StrictFloat | StrictInt | None = None
+    heat_stage3_end: StrictFloat | StrictInt | None = None
+    heat_stage4_begin: StrictFloat | StrictInt | None = None
+    heat_stage4_end: StrictFloat | StrictInt | None = None
+    emergency_stage3_begin: StrictFloat | StrictInt | None = None
+    emergency_stage4_begin: StrictFloat | StrictInt | None = None
+    emergency_stage4_end: StrictFloat | StrictInt | None = None
+    cool_stage1_begin: StrictFloat | StrictInt | None = None
+    cool_stage2_begin: StrictFloat | StrictInt | None = None
+    cool_stage2_end: StrictFloat | StrictInt | None = None
 
 
 router = APIRouter(prefix="/api/v1/homes/{home_id}/devices", tags=["thermostat"])
@@ -166,6 +183,8 @@ def save_thermostat_settings(
     changes = body.model_dump(exclude_none=True)
     if not changes:
         raise HTTPException(422, "Send a setting to change")
+    if INSTALLER.intersection(changes):  # how the equipment is set up: admins
+        require_role(db, user.id, home_id, Role.ADMIN)
     details = {"device_id": device.id, "changes": changes}
     try:
         result = write_settings(db, device, changes)
