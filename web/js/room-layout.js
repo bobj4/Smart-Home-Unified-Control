@@ -204,10 +204,18 @@ function roomsGrid(view, sections) {
   box.style.setProperty('--room-columns', String(columns));
   if (view.roomSizer) view.roomSizer.disconnect();
   if (columns > 1 && window.ResizeObserver) {
+    // A redraw starts each room at its last height, so the page does not
+    // shrink for a moment (which made the browser jump to the top).
+    view.roomSpans = view.roomSpans || new Map();
+    sections.forEach((section) => {
+      const span = view.roomSpans.get(section.dataset.room);
+      if (span) section.style.gridRowEnd = span;
+    });
     const fit = (section) => {
       const inner = section.firstElementChild ? section.scrollHeight : 0;
       const margin = parseFloat(getComputedStyle(section).marginTop) || 0;
       section.style.gridRowEnd = `span ${Math.max(1, Math.ceil((inner + margin) / MASONRY_ROW))}`;
+      view.roomSpans.set(section.dataset.room, section.style.gridRowEnd);
     };
     view.roomSizer = new ResizeObserver((entries) => entries.forEach((entry) => fit(entry.target)));
     sections.forEach((section) => view.roomSizer.observe(section));

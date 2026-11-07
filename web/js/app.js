@@ -55,7 +55,7 @@ class SmartHomeApp {
     const [view, sub] = this.currentRoute();
     try {
       if (view === 'devices' && !this.devices.lightPanel.device && !this.devices.remote.device) {
-        await this.devices.load();
+        await this.devices.load({ live: true });
       } else if (view === 'settings' && this.settings.liveDue()) {
         this.settings.shown = null; // redraw the page, unless someone is in the middle of something
         await this.settings.load(sub, { live: true });

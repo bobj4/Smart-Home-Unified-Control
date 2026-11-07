@@ -40,12 +40,16 @@ function drawThermostatsPage(view, devices) {
   byTestId('nav-devices').classList.toggle('active', !drawn);
   if (!drawn) return false;
   const { page, own } = drawn;
+  const { scrollX, scrollY } = window; // a redraw keeps the page where it is
+  view.root.style.minHeight = `${view.root.offsetHeight}px`;
   view.root.replaceChildren(own.length
     ? el('section', { className: 'room', testid: `${page.id}-page` }, [
       el('h2', { text: page.title }),
       el('div', { className: 'device-grid' }, own.map((d) => view.card(d))),
     ])
     : el('p', { className: 'empty', testid: `${page.id}-empty`, text: page.empty }));
+  if (window.scrollY !== scrollY) window.scrollTo(scrollX, scrollY);
+  requestAnimationFrame(() => { view.root.style.minHeight = ''; });
   return true;
 }
 
