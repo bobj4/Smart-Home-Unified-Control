@@ -321,3 +321,53 @@ def test_ui_settings_window(open_page, db, owner, monkeypatch):
     assert sent == [{"early_on": True}, {"min_fan_runtime": 20}]
     panel.get_by_test_id("thermo-settings-close").click()
     expect(panel).to_have_count(0)
+
+
+def test_ui_changeover_is_a_choice(open_page, db, owner, monkeypatch):
+    report = t.thermostat_state(t.parse_probe_reply(_thermostat.FULL_REPLY))
+    db.add(
+        Device(
+            home_id=owner.home_id,
+            integration="cync",
+            external_id="77-9",
+            type="thermostat",
+            name="Hallway",
+            room="Lab",
+            capabilities=json.dumps({"cloud_id": CLOUD_ID}),
+            state=json.dumps(report),
+            online=True,
+        )
+    )
+    db.commit()
+    features.set_integration(db, owner.home_id, "cync", True, None, None)
+    now = {"heat_pump_changeover": False}
+    sent = []
+
+    def answer():
+        result = thermostat_settings._result({"HeatPump_Changeover_Mode": 0})
+        result.pop("raw")
+        result["settings"].update(now)
+        return {**result, "installer_allowed": True}
+
+    def fake_write(db_, device, changes):
+        sent.append(changes)
+        now.update(changes)
+        return answer()
+
+    monkeypatch.setattr("app.routes.thermostat.read_settings", lambda *a, **k: answer())
+    monkeypatch.setattr("app.routes.thermostat.write_settings", fake_write)
+    page = open_page()
+    _ui.ui_login(page, owner)
+    _ui.card(page, "Hallway").get_by_test_id("thermo-settings-open").click()
+    panel = page.get_by_test_id("thermo-settings-panel")
+    panel.get_by_test_id("thermo-group-heat-pump").locator("summary").click()
+    choice = panel.get_by_test_id("thermo-setting-heat_pump_changeover")
+    expect(choice).to_have_value("false")
+    expect(choice.locator("option")).to_have_text(["On cool (O)", "On heat (B)"])
+    choice.select_option("true")
+    panel.get_by_test_id("thermo-save-heat_pump_changeover").click()
+    expect(page.get_by_test_id("status")).to_contain_text("took the change")
+    expect(panel.get_by_test_id("thermo-setting-heat_pump_changeover")).to_have_value(
+        "true"
+    )
+    assert sent == [{"heat_pump_changeover": True}]
