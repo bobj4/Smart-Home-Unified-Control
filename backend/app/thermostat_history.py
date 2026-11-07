@@ -142,5 +142,6 @@ def _point(at: datetime, group: list[ThermostatReading]) -> dict[str, Any]:
         "heat": last.heat_setpoint,
         "cool": last.cool_setpoint,
         "humidity": last.humidity,
+        "mode": last.mode,
         "status": running[-1] if running else last.status,
     }

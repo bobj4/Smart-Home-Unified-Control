@@ -133,3 +133,35 @@ def test_ui_history_button(open_page, db, owner, make_device):
         "thermo-settings-info"
     )
     expect(info).to_contain_text("984 h")
+
+
+def test_ui_only_set_points_in_use(open_page, db, owner, make_device):
+    hall = make_device(owner.home_id, device_type="thermostat", name="Hallway")
+    device = db.get(Device, hall)
+    device.integration = "cync"
+    device.state = json.dumps(state("idle"))
+    for minutes, mode in ((30, "heat"), (25, "heat"), (20, "cool"), (15, "cool")):
+        db.add(
+            ThermostatReading(
+                device_id=hall,
+                at=utcnow() - timedelta(minutes=minutes),
+                temperature=68.0,
+                heat_setpoint=66.0,
+                cool_setpoint=78.0,
+                status="idle",
+                mode=mode,
+            )
+        )
+    db.commit()
+    page = open_page()
+    _ui.ui_login(page, owner)
+    _ui.card(page, "Hallway").get_by_test_id("thermo-history-open").click()
+    chart = page.get_by_test_id("history-chart")
+    expect(chart).to_be_visible()
+    # Heat: drawn for the first two readings only; cool: the last two.
+    heat = chart.locator("path.history-heat").get_attribute("d")
+    cool = chart.locator("path.history-cool").get_attribute("d")
+    assert heat.count("M") == 1 and heat.count("L") == 1
+    assert cool.count("M") == 1 and cool.count("L") == 1
+    expect(chart.locator("circle.history-dot.heat")).to_have_count(2)
+    expect(chart.locator("circle.history-dot.cool")).to_have_count(2)
