@@ -25,63 +25,18 @@ from app.cync_home import CyncUnavailable, _call
 from app.integrations import cync, cync_thermostat
 from app.models import Device
 from app.thermostat_schedule import _connection
+from app.thermostat_setting_names import (
+    CHOICES,
+    EDITABLE,
+    HVAC_SET,
+    INSTALLER,
+    LIMITS,
+    SETTINGS,
+    SYSTEM_TYPES,
+)
 
 CACHE_SECONDS = 300
-# key: (setting name, data point, kind)
-SETTINGS: dict[str, tuple[str, int, str]] = {
-    "early_on": ("EarlyON_Enable", 23, "bool"),
-    "celsius": ("Temperature_Unit", 20, "bool"),  # its screen: true = Celsius
-    "auto_dst": ("Auto_DST", 118, "bool"),
-    "dehumidify": ("Dehumidification_Enable", 19, "bool"),
-    "dehumidify_to": ("Dehumidification_Setpoint", 18, "int"),
-    "min_fan_runtime": ("Min_Fan_Runtime", 26, "int"),
-    "temperature_offset": ("Temperature_Offset", 21, "text"),
-    "humidity_offset": ("Humidity_Offset", 22, "text"),
-    "auto_deadband": ("Auto_Mode_Deadband", 15, "text"),
-    "heat_pump_changeover": ("HeatPump_Changeover_Mode", 27, "bool"),
-    "furnace_type": ("Furnace_Type_set", 14, "choice"),
-    "power_wires": ("Power_Line", 97, "info"),  # what its numbers mean is not known
-}
-CHOICES: dict[str, dict[int, str]] = {
-    "furnace_type": {0: "Gas", 1: "Electric", 2: "Boiler"},
-}
-# The system types in the Cync app's words and order (HVAC_Type_Set codes).
-SYSTEM_TYPES: dict[int, str] = {
-    1: "1 Stage Cooling Conventional",
-    7: "2 Stage Cooling Conventional",
-    2: "1 Stage Heating Conventional",
-    8: "2 Stage Heating Conventional",
-    3: "1 Stage Heating/Cooling Conventional",
-    9: "2 Stage Heating/Cooling Conventional",
-    4: "1 Compressor Heat Pump (1-AUX)",
-    5: "2 Compressors or 2 Speed Compressor Heat Pump (1-AUX)",
-    6: "2 Compressors or 2 Speed Compressor Heat Pump (2-AUX)",
-}
-HVAC_SET = 13
-EDITABLE = [k for k, (_, _, kind) in SETTINGS.items() if kind != "info"] + [
-    "system_type"
-]
-# What only an admin may change: how the equipment is wired and set up.
-INSTALLER = {
-    "heat_pump_changeover",
-    "furnace_type",
-    "system_type",
-    "auto_deadband",
-    "dehumidify_to",
-    "min_fan_runtime",
-    "temperature_offset",
-    "humidity_offset",
-    "dehumidify",
-}
-# Values kept to a range a thermostat is normally set to, so a typing slip
-# cannot reach the thermostat.
-LIMITS: dict[str, tuple[float, float]] = {
-    "dehumidify_to": (25, 75),  # percent
-    "min_fan_runtime": (0, 60),  # minutes an hour
-    "temperature_offset": (-5, 5),  # degrees
-    "humidity_offset": (-10, 10),  # percent
-    "auto_deadband": (2, 9),  # degrees between heating and cooling
-}
+
 
 # device id -> (time read, settings)
 _cache: dict[str, tuple[float, dict[str, Any]]] = {}

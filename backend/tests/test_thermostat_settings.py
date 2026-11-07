@@ -39,6 +39,8 @@ def held(thermostat, monkeypatch):
         "Humidity_Offset": {"odd": 1},
         "Furnace_Type_set": 0,
         "Power_Line": 1,
+        "Cooling_Stage_1_Begin_Offset": "1.0F",
+        "Heating_Stage_1_Begin_Offset": "1.0F",
     }
     state = {"keep": True, "writes": []}
     by_index = {i: name for name, i, _ in thermostat_settings.SETTINGS.values()}
@@ -83,9 +85,7 @@ def test_read_and_change(client, db, owner, csrf, thermostat, held):
     assert settings["humidity_offset"] is None  # not a plain value: not shown
     assert "heat_pump_changeover" in body["missing"]
     assert "raw" not in body
-    assert set(body["editable"]) == (
-        set(thermostat_settings.SETTINGS) - {"power_wires"}
-    ) | {"system_type"}
+    assert set(body["editable"]) == set(thermostat_settings.SETTINGS) | {"system_type"}
     assert body["limits"]["min_fan_runtime"] == [0, 60]
 
     r = client.put(
@@ -181,6 +181,34 @@ def test_system_and_furnace(
     )
 
 
+def test_power_wires_and_stage_thresholds(client, owner, csrf, thermostat, held):
+    r = client.get(url(owner, thermostat))
+    settings = r.json()["settings"]
+    assert settings["power_wires"] == 1  # Rc
+    assert r.json()["choices"]["power_wires"] == {
+        "0": "None",
+        "1": "Rc",
+        "2": "Rc and Rh",
+    }
+    assert settings["cool_stage1_begin"] == "1F"
+    assert settings["heat_stage2_begin"] is None  # a stage it does not have
+    r = client.put(
+        url(owner, thermostat),
+        json={"power_wires": 2, "cool_stage1_begin": 1.5},
+        headers=csrf(client),
+    )
+    assert r.status_code == 200, r.text
+    assert held["writes"][-1] == [(97, 2), (34, "1.5F")]
+    assert r.json()["settings"]["cool_stage1_begin"] == "1.5F"
+    for body in (
+        {"power_wires": 3},
+        {"cool_stage1_begin": 11},
+        {"heat_stage2_begin": 1},
+    ):
+        r = client.put(url(owner, thermostat), json=body, headers=csrf(client))
+        assert r.status_code == 422, body  # the last: not reported, form unknown
+
+
 def test_refused_values_write_nothing(client, owner, csrf, thermostat, held):
     for body in (
         {},
@@ -193,7 +221,6 @@ def test_refused_values_write_nothing(client, owner, csrf, thermostat, held):
         {"temperature_offset": 1.25},  # steps of 0.5
         {"humidity_offset": 2},  # not reported in a known form
         {"firmware": "x"},
-        {"power_wires": 0},  # shown only
     ):
         r = client.put(url(owner, thermostat), json=body, headers=csrf(client))
         assert r.status_code == 422, body
