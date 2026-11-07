@@ -80,6 +80,7 @@ class SmartHomeApp {
     const saving = Boolean(click && click.save && Date.now() - click.at < 1000);
     try {
       await action();
+      if (this.settings) this.settings.dirty = false; // what was typed is saved now
       if (saving) this.toast.saved();
     } catch (error) {
       this.handleError(error);

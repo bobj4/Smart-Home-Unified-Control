@@ -13,6 +13,11 @@ const SETTINGS_SECTIONS = [
   { id: 'activity', label: 'Activity log', intro: 'Logins, setting changes and device commands, newest first.', role: 'admin' },
 ];
 
+// Fields whose typing is kept until it is saved: not switches, ticks or
+// files (those save at once), and not list choices (a device row marks its
+// own unsaved choices with data-changed).
+const TYPED_FIELDS = 'textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="file"])';
+
 /** What a page shows: its text and the values of its fields. */
 function pageSignature(panel) {
   if (!panel) return '';
@@ -53,9 +58,10 @@ class SettingsView {
         text: s.label,
       })));
     const panel = section(`settings-${current.id}`, current.label, current.intro);
-    // Live refresh redraws the page only while nothing has been typed.
+    // Live refresh redraws the page only while nothing typed is unsaved
+    // (app.run clears this when an action has finished).
     this.dirty = false;
-    panel.addEventListener('input', () => { this.dirty = true; });
+    panel.addEventListener('input', (event) => { if (event.target.matches(TYPED_FIELDS)) this.dirty = true; });
     const page = [menu, el('div', { className: 'settings-content' }, [panel])];
     const redraw = key === this.drawn;
     this.drawn = key;
@@ -117,6 +123,7 @@ class SettingsView {
     this.ticks = (this.ticks || 0) + 1;
     const panel = this.panel;
     if (!panel || !panel.isConnected || this.dirty) return false;
+    if (panel.querySelector('[data-changed="true"]')) return false; // unsaved device rows
     if (!panel.dataset.testid.endsWith('integrations') && this.ticks % 3 !== 0) return false;
     if (panel.querySelector('.secret:not([hidden]), .codes, img.qr, [data-testid$="-confirm"]')) return false;
     if (panel.querySelectorAll('form').length !== this.formsAtDraw) return false;

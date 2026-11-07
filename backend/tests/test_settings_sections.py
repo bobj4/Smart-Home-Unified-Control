@@ -106,3 +106,43 @@ def test_ui_settings_update_live(open_page, client, owner, login, csrf):
     )
     page.wait_for_timeout(3000)
     expect(page.get_by_test_id("motd-input")).to_have_value("my draft")
+
+
+def test_ui_live_after_choices_and_saves(open_page, client, owner, login, csrf):
+    """Using a list, a switch or Save does not stop the page updating; only
+    typing that is not saved yet does."""
+    assert login(client, owner).status_code == 200
+    page = open_page()
+    _ui.ui_login(page, owner, code=owner.recovery_codes[0])
+    _ui.go_settings(page, "devices")
+    page.evaluate("window.smartHomeApp.refreshMs = 300")
+    page.get_by_test_id("room-new-name").fill("Kitchen")
+    page.get_by_test_id("room-create").click()  # typed, then saved
+    expect(page.get_by_test_id("status")).to_contain_text("Room created")
+    page.get_by_test_id("home-name").click()  # nothing focused
+    url = f"/api/v1/homes/{owner.home_id}/devices"
+    r = client.post(
+        url,
+        json={"name": "New lamp", "type": "light", "integration": "simulated"},
+        headers=csrf(client),
+    )
+    assert r.status_code == 201, r.text
+    rows = page.get_by_test_id("device-row")
+    expect(rows.filter(has_text="New lamp")).to_have_count(0)  # its value, not text
+    expect(page.locator('[data-testid="device-name"][value="New lamp"]')).to_have_count(
+        0
+    )
+    names = page.get_by_test_id("device-name")
+    expect(names).to_have_count(1, timeout=15000)
+    expect(names.first).to_have_value("New lamp")
+    # Typing a new name, not saved: the page waits.
+    names.first.fill("Typed lamp")
+    page.get_by_test_id("home-name").click()
+    client.post(
+        url,
+        json={"name": "Second lamp", "type": "light", "integration": "simulated"},
+        headers=csrf(client),
+    )
+    page.wait_for_timeout(3000)
+    expect(names).to_have_count(1)
+    expect(names.first).to_have_value("Typed lamp")
