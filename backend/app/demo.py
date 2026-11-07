@@ -15,7 +15,14 @@ DEMO = [
     ("Hall thermostat", "thermostat", "Hall"),
     ("Living room TV", "tv", "Living room"),
     ("Water heater", "water_heater", "Basement"),
+    ("Garage door", "garage_door", "Garage"),
+    ("Front door sensor", "sensor", "Hall"),
 ]
+# How they start, besides the limits' default target (temperature devices).
+DEMO_STATE = {
+    "garage_door": {"door": "closed"},
+    "sensor": {"door": "closed", "battery": "90%"},
+}
 
 
 def add_demo_devices(db: Session, home_id: str) -> int:
@@ -40,7 +47,12 @@ def add_demo_devices(db: Session, home_id: str) -> int:
                 room=room,
                 online=True,
                 capabilities="{}",
-                state=json.dumps(initial_state(db, home_id, device_type)),
+                state=json.dumps(
+                    {
+                        **initial_state(db, home_id, device_type),
+                        **DEMO_STATE.get(device_type, {}),
+                    }
+                ),
             )
         )
         added += 1

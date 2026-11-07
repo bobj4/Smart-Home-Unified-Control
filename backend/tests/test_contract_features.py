@@ -154,6 +154,10 @@ def test_turned_off_integration_refuses_commands_and_new_devices(
         "Hall thermostat",
         "Living room TV",
         "Water heater",
+        # A garage door and a door sensor added with the owner's approval
+        # (2026-11-06).
+        "Garage door",
+        "Front door sensor",
     }
     lamp = next(d.id for d in demo if d.type == "light")
     command = home_url(owner.home_id, f"/devices/{lamp}/command")
