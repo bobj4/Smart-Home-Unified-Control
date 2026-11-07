@@ -1,6 +1,7 @@
 /**
  * Settings > Integrations (owners): only the brands in use are listed, each
- * with "Remove integration"; the rest are in "Add integration ▾" at the top.
+ * with "Remove integration", and the demo devices always, with a switch;
+ * the rest are in "Add integration ▾" at the top.
  * Picking one turns it on, redraws the page and goes to its setup (account,
  * bridge or devices); removing one turns it off and puts it back in the list.
  */
@@ -12,7 +13,7 @@ const SETUP_PANELS = {
 
 function addIntegrationRow(view, rows) {
   if (!view.app.can('admin')) return null;
-  const off = rows.filter((row) => !row.enabled && row.available);
+  const off = rows.filter((row) => !row.enabled && row.available && row.id !== 'simulated'); // the demo has its own switch
   if (off.length === 0) return null;
   const select = el('select', { testid: 'integration-add', 'aria-label': 'Add integration' }, [
     el('option', { value: '', text: 'Add integration…' }),
@@ -58,5 +59,23 @@ function integrationRemoveButton(view, row) {
   return box;
 }
 
+/** The demo devices: always listed, switched on and off in place. */
+function demoSwitch(view, row) {
+  const toggle = el('input', {
+    type: 'checkbox', role: 'switch', className: 'switch', testid: 'integration-toggle', checked: row.enabled, 'aria-label': `${row.name} on or off`,
+  });
+  toggle.addEventListener('change', () => view.app.run(async () => {
+    try {
+      const saved = await view.app.api.setIntegration(view.app.home.id, row.id, toggle.checked);
+      view.app.status.success(saved.enabled ? 'Demo devices on: added to the Devices page.' : 'Demo devices off: removed from the Devices page.');
+    } catch (error) {
+      toggle.checked = !toggle.checked;
+      throw error;
+    }
+  }));
+  return toggle;
+}
+
 window.addIntegrationRow = addIntegrationRow;
+window.demoSwitch = demoSwitch;
 window.integrationRemoveButton = integrationRemoveButton;

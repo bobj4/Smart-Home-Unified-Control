@@ -668,7 +668,11 @@ def test_ui_integrations_owner_turns_brands_on_and_off(
         section.get_by_test_id("integration-add").locator('option[value="cync"]')
     ).to_have_text("GE Cync")
 
-    remove_integration(section, "simulated")
+    # The demo devices are always listed, with a switch (owner's approval,
+    # 2026-11-06).
+    demo = integration_row(section, "simulated").get_by_test_id("integration-toggle")
+    expect(demo).to_be_checked()
+    demo.uncheck()
     expect(page.get_by_test_id("status")).to_have_attribute("data-kind", "success")
     db.expire_all()
     row = (
@@ -683,7 +687,8 @@ def test_ui_integrations_owner_turns_brands_on_and_off(
 
     add_integration(page, "rheem_econet")
     expect(page.get_by_test_id("status")).to_have_attribute("data-kind", "success")
-    add_integration(page, "simulated")
+    section = go_settings(page, "integrations")
+    integration_row(section, "simulated").get_by_test_id("integration-toggle").check()
     expect(page.get_by_test_id("status")).to_have_attribute("data-kind", "success")
     page.get_by_test_id("nav-devices").click()
     expect(

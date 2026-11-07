@@ -177,11 +177,13 @@ class HomeSettings {
     if (add) container.append(add);
     const scanBox = tvScanPanel(this);
     if (scanBox) container.append(scanBox);
-    // Only the integrations in use are listed; the rest are in "Add integration".
-    const inUse = rows.filter((row) => row.enabled);
+    // Only the integrations in use are listed, and the demo devices always
+    // (with a switch); the rest are in "Add integration".
+    const inUse = rows.filter((row) => row.enabled || row.id === 'simulated');
     if (inUse.length === 0) container.append(el('p', { className: 'muted', testid: 'integrations-none', text: 'No integrations yet.' }));
     container.append(el('div', { className: 'integration-list' }, inUse.flatMap((row) => {
-      const remove = owner ? integrationRemoveButton(this, row) : null; // integration-add.js
+      const remove = !owner ? null
+        : row.id === 'simulated' ? demoSwitch(this, row) : integrationRemoveButton(this, row); // integration-add.js
       const rowEl = el('div', { className: 'integration-row', testid: 'integration-row', 'data-integration': row.id, 'data-available': String(row.available) }, [
         el('div', {}, [
           el('strong', { text: row.name }),
