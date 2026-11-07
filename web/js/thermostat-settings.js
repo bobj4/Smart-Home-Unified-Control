@@ -21,23 +21,34 @@ const THERMO_NUMBERS = [
   ['min_fan_runtime', 'Minimum fan run time', 'Minutes an hour the fan runs even when not heating or cooling.', 1, 'min'],
   ['temperature_offset', 'Temperature offset', 'Corrects the thermostat\'s reading (in its own unit).', 0.5, ''],
   ['humidity_offset', 'Humidity offset', 'Corrects the thermostat\'s humidity reading.', 0.5, '%'],
-  ['auto_deadband', 'Auto mode gap', 'How far apart heating and cooling must be in Auto (in its own unit).', 0.5, ''],
+  ['auto_deadband', 'Auto mode dead band', 'The smallest gap between the heat and cool set points in Auto and Eco (in its own unit).', 0.5, ''],
 ];
 
 // [key, label, help] for settings chosen from a list (choices come from the server).
 const THERMO_CHOICES = [
   ['system_type', 'System type', 'The heating and cooling equipment the thermostat runs. The wrong type can damage it or make it run wrongly: change it only to match the equipment.'],
   ['furnace_type', 'Furnace type', 'Gas, electric or a boiler.'],
+  ['power_wires', 'Power wires', 'The power wires connected to the thermostat. The wrong choice can damage the equipment or make it run wrongly.'],
 ];
-// Shown as the thermostat reports them (what its numbers mean is not known yet).
-const THERMO_INFO = [['power_wires', 'Power wires', 'Rc, or Rc and Rh: change this in the Cync app.']];
-// The installer settings in folded sub menus: [id, title, keys].
+// The stage thresholds (degrees from the set point), as the Cync app's Thresholds.
+const THERMO_STAGES = [
+  ['heat_stage1_begin', 'Heat stage 1 on', 'below'], ['heat_stage2_begin', 'Heat stage 2 on', 'below'],
+  ['heat_stage2_end', 'Heat stage 2 off', 'below'], ['heat_stage3_begin', 'Heat stage 3 on', 'below'],
+  ['heat_stage3_end', 'Heat stage 3 off', 'below'], ['heat_stage4_begin', 'Heat stage 4 on', 'below'],
+  ['heat_stage4_end', 'Heat stage 4 off', 'below'], ['emergency_stage3_begin', 'Emergency heat stage 3 on', 'below'],
+  ['emergency_stage4_begin', 'Emergency heat stage 4 on', 'below'], ['emergency_stage4_end', 'Emergency heat stage 4 off', 'below'],
+  ['cool_stage1_begin', 'Cool stage 1 on', 'above'], ['cool_stage2_begin', 'Cool stage 2 on', 'above'],
+  ['cool_stage2_end', 'Cool stage 2 off', 'above'],
+].map(([key, label, side]) => [key, label, `Degrees ${side} the ${side === 'below' ? 'heat' : 'cool'} set point at which this stage turns ${label.endsWith('off') ? 'off' : 'on'}.`, 0.5, '°']);
+// The installer settings in folded sub menus: [id, title, keys]. Stage
+// thresholds a thermostat does not report (stages it does not have) are left out.
 const THERMO_INSTALLER_GROUPS = [
   ['system', 'System', ['system_type', 'furnace_type', 'power_wires']],
+  ['thresholds', 'Thresholds', ['auto_deadband', ...THERMO_STAGES.map(([key]) => key)]],
   ['humidity', 'Humidity', ['dehumidify', 'dehumidify_to']],
   ['fan', 'Fan', ['min_fan_runtime']],
   ['calibration', 'Calibration', ['temperature_offset', 'humidity_offset']],
-  ['heat-pump', 'Heat pump & Auto', ['heat_pump_changeover', 'auto_deadband']],
+  ['heat-pump', 'Heat pump', ['heat_pump_changeover']],
 ];
 
 /** '-1.0F' -> -1; 3 -> 3; anything else -> null. */
@@ -129,11 +140,6 @@ class ThermostatSettingsPanel {
     return el('div', { className: 'integration-row stacked' }, [el('div', {}, [el('strong', { text: label }), el('p', { className: 'muted', text: help })]), form]);
   }
 
-  infoRow(data, [key, label, help]) {
-    const value = data.settings[key];
-    return settingRow(label, help, el('span', { testid: `thermo-setting-${key}`, text: value === null || value === undefined ? 'Not reported' : String(value) }));
-  }
-
   /** One folded sub menu of installer settings; it stays open once opened
    * (while the window is open), also after a change redraws the window. */
   installerGroup(data, canEdit, [id, title, keys]) {
@@ -142,8 +148,9 @@ class ThermostatSettingsPanel {
       if (pick(THERMO_INSTALLER_SWITCHES)) return this.switchRow(data.settings, canEdit, pick(THERMO_INSTALLER_SWITCHES));
       if (pick(THERMO_NUMBERS)) return this.numberRow(data, canEdit, pick(THERMO_NUMBERS));
       if (pick(THERMO_CHOICES)) return this.choiceRow(data, canEdit, pick(THERMO_CHOICES));
-      return this.infoRow(data, pick(THERMO_INFO));
-    });
+      if (data.settings[key] === null || data.settings[key] === undefined) return null; // a stage it does not have
+      return this.numberRow(data, canEdit, pick(THERMO_STAGES));
+    }).filter(Boolean);
     const box = el('details', { className: 'settings-group', testid: `thermo-group-${id}`, open: this.opened.has(id) }, [
       el('summary', { text: title }),
       ...rows,

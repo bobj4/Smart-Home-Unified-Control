@@ -60,6 +60,21 @@ class SettingChanges(BaseModel):
     auto_deadband: StrictFloat | StrictInt | None = None
     furnace_type: StrictInt | None = None
     system_type: StrictInt | None = None
+    power_wires: StrictInt | None = None
+    # Stage thresholds, degrees (thermostat_settings.STAGE_OFFSETS)
+    heat_stage1_begin: StrictFloat | StrictInt | None = None
+    heat_stage2_begin: StrictFloat | StrictInt | None = None
+    heat_stage2_end: StrictFloat | StrictInt | None = None
+    heat_stage3_begin: StrictFloat | StrictInt | None = None
+    heat_stage3_end: StrictFloat | StrictInt | None = None
+    heat_stage4_begin: StrictFloat | StrictInt | None = None
+    heat_stage4_end: StrictFloat | StrictInt | None = None
+    emergency_stage3_begin: StrictFloat | StrictInt | None = None
+    emergency_stage4_begin: StrictFloat | StrictInt | None = None
+    emergency_stage4_end: StrictFloat | StrictInt | None = None
+    cool_stage1_begin: StrictFloat | StrictInt | None = None
+    cool_stage2_begin: StrictFloat | StrictInt | None = None
+    cool_stage2_end: StrictFloat | StrictInt | None = None
 
 
 router = APIRouter(prefix="/api/v1/homes/{home_id}/devices", tags=["thermostat"])
