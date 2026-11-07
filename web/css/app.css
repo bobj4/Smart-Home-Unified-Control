@@ -78,7 +78,11 @@ button.link { background: none; border: 0; padding: 0; font-weight: inherit; tex
 .brand-logo { border-radius: 8px; flex: 0 0 auto; }
 .auth-logo { display: block; margin: 0 auto 12px; border-radius: 16px; }
 .brand h1 { overflow-wrap: anywhere; }
-.nav { display: flex; gap: 4px; align-items: center; }
+/* The links scroll sideways when they do not fit (phones), instead of
+   making the whole page wider. */
+.nav { display: flex; gap: 4px; align-items: center; min-width: 0; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+.nav::-webkit-scrollbar { display: none; }
+.nav > * { flex: 0 0 auto; white-space: nowrap; }
 .nav-link { color: var(--text); text-decoration: none; padding: 8px 12px; border-radius: 8px; font-weight: 600; }
 .nav-link.active { background: var(--surface-2); color: var(--accent-fg); }
 main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
@@ -284,6 +288,7 @@ body:has(.overlay:not([hidden])) .layout-open { display: none; }
 @media (max-width: 560px) {
   .activity li { grid-template-columns: 1fr; gap: 0; }
   .topbar { padding: 10px 12px; }
+  .nav { width: 100%; }
   main { padding: 4px 12px 40px; }
 }
 
