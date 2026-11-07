@@ -18,6 +18,16 @@ const MEDIA_KEYS = [
 // Home and Info sit in their own row under Power; these are the rest.
 const MENU_KEYS = [['back', 'Back'], ['menu', 'Menu'], ['guide', 'Guide']];
 
+/** The power symbol drawn, not the ⏻ character: many phones and Windows
+ * fonts have no glyph for it and show an empty box. */
+function powerButton(button) {
+  button.prepend(svg('svg', { viewBox: '0 0 24 24', width: '18', height: '18', 'aria-hidden': 'true', focusable: 'false', className: 'power-icon' }, [
+    svg('path', { d: 'M12 3v8' }),
+    svg('path', { d: 'M6.3 7.2a8 8 0 1 0 11.4 0' }),
+  ]));
+  return button;
+}
+
 function mediaIcon(path) {
   return svg('svg', { viewBox: '0 0 24 24', width: '18', height: '18', 'aria-hidden': 'true', focusable: 'false' }, [
     svg('path', { d: path, fill: 'currentColor' }),
@@ -165,7 +175,7 @@ class TvRemote {
       ]),
       screen,
       el('div', { className: 'remote-row' }, [
-        this.button('remote-power', '⏻ Power', () => this.send(off ? 'turn_on' : 'turn_off'), { className: `power${off ? '' : ' on'}`, always: true }),
+        powerButton(this.button('remote-power', 'Power', () => this.send(off ? 'turn_on' : 'turn_off'), { className: `power${off ? '' : ' on'}`, always: true })),
         this.button('remote-mute', s.muted ? 'Unmute' : 'Mute', () => this.send('toggle_mute'), { className: 'key wide' }),
       ]),
       el('div', { className: 'remote-row remote-split', testid: 'remote-home-info' }, [key('home', 'Home', 'Home'), key('info', 'Info', 'Info')]),

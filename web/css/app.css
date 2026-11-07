@@ -300,6 +300,7 @@ body:has(.overlay:not([hidden])) .layout-open { display: none; }
 .remote .key:not(:disabled):active, .remote .app:not(:disabled):active { background: #3d4350; }
 .remote .power { background: #3a1f22; color: #ff8787; border: 1px solid #5a2a2f; min-height: 44px; }
 .remote .power.on { background: #c92a2a; color: #fff; }
+.remote .power-icon { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; vertical-align: -4px; margin-right: 6px; }
 .remote .app.active { border-color: #4c8dff; color: #8fb8ff; }
 .remote-rockers { display: grid; grid-template-columns: 56px 1fr 56px; gap: 10px; align-items: center; }
 .rocker { display: grid; gap: 6px; justify-items: stretch; text-align: center; font-size: 0.75rem; color: #9aa1ad; }

@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import credentials, tv_sources
+from app import credentials, tv_power, tv_sources
 from app.features import integration_enabled
 from app.integrations import samsung
 from app.models import Device
@@ -208,10 +208,12 @@ def send_tv_command(
         raise SamsungUnavailable(422, "only 2016 and newer TVs can launch apps")
     host, protocol, token = _connection(db, device)
     try:
-        if command == "turn_on":
-            if settings["mac"]:
-                samsung.wake(settings["mac"])
-            else:
+        if command in ("turn_on", "turn_off"):  # one key both ways: see tv_power
+            state = tv_power.power_state(host, protocol)
+            step = tv_power.plan(command, state, settings["mac"])
+            if step == "wake":
+                tv_power.wake(str(settings["mac"]), host)
+            elif step == "key":
                 samsung.send_keys(host, protocol, token, ["KEY_POWER"])
         elif command == "launch_app":
             samsung.launch_app(host, protocol, token, payload["app"])
