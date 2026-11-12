@@ -35,8 +35,8 @@ through the backend's permission checks and device safety limits.
   filters by type or "on only".
 - Thermostats and water heaters on a page of their own, and garage doors
   on a Doors page, shown while their integration is on.
-- Themes: light, dark, device theme, preset colours or your own accent and
-  background colour, and a background picture.
+- Themes: light, dark, device theme, preset colors or your own accent and
+  background color, and a background picture.
 - Multiple homes and users, with admin, operator and member roles, and
   guests who get only what an admin ticks for them (lights, light settings,
   cameras, the water heater, and chosen thermostats).

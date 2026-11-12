@@ -34,7 +34,7 @@ function gauge(fraction, type) {
   ]);
 }
 
-/** The colour a light shows: its RGB colour, or its colour temperature as a tint. */
+/** The color a light shows: its RGB color, or its color temperature as a tint. */
 function lightColor(state) {
   if (state.color_mode === 'rgb' && state.color) return state.color;
   const kelvin = state.color_temp || 2700;

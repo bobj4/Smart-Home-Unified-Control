@@ -1,6 +1,6 @@
 /**
- * Colour themes. A named theme is a data-theme attribute styled in app.css;
- * "custom" builds the whole palette from one chosen colour (the colour
+ * Color themes. A named theme is a data-theme attribute styled in app.css;
+ * "custom" builds the whole palette from one chosen color (the color
  * wheel in Settings > My account) on a dark or light base.
  */
 
@@ -19,7 +19,7 @@ function hexToHsl(hex) {
   return [h * 60, s * 100, l * 100];
 }
 
-/** Black or white text, whichever reads better on the colour. */
+/** Black or white text, whichever reads better on the color. */
 function textOn(hex) {
   const [r, g, b] = [1, 3, 5].map((i) => {
     const c = parseInt(hex.slice(i, i + 2), 16) / 255;
@@ -28,13 +28,13 @@ function textOn(hex) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.18 ? '#111111' : '#ffffff';
 }
 
-/** Whether a colour is dark (light text reads better on it). */
+/** Whether a color is dark (light text reads better on it). */
 function isDark(hex) {
   return textOn(hex) === '#ffffff';
 }
 
-/** The page's own colours: the background (dark, light or a chosen colour,
- * the primary colour) and what goes on it. */
+/** The page's own colors: the background (dark, light or a chosen color,
+ * the primary color) and what goes on it. */
 function backgroundPalette(accent, base) {
   if (base.startsWith('#')) {
     const [h, s, l] = hexToHsl(base);
@@ -66,8 +66,8 @@ function backgroundPalette(accent, base) {
   };
 }
 
-/** Every colour of the page from the accent (secondary) colour and the
- * background (primary): dark, light or a colour of one's own. */
+/** Every color of the page from the accent (secondary) color and the
+ * background (primary): dark, light or a color of one's own. */
 function customPalette(accent, base) {
   const [, s, l] = hexToHsl(accent);
   const { dark, ...background } = backgroundPalette(accent, base);
@@ -76,7 +76,7 @@ function customPalette(accent, base) {
   return {
     ...background,
     '--accent': accent,
-    // Accent-coloured text: lighter on dark, darker on light, so it reads.
+    // Accent-colored text: lighter on dark, darker on light, so it reads.
     '--accent-fg': dark ? hsl(s, Math.max(l, 66)) : hsl(s, Math.min(l, 40)),
     '--accent-text': textOn(accent),
     '--on': accent,
@@ -87,7 +87,7 @@ function customPalette(accent, base) {
   };
 }
 
-/** Put a theme on the page: a name from THEMES, "custom" with its colours, or the device's own. */
+/** Put a theme on the page: a name from THEMES, "custom" with its colors, or the device's own. */
 function applyThemeTo(root, theme, custom) {
   CUSTOM_VARS.forEach((name) => root.style.removeProperty(name));
   if (theme === 'custom' && custom) {
@@ -105,16 +105,16 @@ function applyThemeTo(root, theme, custom) {
   if (meta && bg) meta.setAttribute('content', bg);
 }
 
-/** A colour button that shows its colour, with the colour's code beside it. */
-function colourPicker(testid, label, value, onInput) {
+/** A color button that shows its color, with the color's code beside it. */
+function colorPicker(testid, label, value, onInput) {
   const input = el('input', { type: 'color', testid, value, 'aria-label': label, className: 'swatch' });
   const code = el('span', { className: 'muted swatch-code', text: value });
   input.addEventListener('input', () => { code.textContent = input.value; onInput(); });
   return { input, element: el('label', { className: 'swatch-field' }, [el('span', { text: label }), el('span', { className: 'swatch-row' }, [input, code])]) };
 }
 
-/** My account > Appearance. Custom: an accent (secondary) colour and a
- * background (primary): dark, light, or a colour of one's own. */
+/** My account > Appearance. Custom: an accent (secondary) color and a
+ * background (primary): dark, light, or a color of one's own. */
 function appearanceBox(app) {
   const account = app.account;
   const select = el('select', { testid: 'theme-select', 'aria-label': 'Appearance' }, [
@@ -132,10 +132,10 @@ function appearanceBox(app) {
     chip.style.setProperty('--chip-bg', chosen.base.startsWith('#') ? chosen.base : (chosen.base === 'dark' ? '#16181d' : '#f4f5f7'));
     if (select.value === 'custom') app.applyTheme('custom', chosen);
   };
-  const accent = colourPicker('theme-colour', 'Accent colour', last.accent, preview);
-  const background = colourPicker('theme-background', 'Background colour', ownBase ? last.base : '#202124', preview);
+  const accent = colorPicker('theme-colour', 'Accent color', last.accent, preview);
+  const background = colorPicker('theme-background', 'Background color', ownBase ? last.base : '#202124', preview);
   const base = el('select', { testid: 'theme-base', 'aria-label': 'Background' },
-    [['dark', 'Dark'], ['light', 'Light'], ['own', 'My own colour']].map(([value, text]) => el('option', { value, text })));
+    [['dark', 'Dark'], ['light', 'Light'], ['own', 'Custom']].map(([value, text]) => el('option', { value, text })));
   base.value = ownBase ? 'own' : last.base;
   base.addEventListener('change', preview);
   const save = (theme, custom) => app.run(async () => {
@@ -147,7 +147,7 @@ function appearanceBox(app) {
   });
   const customBox = el('div', { className: 'row', testid: 'theme-custom' }, [
     accent.element, field('Background', base), background.element,
-    el('button', { type: 'button', testid: 'theme-custom-save', text: 'Save colours', onclick: () => save('custom', current()) }),
+    el('button', { type: 'button', testid: 'theme-custom-save', text: 'Save colors', onclick: () => save('custom', current()) }),
   ]);
   const show = () => { customBox.hidden = select.value !== 'custom'; chip.hidden = select.value !== 'custom'; };
   select.addEventListener('change', () => {
@@ -159,7 +159,7 @@ function appearanceBox(app) {
   preview();
   return el('div', { className: 'subpanel' }, [
     el('h3', { text: 'Appearance' }),
-    el('div', { className: 'row' }, [field('Colours', select), chip]),
+    el('div', { className: 'row' }, [field('Themes', select), chip]),
     customBox,
   ]);
 }

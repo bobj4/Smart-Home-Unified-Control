@@ -175,7 +175,7 @@ def group_command(
     require_role(db, user.id, home_id)
     group = _group(db, home_id, group_id)
     if body.command not in GROUP_COMMANDS:
-        raise HTTPException(422, "groups take on, off, brightness, white and colour")
+        raise HTTPException(422, "groups take on, off, brightness, white and color")
     audit = {"user_id": user.id, "home_id": home_id, "ip_address": client_ip(request)}
     results: list[dict[str, Any]] = []
     for device in members(db, group):

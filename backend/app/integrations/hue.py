@@ -95,7 +95,7 @@ def set_state(host: str, key: str, light_id: str, body: dict[str, Any]) -> None:
 
 
 def hex_to_xy(color: str) -> list[float]:
-    """An sRGB colour ("#ff8800") as the CIE xy the bridge takes."""
+    """An sRGB color ("#ff8800") as the CIE xy the bridge takes."""
     rgb = [int(color[i : i + 2], 16) / 255 for i in (1, 3, 5)]
     lin = [((c + 0.055) / 1.055) ** 2.4 if c > 0.04045 else c / 12.92 for c in rgb]
     r, g, b = lin

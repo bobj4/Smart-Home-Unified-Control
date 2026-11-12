@@ -7,7 +7,7 @@ on every request. The server enforces it; the web page only follows it.
 
 What each permission allows:
   light_power     turn lights and plugs on and off
-  light_settings  brightness and colour of lights
+  light_settings  brightness and color of lights
   thermostat_ids  full control of those thermostats (mode, set points, fan,
                   hold), within the safety limits; not their schedule
   thermostat_settings   those thermostats' Settings window (Early On, the

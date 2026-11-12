@@ -14,7 +14,7 @@ The Devices page shows all lights, plugs, water heaters and TVs, grouped by room
 
 ### Lights window
 
-Each light has a power toggle and sliders for brightness, white temperature and colour. Click the light card to open the full controls.
+Each light has a power toggle and sliders for brightness, white temperature and color. Click the light card to open the full controls.
 
 ### Plugs
 

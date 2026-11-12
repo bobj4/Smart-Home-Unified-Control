@@ -159,7 +159,7 @@ class SmartHomeApp {
     byTestId('recover-link').hidden = !options.allow_recovery;
   }
 
-  /** Chosen colours (My account > Appearance; see theme-custom.js). */
+  /** Chosen colors (My account > Appearance; see theme-custom.js). */
   applyTheme(theme, custom = null) {
     applyThemeTo(document.documentElement, theme, custom);
   }

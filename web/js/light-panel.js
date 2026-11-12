@@ -1,5 +1,5 @@
 /**
- * Light settings window: brightness, white temperature and colour, opened
+ * Light settings window: brightness, white temperature and color, opened
  * from a light's card so a stray tap on the card cannot change them.
  */
 
@@ -52,7 +52,7 @@ class LightPanel {
     brightness.addEventListener('change', () => this.send('set_brightness', { brightness: Number(brightness.value) }));
     const temp = el('input', { type: 'range', min: '2000', max: '6500', step: '100', className: 'temp-slider', testid: 'light-temp', value: String(s.color_temp), 'aria-label': 'White temperature' });
     temp.addEventListener('change', () => this.send('set_color_temp', { kelvin: Number(temp.value) }));
-    const color = el('input', { type: 'color', testid: 'light-color', value: s.color, 'aria-label': 'Colour' });
+    const color = el('input', { type: 'color', testid: 'light-color', value: s.color, 'aria-label': 'Color' });
     color.addEventListener('change', () => this.send('set_color', { color: color.value }));
     const swatch = el('div', { className: 'light-swatch', testid: 'light-swatch' });
     if (s.on) swatch.style.setProperty('--light', lightColor(s));
@@ -65,7 +65,7 @@ class LightPanel {
       el('div', { className: 'light-controls', 'data-mode': s.color_mode === 'rgb' ? 'rgb' : 'temp' }, [
         field(`Brightness ${s.brightness}%`, brightness),
         field(`White ${s.color_temp} K`, temp),
-        el('label', { className: 'field color-field' }, [el('span', { text: 'Colour' }), color]),
+        el('label', { className: 'field color-field' }, [el('span', { text: 'Color' }), color]),
       ]),
     ]);
     this.overlay.replaceChildren(panel);
