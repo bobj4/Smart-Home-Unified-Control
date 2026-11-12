@@ -17,12 +17,14 @@ from app.auth import generate_recovery_codes, hash_password
 from app.authorization import require_role
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
+from app.home_icons import ICONS
 from app.login_policy import check_password, normalize_login, settings, settings_out
 from app.login_times import forget_all
 from app.mailer import configured
 from app.models import GUEST_ROLE, Home, HomeMembership, PasswordReset, Role, User
 from app.models import Session as SessionModel
 from app.rate_limiter import check_login_allowed, record_login_failure
+from app.routes.homes import home_out
 from app.sessions import as_utc
 
 public_router = APIRouter(prefix="/api/v1", tags=["admin"])
@@ -118,8 +120,12 @@ def set_policy(
 
 
 class HomeName(BaseModel):
+    """A home's name, address ("" = none) and built-in icon; any of them."""
+
     model_config = ConfigDict(extra="forbid")
-    name: str = Field(min_length=1, max_length=100)
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    address: str | None = Field(default=None, max_length=300)
+    icon: str | None = Field(default=None, max_length=20)
 
 
 @router.patch("/homes/{home_id}", dependencies=[Depends(require_csrf)])
@@ -129,24 +135,45 @@ def rename_home(
     request: Request,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-) -> dict[str, str]:
+) -> dict[str, Any]:
     require_role(db, user.id, home_id, Role.ADMIN)
     home = db.get(Home, home_id)
     if home is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
-    old, home.name = home.name, body.name.strip()
-    if not home.name:
-        raise HTTPException(422, "Enter a name")
+    if body.name is None and body.address is None and body.icon is None:
+        raise HTTPException(422, "nothing to change")
+    if body.icon is not None and body.icon not in ICONS:
+        raise HTTPException(422, "choose one of the icons")
+    old = home.name
+    if body.name is not None:
+        home.name = body.name.strip()
+        if not home.name:
+            raise HTTPException(422, "Enter a name")
+    if body.address is not None:
+        home.address = body.address.strip() or None
+    if body.icon is not None:
+        home.icon = body.icon
     db.commit()
-    record_event(
-        db,
-        "home_renamed",
-        user_id=user.id,
-        home_id=home_id,
-        ip_address=client_ip(request),
-        details={"old": old, "new": home.name},
-    )
-    return {"id": home.id, "name": home.name}
+    ip = client_ip(request)
+    if home.name != old:
+        record_event(
+            db,
+            "home_renamed",
+            user_id=user.id,
+            home_id=home_id,
+            ip_address=ip,
+            details={"old": old, "new": home.name},
+        )
+    if body.address is not None or body.icon is not None:
+        record_event(
+            db,
+            "home_details_changed",
+            user_id=user.id,
+            home_id=home_id,
+            ip_address=ip,
+            details={"address": body.address is not None, "icon": body.icon},
+        )
+    return home_out(home)
 
 
 # ------------------------------------------------------------ users without a code
