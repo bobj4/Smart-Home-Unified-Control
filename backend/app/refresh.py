@@ -24,6 +24,7 @@ from app import (
     rheem_home,
     roku_home,
     samsung_home,
+    smartthings_oauth,
     tv_pending,
     tv_power,
     verbose,
@@ -140,6 +141,7 @@ def refresh_all(db: Session) -> None:
             (ratgdo_home.refresh, "ratgdo"),
             (refresh_rheem, "rheem_econet"),
             (refresh_cync, "cync"),
+            (smartthings_oauth.keep_fresh, "smartthings"),
         )
         for step, integration in steps:
             start = time.monotonic()
