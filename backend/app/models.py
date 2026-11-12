@@ -64,6 +64,15 @@ class Home(Base):
     # a small picture of one's own (a data: URL, PNG/JPEG/WebP) that wins.
     icon: Mapped[str | None] = mapped_column(String(20))
     icon_image: Mapped[str | None] = mapped_column(Text)
+    # A home whose devices are at another site, run by that site's own
+    # server (app/federation.py): its home there, the SHA-256 of the token it
+    # connects with (None: not linked, the devices are here), its name, and
+    # a pairing code waiting to be used (SHA-256, and until when).
+    site_home_id: Mapped[str | None] = mapped_column(String(36))
+    site_token_hash: Mapped[str | None] = mapped_column(String(64))
+    site_name: Mapped[str | None] = mapped_column(String(100))
+    site_pairing_hash: Mapped[str | None] = mapped_column(String(64))
+    site_pairing_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow
     )

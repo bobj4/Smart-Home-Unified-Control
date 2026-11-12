@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from app import backup, cync_live, init_db, refresh
+from app import backup, cync_live, federation_site, init_db, refresh
 from app.db_config import settings
 from app.headers import SecurityHeadersMiddleware
 from app.routes import (
@@ -51,6 +51,7 @@ from app.routes import (
     user_info,
     verbose,
 )
+from app.routes import federation as federation_routes
 from app.verbose import VerboseRequestMiddleware
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
@@ -74,13 +75,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if settings.REFRESH_SECONDS > 0
         else None
     )
+    # Homes linked to a main server keep a connection to it (federation_site).
+    sites = (
+        asyncio.create_task(federation_site.run_forever(app))
+        if settings.REFRESH_SECONDS > 0
+        else None
+    )
     backups = (
         asyncio.create_task(backup.run_forever(settings.BACKUP_HOURS))
         if settings.BACKUP_HOURS > 0 and settings.DATABASE_URL.startswith("sqlite")
         else None
     )
     yield
-    for running in (task, live, backups):
+    for running in (task, live, sites, backups):
         if running is not None:
             running.cancel()
 
@@ -93,6 +100,9 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+
+# A home whose devices are at another site: its per-home requests go there.
+app.add_middleware(federation_routes.SiteForwarding)
 
 # No origins are allowed unless CORS_ORIGINS lists them (SEC-14).
 app.add_middleware(
@@ -107,6 +117,7 @@ app.add_middleware(VerboseRequestMiddleware)
 
 app.include_router(auth.router)
 app.include_router(homes.router)
+app.include_router(federation_routes.router)
 app.include_router(devices.router)
 app.include_router(groups.router)
 app.include_router(groups.home_router)

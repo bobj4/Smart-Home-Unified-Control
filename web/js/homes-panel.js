@@ -20,6 +20,7 @@ class HomesPanel {
     this.box.replaceChildren(
       el('h3', { text: 'Home' }),
       this.detailsForm(),
+      new SiteLinkPanel(this.app).render(),
       el('h4', { text: 'Your homes' }),
       el('div', { className: 'homes-list', testid: 'homes-list' }, this.app.account.homes.map((h, i, all) => this.row(h, i, all))),
       this.addArea(),

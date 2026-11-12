@@ -27,7 +27,8 @@ class AdminSection {
       this.app.api.getSecurityPolicy(this.app.home.id),
       this.app.api.getHttps(),
       this.app.api.getEmailServer(),
-      this.app.api.getDisplay(this.app.home.id),
+      // At another site with its server not connected: drawn without it.
+      this.app.api.getDisplay(this.app.home.id).catch(() => null),
     ]);
     this.httpsBox = el('div', { className: 'subpanel', testid: 'https-box' });
     this.fillHttps(https);
@@ -36,7 +37,7 @@ class AdminSection {
     const twoFactor = this.twoFactor(security);
     // Login rules: accounts and passwords, failed logins, login times.
     const rules = groupSections('Login rules', 'login-rules', [this.policyForm(policy)]);
-    container.append(new HomesPanel(this.app).render(), this.displayBox(display), twoFactor, rules);
+    container.append(new HomesPanel(this.app).render(), display ? this.displayBox(display) : '', twoFactor, rules);
     await new LoginFailuresPanel(this.app).render(rules);
     await times.render(rules);
     await times.renderDevices(twoFactor);
