@@ -6,7 +6,7 @@ import json
 
 from playwright.sync_api import expect
 
-from app import features, lg_home, refresh, tv_power
+from app import features, lg_home, refresh, tv_pending, tv_power
 from app.integrations import lg, samsung
 from app.models import Device
 from tests import test_samsung as _tv
@@ -76,6 +76,7 @@ def test_ui_a_tv_that_does_not_answer_is_greyed_out(
     other = _tv.add(client, csrf, owner.home_id, name="Den TV", host="192.168.1.51")
     for device_id in (wakeable, other.json()["device_id"]):
         db.get(Device, device_id).state = json.dumps({"on": True, "reachable": False})
+        tv_pending._pending.pop(device_id, None)  # not waiting on the setup's On
     db.commit()
     page = open_page()
     # Another user: the owner's code was just used by the API login.

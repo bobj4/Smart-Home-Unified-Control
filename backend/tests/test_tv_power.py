@@ -8,7 +8,7 @@ import pytest
 import requests
 from playwright.sync_api import expect
 
-from app import tv_power
+from app import tv_pending, tv_power
 from tests import test_samsung as _tv
 from tests import test_ui as _ui
 
@@ -115,7 +115,8 @@ def test_power_commands_follow_the_tvs_answer(
 def test_ui_remote_power_symbol_is_drawn(
     open_page, new_client, owner, make_user, login, csrf, tv, secrets_key
 ):
-    _tv.ready_tv(new_client(), csrf, login, owner, tv)
+    device_id = _tv.ready_tv(new_client(), csrf, login, owner, tv)
+    tv_pending._pending.pop(device_id, None)  # not waiting on the setup's On
     admin = make_user(owner.home_id, role="admin")
     page = open_page()
     _ui.ui_login(page, admin)

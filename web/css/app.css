@@ -153,6 +153,8 @@ body:has(.overlay:not([hidden])) .layout-open { display: none; }
 .light-controls[data-mode="temp"] .temp-slider, .light-controls[data-mode="rgb"] input[type="color"] { outline: 2px solid var(--accent); outline-offset: 2px; }
 .toggle { width: 100%; padding: 10px; background: var(--surface-2); color: var(--text); border-color: var(--border); }
 .toggle.on { background: var(--on); color: var(--on-text); border-color: transparent; }
+/* A TV waiting to confirm On or Off (devices.js, remote.js). */
+.toggle.pending, .remote .power.pending { opacity: 0.75; font-style: italic; cursor: progress; }
 .dial { display: grid; gap: 8px; justify-items: center; text-align: center; }
 .gauge-wrap { position: relative; width: 160px; max-width: 100%; }
 .gauge { display: block; width: 100%; height: auto; }

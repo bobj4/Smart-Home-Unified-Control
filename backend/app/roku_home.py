@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import tv_pending
 from app.features import integration_enabled
 from app.integrations import roku
 from app.models import Device, utcnow
@@ -107,6 +108,8 @@ def refresh(db: Session, home_id: str) -> int:
     for tv in list_tvs(db, home_id):
         on = roku.is_on(str(tv.external_id))
         online = on is not None
+        if on is not None:
+            tv_pending.seen(tv.id, on)
         state = json.loads(tv.state or "{}")
         if tv.online != online or (online and state.get("on") != on):
             tv.online = online

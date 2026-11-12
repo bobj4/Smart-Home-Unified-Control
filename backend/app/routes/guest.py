@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import tv_pending
 from app.audit import record_event
 from app.authorization import require_role
 from app.cync_home import CyncUnavailable
@@ -70,9 +71,13 @@ def guest_page(
 ) -> dict[str, Any]:
     access = require_guest(db, user, home_id)
     devices = []
-    for device in db.scalars(
-        select(Device).where(Device.home_id == home_id).order_by(Device.name)
-    ):
+    everything = list(
+        db.scalars(
+            select(Device).where(Device.home_id == home_id).order_by(Device.name)
+        )
+    )
+    tv_pending.check(db, [d for d in everything if can_see(access, d)])
+    for device in everything:
         if can_see(access, device):
             devices.append(_guest_device(device))
         elif access.show_blocked:

@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import credentials
+from app import credentials, tv_pending
 from app.features import integration_enabled
 from app.integrations import lg, samsung
 from app.models import Device, utcnow
@@ -150,6 +150,7 @@ def refresh(db: Session, home_id: str) -> int:
             continue
         # An LG TV only answers while on: off, the page greys it out.
         on = lg.is_on(str(tv.external_id))
+        tv_pending.seen(tv.id, on)
         state = json.loads(tv.state or "{}")
         if state.get("on") != on or state.get("reachable") != on:
             tv.state = json.dumps({**state, "on": on, "reachable": on})
