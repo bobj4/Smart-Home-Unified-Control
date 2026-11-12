@@ -1,11 +1,13 @@
 """SmartThings cloud API, for what a Samsung TV only tells SmartThings: its
 inputs by name (HDMI 1 = "PlayStation") and choosing one directly.
 
-Uses a personal access token (account.smartthings.com/tokens) with the
+Uses a sign-in that renews itself (OAuth, app/smartthings_oauth.py) or a
+personal access token (account.smartthings.com/tokens, 24 hours), with the
 "devices" read and execute permissions. Tests replace these functions.
 """
 
 from typing import Any
+from urllib.parse import quote, urlencode
 
 import requests
 
@@ -96,3 +98,58 @@ def set_source(token: str, device_id: str, source: str) -> None:
         "arguments": [source],
     }
     _call("POST", f"/devices/{device_id}/commands", token, {"commands": [command]})
+
+
+# ---------------------------------------------------------------- OAuth
+# Personal access tokens made since late 2024 last 24 hours. An "OAuth-In"
+# (API only) SmartApp gets a 24-hour access token plus a refresh token that
+# swaps for a new pair (each refresh token works once; it lapses after about
+# 29 days unused). See app/smartthings_oauth.py.
+
+OAUTH = "https://api.smartthings.com/oauth"
+SCOPES = "r:devices:* x:devices:*"
+
+
+def authorize_url(client_id: str, redirect_uri: str, state: str) -> str:
+    query = urlencode(
+        {
+            "client_id": client_id,
+            "response_type": "code",
+            "redirect_uri": redirect_uri,
+            "scope": SCOPES,
+            "state": state,
+        },
+        quote_via=quote,
+    )
+    return f"{OAUTH}/authorize?{query}"
+
+
+def token_request(
+    client_id: str, client_secret: str, form: dict[str, str]
+) -> dict[str, Any]:
+    """POST to the token endpoint (Basic auth with the app's ID and secret):
+    {"access_token", "refresh_token", "expires_in", ...}."""
+    try:
+        response = requests.post(
+            f"{OAUTH}/token",
+            auth=(client_id, client_secret),
+            data={**form, "client_id": client_id},
+            timeout=TIMEOUT_SECONDS,
+        )
+    except requests.RequestException as error:
+        raise SmartThingsError(
+            f"could not reach SmartThings: {type(error).__name__}"
+        ) from None
+    if response.status_code in (400, 401, 403):
+        raise SmartThingsDenied(
+            "SmartThings refused the sign-in: connect SmartThings again"
+        )
+    if response.status_code >= 400:
+        raise SmartThingsError(f"SmartThings answered {response.status_code}")
+    try:
+        answer = response.json()
+    except ValueError:
+        raise SmartThingsError("SmartThings answered with something else") from None
+    if not isinstance(answer, dict) or not answer.get("access_token"):
+        raise SmartThingsError("SmartThings gave no token")
+    return answer

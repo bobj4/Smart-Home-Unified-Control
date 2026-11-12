@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app import credentials
+from app import credentials, smartthings_oauth
 from app.integrations import smartthings
 from app.models import Device
 from app.vault import VaultError
@@ -26,7 +26,7 @@ def _guard(action: Any) -> Any:
     except smartthings.SmartThingsDenied:
         raise SourcesUnavailable(
             409,
-            "SmartThings refused the token: add a new one in Settings > Integrations",
+            "SmartThings refused the sign-in: connect it again in Settings > Integrations",
         ) from None
     except smartthings.SmartThingsError as error:
         raise SourcesUnavailable(502, str(error)) from None
@@ -37,11 +37,12 @@ def _token(db: Session, home_id: str) -> str:
         saved = credentials.load(db, home_id, CREDENTIAL)
     except VaultError as error:
         raise SourcesUnavailable(409, str(error)) from None
-    if not saved or not saved.get("token"):
+    if not saved or not (saved.get("token") or saved.get("oauth")):
         raise SourcesUnavailable(
             409, "connect SmartThings first (Settings > Integrations)"
         )
-    return str(saved["token"])
+    # A sign-in (OAuth) is renewed here first when it is about to end.
+    return str(_guard(lambda: smartthings_oauth.access_token(db, home_id, saved)))
 
 
 def connected(db: Session, home_id: str) -> bool:
@@ -94,3 +95,11 @@ def set_tv_source(db: Session, device: Device, source: str) -> None:
         raise SourcesUnavailable(409, "link this TV to SmartThings first")
     token = _token(db, device.home_id)
     _guard(lambda: smartthings.set_source(token, st_id, source))
+
+
+def saved_login(db: Session, home_id: str) -> dict[str, Any] | None:
+    """The saved SmartThings login (None if none or unreadable)."""
+    try:
+        return credentials.load(db, home_id, CREDENTIAL)
+    except VaultError:
+        return None
