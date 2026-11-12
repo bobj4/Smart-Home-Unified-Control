@@ -22,6 +22,7 @@ from app.dependencies import client_ip, current_user, require_csrf
 from app.device_io import DeviceUnavailable, send_to_device
 from app.features import BY_ID, integration_enabled
 from app.garage import GarageError, garage_state
+from app.groups import follow_device
 from app.lights import LightError, light_state
 from app.models import Device, DeviceSafetyLimits, Role, User, utcnow
 from app.safety import LIMITED_TYPES, initial_state
@@ -301,6 +302,8 @@ def update_device(
         raise HTTPException(422, "nothing to change")
     for field, value in changes.items():
         setattr(device, field, value)
+    # A group whose devices are now all in this room moves with them.
+    moved = follow_device(db, device) if "room" in changes else 0
     db.commit()
     record_event(
         db,
@@ -308,7 +311,11 @@ def update_device(
         user_id=user.id,
         home_id=home_id,
         ip_address=client_ip(request),
-        details={"device_id": device_id, **changes},
+        details={
+            "device_id": device_id,
+            **changes,
+            **({"groups_moved": moved} if moved else {}),
+        },
     )
     return _device_out(device)
 
