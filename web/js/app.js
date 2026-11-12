@@ -27,6 +27,7 @@ class SmartHomeApp {
     this.twoFactorGate = new TwoFactorGate(this);
     this.loginOptions = null;
     this.homeSelect = byTestId('home-select');
+    this.homeSwitcher = new HomeSwitcher(this, byTestId('home-badge-slot'));
 
     document.getElementById('login-form').addEventListener('submit', (e) => this.login(e));
     byTestId('login-back').addEventListener('click', () => { byTestId('login-error').textContent = ''; byTestId('login-code').value = ''; this.loginStep(1); });
@@ -165,15 +166,19 @@ class SmartHomeApp {
   }
 
   async loadAccount() {
-    this.account = await this.api.getAccount();
+    const [account, homes] = await Promise.all([this.api.getAccount(), this.api.getHomes()]);
+    // The homes in the person's own order, with their icons (Admin > Home).
+    account.homes = homes;
+    this.account = account;
     this.applyTheme(this.account.theme, this.account.theme_custom);
     applyBackground(this.account.background);
-    const homes = this.account.homes;
     this.homeSelect.replaceChildren(...homes.map((h) => el('option', { value: h.id, text: h.name })));
     this.homeSelect.hidden = homes.length < 2;
-    const keep = this.home && homes.find((h) => h.id === this.home.id);
-    this.home = keep || homes[0] || null;
+    // The home on screen, else the last one viewed, else the top one.
+    const find = (id) => id && homes.find((h) => h.id === id);
+    this.home = find(this.home && this.home.id) || find(account.last_home_id) || homes[0] || null;
     if (this.home) this.homeSelect.value = this.home.id;
+    this.homeSwitcher.render();
   }
 
   async route() {
@@ -248,7 +253,11 @@ class SmartHomeApp {
 
   selectHome(homeId) {
     this.home = this.account.homes.find((h) => h.id === homeId) || this.home;
+    this.homeSelect.value = this.home.id;
+    this.homeSwitcher.render();
     this.status.show('', 'info');
+    // Opened first next time; a miss only means the top home opens instead.
+    this.api.setLastHome(this.home.id).catch(() => {});
     this.route();
   }
 

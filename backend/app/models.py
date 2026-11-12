@@ -60,6 +60,10 @@ class Home(Base):
     thermostat_installer_role: Mapped[str] = mapped_column(
         String(10), default="admin", server_default="admin"
     )
+    # Shown at the top right: a built-in icon's name (app/home_icons.py), or
+    # a small picture of one's own (a data: URL, PNG/JPEG/WebP) that wins.
+    icon: Mapped[str | None] = mapped_column(String(20))
+    icon_image: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow
     )
@@ -82,6 +86,8 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True)
     hashed_password: Mapped[str] = mapped_column(String(512))  # Argon2id
     name: Mapped[str | None] = mapped_column(String(100))
+    # The home last viewed: opened first next time (none: the top home).
+    last_home_id: Mapped[str | None] = mapped_column(String(36))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Failed logins in a row, and a lockout's end (app/login_failures.py).
     failed_logins: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
@@ -137,6 +143,9 @@ class HomeMembership(Base):
         String(36), ForeignKey("homes.id", ondelete="CASCADE"), index=True
     )
     role: Mapped[str] = mapped_column(String(20))  # a Role value
+    # Where this home sits in the person's list of homes (lowest first): the
+    # top one opens first on a first login.
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     user: Mapped[User] = relationship(back_populates="memberships")
     home: Mapped[Home] = relationship(back_populates="memberships")

@@ -215,6 +215,13 @@ class SmartHomeAPI {
 
   // Own account
   getAccount() { return this.get('/account'); }
+  getHomes() { return this.get('/homes'); }
+  addHome(body) { return this.post('/homes', body); }
+  changeHome(homeId, changes) { return this.patch(`/homes/${enc(homeId)}`, changes); }
+  setHomePicture(homeId, dataUrl) { return this.put(`/homes/${enc(homeId)}/icon-image`, { data_url: dataUrl }); }
+  removeHomePicture(homeId) { return this.del(`/homes/${enc(homeId)}/icon-image`); }
+  setHomeOrder(homeIds) { return this.put('/account/home-order', { home_ids: homeIds }); }
+  setLastHome(homeId) { return this.put('/account/last-home', { home_id: homeId }); }
   changePassword(currentPassword, newPassword) {
     return this.post('/account/password', { current_password: currentPassword, new_password: newPassword });
   }
@@ -233,7 +240,6 @@ class SmartHomeAPI {
   setHttps(enabled) { return this.put('/admin/https', { enabled }); }
   saveHttpsCertificate(certificate, privateKey) { return this.put('/admin/https/certificate', { certificate, private_key: privateKey }); }
   deleteHttpsCertificate() { return this.del('/admin/https/certificate'); }
-  renameHome(homeId, name) { return this.patch(`/homes/${enc(homeId)}`, { name }); }
   createUser(homeId, user) { return this.post(`/homes/${enc(homeId)}/members`, user); }
   setMemberPassword(homeId, userId, password) { return this.post(`/homes/${enc(homeId)}/members/${enc(userId)}/password`, { password }); }
   createResetCode(homeId, userId) { return this.post(`/homes/${enc(homeId)}/members/${enc(userId)}/reset-code`); }

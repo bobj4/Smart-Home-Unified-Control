@@ -420,3 +420,26 @@ body:has(.overlay:not([hidden])) .layout-open { display: none; }
 
 /* Name this device (login) */
 .device-name-popup { max-width: 400px; }
+
+/* Homes: the icon at the top right and its list (home-switcher.js), and
+   Admin > Home (homes-panel.js). A picture of one's own is an <img>. */
+.home-badge-slot { flex: none; order: 3; }
+.topbar .nav { margin-left: auto; } /* the links sit beside the home's icon */
+/* Phones: the icon stays in the top right corner, beside the home's name. */
+@media (max-width: 560px) {
+  .home-badge-slot { position: absolute; top: 10px; right: 12px; }
+  .brand { padding-right: 48px; }
+}
+.home-badge { padding: 4px; border-radius: 10px; line-height: 0; }
+.home-icon { width: 28px; height: 28px; flex: none; border-radius: 8px; object-fit: cover; fill: none; stroke: var(--text); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+svg.home-icon { padding: 3px; background: var(--surface-2); }
+.home-menu { position: fixed; z-index: 40; display: grid; gap: 4px; min-width: 200px; max-width: calc(100vw - 16px); padding: 6px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); }
+.home-menu button { display: flex; gap: 10px; align-items: center; justify-content: flex-start; text-align: left; background: transparent; color: var(--text); border-color: transparent; }
+.home-menu button.on { background: var(--surface-2); font-weight: 600; }
+.homes-list { display: grid; gap: 8px; margin-bottom: 12px; }
+.home-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); min-width: 0; }
+.home-row > div:nth-child(2) { flex: 1; min-width: 0; }
+.home-row.current { outline: 2px solid var(--accent, #4c8dff); }
+.icon-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.icon-choice { padding: 4px; line-height: 0; background: transparent; border-color: var(--border); }
+.icon-choice.on { border-color: var(--accent, #4c8dff); background: var(--surface-2); }

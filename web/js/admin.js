@@ -36,7 +36,7 @@ class AdminSection {
     const twoFactor = this.twoFactor(security);
     // Login rules: accounts and passwords, failed logins, login times.
     const rules = groupSections('Login rules', 'login-rules', [this.policyForm(policy)]);
-    container.append(this.nameForm(), this.displayBox(display), twoFactor, rules);
+    container.append(new HomesPanel(this.app).render(), this.displayBox(display), twoFactor, rules);
     await new LoginFailuresPanel(this.app).render(rules);
     await times.render(rules);
     await times.renderDevices(twoFactor);
@@ -148,24 +148,6 @@ class AdminSection {
       certAutoImportRow(this.app), // cert-auto.js
       upload,
     );
-  }
-
-  nameForm() {
-    const name = el('input', { type: 'text', testid: 'home-name-input', maxlength: '100', required: true, value: this.app.home.name });
-    const form = el('form', { className: 'subpanel' }, [
-      el('h3', { text: 'Home' }),
-      el('div', { className: 'row' }, [field('Home name', name), el('button', { type: 'submit', testid: 'home-name-save', text: 'Rename' })]),
-    ]);
-    form.addEventListener('submit', (event) => {
-      event.preventDefault();
-      this.app.run(async () => {
-        const saved = await this.app.api.renameHome(this.app.home.id, name.value.trim());
-        await this.app.loadAccount();
-        byTestId('home-name').textContent = saved.name;
-        this.app.status.success(`Home renamed to ${saved.name}.`);
-      });
-    });
-    return form;
   }
 
   displayBox(display) {

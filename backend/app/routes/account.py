@@ -107,6 +107,10 @@ def get_account(
         "email": user.email,
         "name": user.name,
         "homes": [{"id": h.id, "name": h.name, "role": role} for h, role in homes],
+        # Opened first (none, or no longer mine: the top home of /homes).
+        "last_home_id": user.last_home_id
+        if any(h.id == user.last_home_id for h, _ in homes)
+        else None,
         "two_factor": bool(user.is_totp_enabled),
         "two_factor_required": required,
         # A home requires it and it is off: the app shows only the setup page.
