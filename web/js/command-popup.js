@@ -6,7 +6,7 @@
 
 const COMMAND_WORDS = {
   turn_on: 'turn on', turn_off: 'turn off', set_brightness: 'change brightness', set_color_temp: 'change white',
-  set_color: 'change colour', set_temperature: 'change the temperature', set_mode: 'change mode',
+  set_color: 'change color', set_temperature: 'change the temperature', set_mode: 'change mode',
 };
 
 class CommandPopup {

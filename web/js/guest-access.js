@@ -5,7 +5,7 @@
 
 const GUEST_FLAGS = [
   ['light_power', 'Turn lights and plugs on and off'],
-  ['light_settings', 'Change light brightness and colour'],
+  ['light_settings', 'Change light brightness and color'],
   ['cameras', 'See the cameras'],
   ['water_heater', 'Use the water heater'],
   ['thermostat_settings', 'Change thermostat settings (Early On, °C, daylight saving) on the thermostats below'],

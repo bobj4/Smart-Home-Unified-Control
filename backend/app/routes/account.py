@@ -52,7 +52,7 @@ class PasswordChange(BaseModel):
 class CustomTheme(BaseModel):
     model_config = ConfigDict(extra="forbid")
     accent: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
-    # The background: dark, light, or a colour of one's own.
+    # The background: dark, light, or a color of one's own.
     base: str = Field(pattern=r"^(dark|light|#[0-9a-fA-F]{6})$")
 
 
@@ -112,7 +112,7 @@ def get_account(
         # A home requires it and it is off: the app shows only the setup page.
         "two_factor_setup_required": required and not user.is_totp_enabled,
         "theme": user.theme or "system",
-        # The last custom colours, kept when another theme is chosen.
+        # The last custom colors, kept when another theme is chosen.
         "theme_custom": _custom(user),
         "background": background_out(db, user),
         "motd": motd_for(db, user),
@@ -143,7 +143,7 @@ def set_preferences(
 ) -> dict[str, Any]:
     if body.theme == "custom":
         if body.custom is None and not user.theme_custom:
-            raise HTTPException(422, "choose the custom colour")
+            raise HTTPException(422, "choose the custom color")
         if body.custom is not None:
             user.theme_custom = (
                 f"{body.custom.accent.lower()} {body.custom.base.lower()}"
