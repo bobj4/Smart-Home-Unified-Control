@@ -96,7 +96,7 @@ class TvRemote {
     if (live && fresh.state && fresh.state.input === live.saved) fresh = { ...fresh, state: { ...fresh.state, input: live.current } };
     else this.liveInput = null;
     const same = JSON.stringify(fresh.state || {}) === JSON.stringify(this.device.state)
-      && fresh.name === this.device.name
+      && fresh.name === this.device.name && (fresh.pending || null) === (this.device.pending || null)
       && JSON.stringify(fresh.quick_apps || []) === JSON.stringify(this.device.quick_apps || []);
     this.device = { ...fresh, state: { ...(fresh.state || {}) } };
     if (fresh.smartthings && !this.sourcesAsked) this.loadSources(fresh.id);
@@ -111,10 +111,26 @@ class TvRemote {
       const result = await this.app.api.sendCommand(this.app.home.id, device.id, command, payload);
       if (this.device && this.device.id === device.id) {
         this.device.state = result.state;
+        this.device.pending = result.pending || null;
         this.render();
+        if (result.pending) this.waitForPower();
       }
       this.app.status.success(`${device.name}: ${command.replace(/_/g, ' ')}.`);
     });
+  }
+
+  /** While the TV has not confirmed On or Off, re-read it every 3 seconds
+   * (the page's own refresh pauses while the remote is open). */
+  waitForPower() {
+    clearTimeout(this.powerTimer);
+    this.powerTimer = setTimeout(async () => {
+      if (!this.device || !this.device.pending) return;
+      try {
+        await this.app.devices.load({ live: true });
+      } finally {
+        if (this.device && this.device.pending) this.waitForPower();
+      }
+    }, 3000);
   }
 
   /** 2010-2015 TVs (legacy and encrypted protocols) cannot launch apps. */
@@ -135,6 +151,15 @@ class TvRemote {
       type: 'button', className, testid, text, onclick,
       'aria-label': label, title: label, disabled: !always && !this.state.on,
     });
+  }
+
+  /** Power, or "Turning on…" (not pressable) until the TV says it is. */
+  powerKey(off) {
+    const pending = this.device && this.device.pending;
+    const text = pending ? `Turning ${pending}…` : 'Power';
+    const button = powerButton(this.button('remote-power', text, () => this.send(off ? 'turn_on' : 'turn_off'), { className: `power${off ? '' : ' on'}${pending ? ' pending' : ''}`, always: true }));
+    button.disabled = Boolean(pending);
+    return button;
   }
 
   render() {
@@ -175,7 +200,7 @@ class TvRemote {
       ]),
       screen,
       el('div', { className: 'remote-row' }, [
-        powerButton(this.button('remote-power', 'Power', () => this.send(off ? 'turn_on' : 'turn_off'), { className: `power${off ? '' : ' on'}`, always: true })),
+        this.powerKey(off),
         this.button('remote-mute', s.muted ? 'Unmute' : 'Mute', () => this.send('toggle_mute'), { className: 'key wide' }),
       ]),
       el('div', { className: 'remote-row remote-split', testid: 'remote-home-info' }, [key('home', 'Home', 'Home'), key('info', 'Info', 'Info')]),

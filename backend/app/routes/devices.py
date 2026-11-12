@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import credentials
+from app import credentials, tv_pending
 from app.audit import record_event
 from app.authorization import require_role
 from app.db_config import get_db
@@ -105,6 +105,8 @@ def _device_out(device: Device) -> dict[str, Any]:
         else None,
         # A TV that is offline can still be turned on with its MAC address.
         "wakeable": device.type == "tv" and bool(caps.get("mac")),
+        # "on"/"off" while waiting for a TV to confirm a power command.
+        "pending": tv_pending.pending(device.id),
         # TVs: which remote features this TV has (2016+ "tizen" launches apps).
         "protocol": caps.get("protocol")
         if device.integration == "samsung_tv"
@@ -231,9 +233,12 @@ def list_devices(
     home_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> list[dict[str, Any]]:
     require_role(db, user.id, home_id)
-    devices = db.scalars(
-        select(Device).where(Device.home_id == home_id).order_by(Device.name)
+    devices = list(
+        db.scalars(
+            select(Device).where(Device.home_id == home_id).order_by(Device.name)
+        )
     )
+    tv_pending.check(db, devices)
     return [_device_out(d) for d in devices]
 
 
@@ -245,7 +250,9 @@ def get_device(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     require_role(db, user.id, home_id)
-    return _device_out(_get_device(db, home_id, device_id))
+    device = _get_device(db, home_id, device_id)
+    tv_pending.check(db, [device])
+    return _device_out(device)
 
 
 @router.post(
@@ -351,7 +358,10 @@ def send_command(
         state = apply_command(db, device, body, audit)
     except CommandRejected as rejected:
         raise HTTPException(rejected.status_code, rejected.reason) from None
-    return {"device_id": device.id, "state": state}
+    out: dict[str, Any] = {"device_id": device.id, "state": state}
+    if tv_pending.pending(device.id):
+        out["pending"] = tv_pending.pending(device.id)
+    return out
 
 
 def apply_command(
@@ -377,6 +387,7 @@ def apply_command(
     device.state = json.dumps(state)
     device.last_updated = utcnow()
     db.commit()
+    tv_pending.start(device, body.command)
     record_event(db, "device_command", **audit, details=details)
     return state
 

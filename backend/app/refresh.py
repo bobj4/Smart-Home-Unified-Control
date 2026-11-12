@@ -24,6 +24,7 @@ from app import (
     rheem_home,
     roku_home,
     samsung_home,
+    tv_pending,
     tv_power,
     verbose,
 )
@@ -55,6 +56,7 @@ def refresh_tvs(db: Session, home_id: str) -> int:
         # the page greys out a TV that does not answer. It stays "online",
         # as one that can be woken still takes the power button.
         reachable = on or tv_power.power_state(host, protocol) == "standby"
+        tv_pending.seen(tv.id, on)
         state = json.loads(tv.state or "{}")
         if state.get("on") != on or state.get("reachable") != reachable:
             tv.state = json.dumps({**state, "on": on, "reachable": reachable})

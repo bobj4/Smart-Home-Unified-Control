@@ -179,14 +179,16 @@ class DevicesView {
   }
 
   powerToggle(device, on) {
+    // A TV shows "Turning on…" until it says it is on (device.pending).
+    const pending = device.pending;
     return el('button', {
       type: 'button',
-      className: `toggle${on ? ' on' : ''}`,
+      className: `toggle${on ? ' on' : ''}${pending ? ' pending' : ''}`,
       testid: 'power-toggle',
       'aria-pressed': String(on),
       'aria-label': `${device.name} power`,
-      disabled: !(device.canPower ?? device.controllable),
-      text: on ? 'On' : 'Off',
+      disabled: Boolean(pending) || !(device.canPower ?? device.controllable),
+      text: pending ? `Turning ${pending}…` : (on ? 'On' : 'Off'),
       onclick: () => this.command(device, on ? 'turn_off' : 'turn_on'),
     });
   }
