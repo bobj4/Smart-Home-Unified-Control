@@ -222,6 +222,12 @@ class SmartHomeAPI {
   removeHomePicture(homeId) { return this.del(`/homes/${enc(homeId)}/icon-image`); }
   setHomeOrder(homeIds) { return this.put('/account/home-order', { home_ids: homeIds }); }
   setLastHome(homeId) { return this.put('/account/last-home', { home_id: homeId }); }
+  getSite(homeId) { return this.get(`/homes/${enc(homeId)}/site`); }
+  startSitePairing(homeId) { return this.post(`/homes/${enc(homeId)}/site/pairing`, {}); }
+  unlinkSite(homeId) { return this.del(`/homes/${enc(homeId)}/site`); }
+  getMainServer(homeId) { return this.get(`/homes/${enc(homeId)}/main-server`); }
+  linkMainServer(homeId, mainUrl, code) { return this.post(`/homes/${enc(homeId)}/main-server`, { main_url: mainUrl, code }); }
+  unlinkMainServer(homeId) { return this.del(`/homes/${enc(homeId)}/main-server`); }
   changePassword(currentPassword, newPassword) {
     return this.post('/account/password', { current_password: currentPassword, new_password: newPassword });
   }

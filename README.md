@@ -37,6 +37,10 @@ through the backend's permission checks and device safety limits.
   on a Doors page, shown while their integration is on.
 - Themes: light, dark, device theme, preset colors or your own accent and
   background color, and a background picture.
+- More than one home (Admin › Home: Add a Home, an address and an icon
+  each, your own order, and the last one viewed opens first), and a home
+  at another site run by its own server, linked to this one
+  ([docs/MULTI-HOME.md](docs/MULTI-HOME.md)).
 - Multiple homes and users, with admin, operator and member roles, and
   guests who get only what an admin ticks for them (lights, light settings,
   cameras, the water heater, and chosen thermostats).
