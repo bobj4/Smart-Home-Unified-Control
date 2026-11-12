@@ -15,6 +15,7 @@ from app.headers import SecurityHeadersMiddleware
 from app.routes import (
     account,
     admin,
+    admin_sessions,
     audit_log,
     auth,
     background,
@@ -125,6 +126,7 @@ app.include_router(rheem.router)
 app.include_router(rheem.usage_router)
 app.include_router(thermostat.router)
 app.include_router(login_times.router)
+app.include_router(admin_sessions.router)
 app.include_router(login_failures.router)
 app.include_router(verbose.router)
 app.include_router(layout.router)
