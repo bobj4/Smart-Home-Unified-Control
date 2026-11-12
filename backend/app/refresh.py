@@ -24,6 +24,7 @@ from app import (
     rheem_home,
     roku_home,
     samsung_home,
+    tv_power,
     verbose,
 )
 from app.db_config import SessionLocal
@@ -39,8 +40,8 @@ _cync_read_at: dict[str, float] = {}
 
 
 def refresh_tvs(db: Session, home_id: str) -> int:
-    """Update the on/off state of the home's paired TVs; returns how many
-    changed."""
+    """Update the on/off state of the home's paired TVs, and whether they
+    answer; returns how many changed."""
     if not integration_enabled(db, home_id, samsung_home.INTEGRATION):
         return 0
     changed = 0
@@ -48,10 +49,15 @@ def refresh_tvs(db: Session, home_id: str) -> int:
         settings = samsung_home.config(tv)
         if not settings["paired"]:
             continue
-        on = samsung.is_on(str(tv.external_id), settings["protocol"])
+        host, protocol = str(tv.external_id), settings["protocol"]
+        on = samsung.is_on(host, protocol)
+        # Off but answering (2018+ network standby) or not answering at all:
+        # the page greys out a TV that does not answer. It stays "online",
+        # as one that can be woken still takes the power button.
+        reachable = on or tv_power.power_state(host, protocol) == "standby"
         state = json.loads(tv.state or "{}")
-        if state.get("on") != on:
-            tv.state = json.dumps({**state, "on": on})
+        if state.get("on") != on or state.get("reachable") != reachable:
+            tv.state = json.dumps({**state, "on": on, "reachable": reachable})
             tv.last_updated = utcnow()
             changed += 1
     db.commit()

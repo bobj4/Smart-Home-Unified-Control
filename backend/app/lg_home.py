@@ -148,10 +148,11 @@ def refresh(db: Session, home_id: str) -> int:
     for tv in list_tvs(db, home_id):
         if not json.loads(tv.capabilities or "{}").get("paired"):
             continue
+        # An LG TV only answers while on: off, the page greys it out.
         on = lg.is_on(str(tv.external_id))
         state = json.loads(tv.state or "{}")
-        if state.get("on") != on:
-            tv.state = json.dumps({**state, "on": on})
+        if state.get("on") != on or state.get("reachable") != on:
+            tv.state = json.dumps({**state, "on": on, "reachable": on})
             tv.last_updated = utcnow()
             changed += 1
     db.commit()

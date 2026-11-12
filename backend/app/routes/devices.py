@@ -103,6 +103,8 @@ def _device_out(device: Device) -> dict[str, Any]:
         }
         if device.type in LIMITED_TYPES
         else None,
+        # A TV that is offline can still be turned on with its MAC address.
+        "wakeable": device.type == "tv" and bool(caps.get("mac")),
         # TVs: which remote features this TV has (2016+ "tizen" launches apps).
         "protocol": caps.get("protocol")
         if device.integration == "samsung_tv"
