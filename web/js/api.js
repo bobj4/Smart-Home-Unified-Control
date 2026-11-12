@@ -79,6 +79,8 @@ class SmartHomeAPI {
   forgetMyDevice(id) { return this.del(`/account/trusted-devices/${enc(id)}`); }
   renameMyDevice(id, name) { return this.patch(`/account/trusted-devices/${enc(id)}`, { name }); }
   getAllDevices() { return this.get('/admin/trusted-devices'); }
+  getAllSessions() { return this.get('/admin/sessions'); }
+  endAnySession(sessionId) { return this.del(`/admin/sessions/${enc(sessionId)}`); }
   forgetAnyDevice(id) { return this.del(`/admin/trusted-devices/${enc(id)}`); }
   getVerbose() { return this.get('/admin/verbose-logging'); }
   setVerbose(enabled) { return this.put('/admin/verbose-logging', { enabled }); }

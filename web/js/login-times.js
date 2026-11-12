@@ -48,14 +48,37 @@ class LoginTimesPanel {
     container.append(form);
   }
 
-  /** Everyone's approved devices (shown under 2 Factor Login). */
+  /** Everyone's devices (shown under 2 Factor Login): where each person is
+   * logged in, and the devices approved to skip the two-factor code. */
   async renderDevices(container) {
+    const loggedIn = new AdminSessionsList(this.app);
+    const approved = new TrustedDevicesList(this.app, { all: true });
+    const approvedBox = el('div', {}, [
+      el('p', { className: 'muted', text: 'Devices that skip the two-factor code ("Remember this device" at login), and whose they are. Remove one to ask for the code there again.' }),
+    ]);
+    const sessionsBox = el('div', { hidden: true }, [
+      el('p', { className: 'muted', text: 'Everyone\'s logged-in devices, and whose they are.' }),
+    ]);
+    const tabs = [['approved', 'Approved devices', approvedBox, approved], ['sessions', 'Logged-in devices', sessionsBox, loggedIn]];
+    const buttons = tabs.map(([key, label, box, list]) => el('button', {
+      type: 'button', className: key === 'approved' ? 'on' : 'secondary', testid: `admin-devices-tab-${key}`, text: label,
+      'aria-pressed': String(key === 'approved'),
+      onclick: () => {
+        tabs.forEach(([, , other], i) => {
+          other.hidden = other !== box;
+          buttons[i].className = other === box ? 'on' : 'secondary';
+          buttons[i].setAttribute('aria-pressed', String(other === box));
+        });
+        this.app.run(() => list.load());
+      },
+    }));
     const devices = el('div', { className: 'subpanel', testid: 'admin-devices' }, [
-      el('h3', { text: 'Approved devices' }),
-      el('p', { className: 'muted', text: 'Devices that skip the two-factor code, and whose they are. Remove one to ask for the code there again.' }),
+      el('h3', { text: 'Everyone\'s devices' }),
+      el('div', { className: 'segmented', role: 'group', 'aria-label': 'Everyone\'s devices' }, buttons),
+      sessionsBox, approvedBox,
     ]);
     container.append(devices);
-    await new TrustedDevicesList(this.app, { all: true }).render(devices);
+    await Promise.all([loggedIn.render(sessionsBox), approved.render(approvedBox)]);
   }
 }
 
