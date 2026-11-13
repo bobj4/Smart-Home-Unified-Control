@@ -155,8 +155,9 @@ def get_tv_apps(
     device_id: str,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-) -> list[dict[str, str]]:
-    """The apps installed on the TV (the TV must be on)."""
+) -> list[dict[str, Any]]:
+    """The apps installed on the TV (the TV must be on); "unconfirmed" ones
+    are the common apps, for a TV that will not say which it has."""
     require_role(db, user.id, home_id, Role.OPERATOR)
     device = _tv(db, home_id, device_id)
     try:

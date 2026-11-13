@@ -100,6 +100,14 @@ def set_source(token: str, device_id: str, source: str) -> None:
     _call("POST", f"/devices/{device_id}/commands", token, {"commands": [command]})
 
 
+def switch_on(token: str, device_id: str) -> None:
+    """Turn a TV on through Samsung's cloud: it works while the TV's network
+    is asleep, when a Wake-on-LAN packet cannot reach it (the TV must allow
+    "Power On with Mobile")."""
+    command = {"component": "main", "capability": "switch", "command": "on"}
+    _call("POST", f"/devices/{device_id}/commands", token, {"commands": [command]})
+
+
 # ---------------------------------------------------------------- OAuth
 # Personal access tokens made since late 2024 last 24 hours. An "OAuth-In"
 # (API only) SmartApp gets a 24-hour access token plus a refresh token that

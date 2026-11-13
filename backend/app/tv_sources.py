@@ -1,7 +1,10 @@
-"""A home's SmartThings link, for Samsung TV inputs by name. Optional: without
-it the remote keeps its fixed inputs (TV, HDMI 1-4, USB) sent as keys."""
+"""A home's SmartThings link, for Samsung TV inputs by name and for turning a
+TV on that Wake-on-LAN cannot reach. Optional: without it the remote keeps
+its fixed inputs (TV, HDMI 1-4, USB) sent as keys."""
 
 import json
+import logging
+import re
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -11,6 +14,7 @@ from app.integrations import smartthings
 from app.models import Device
 from app.vault import VaultError
 
+log = logging.getLogger(__name__)
 CREDENTIAL = "samsung_tv:smartthings"
 
 
@@ -95,6 +99,52 @@ def set_tv_source(db: Session, device: Device, source: str) -> None:
         raise SourcesUnavailable(409, "link this TV to SmartThings first")
     token = _token(db, device.home_id)
     _guard(lambda: smartthings.set_source(token, st_id, source))
+
+
+def _plain(name: str) -> str:
+    """A TV's name without "[TV]" or "TV" ("[TV] Den" and "Den TV" match)."""
+    return " ".join(re.sub(r"\[tv\]|\btv\b", " ", name.casefold()).split())
+
+
+def _power_link(db: Session, device: Device, token: str) -> str | None:
+    """The SmartThings TV to turn on: the linked one, else (linked now) the
+    one of the same name, else the account's only TV."""
+    st_id = linked_id(device)
+    if st_id:
+        return st_id
+    found = smartthings.tvs(token)
+    name = _plain(device.name)
+    same = [tv for tv in found if name and _plain(tv["name"]) == name]
+    pick = same if len(same) == 1 else found if len(found) == 1 else []
+    if not pick:
+        return None
+    link(db, device, pick[0]["id"])
+    return pick[0]["id"]
+
+
+def turn_on(db: Session, device: Device) -> bool:
+    """Ask SmartThings to turn the TV on. False when it cannot (not
+    connected, no TV to link to, or SmartThings refused): the caller still
+    has Wake-on-LAN or the power key."""
+    if not connected(db, device.home_id):
+        return False
+    try:
+        token = _token(db, device.home_id)
+        st_id = _power_link(db, device, token)
+        if st_id is None:
+            log.info(
+                "%s: no SmartThings TV to turn on (link it in Settings)", device.name
+            )
+            return False
+        smartthings.switch_on(token, st_id)
+    except (SourcesUnavailable, smartthings.SmartThingsError) as error:
+        log.info(
+            "%s: SmartThings could not turn it on: %s",
+            device.name,
+            getattr(error, "reason", error),
+        )
+        return False
+    return True
 
 
 def saved_login(db: Session, home_id: str) -> dict[str, Any] | None:

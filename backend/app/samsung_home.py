@@ -2,6 +2,7 @@
 Network calls go through app.integrations.samsung (replaced by fakes in tests)."""
 
 import json
+import logging
 from typing import Any
 
 from sqlalchemy import select
@@ -13,6 +14,7 @@ from app.integrations import samsung
 from app.models import Device
 from app.vault import VaultError
 
+log = logging.getLogger(__name__)
 INTEGRATION = "samsung_tv"
 MAX_QUICK_APPS = 6
 
@@ -211,6 +213,12 @@ def send_tv_command(
         if command in ("turn_on", "turn_off"):  # one key both ways: see tv_power
             state = tv_power.power_state(host, protocol)
             step = tv_power.plan(command, state, settings["mac"])
+            # Not answering at all (off, not in network standby): Samsung's
+            # cloud as well, as a wake-up packet often cannot reach the TV.
+            # Never beside the power key, which would turn it straight off.
+            cloud = command == "turn_on" and state is None
+            if cloud and tv_sources.turn_on(db, device) and step == "key":
+                step = "nothing"  # no wake-up packet to send (no MAC address)
             if step == "wake":
                 tv_power.wake(str(settings["mac"]), host)
             elif step == "key":
@@ -249,12 +257,15 @@ def _connection(db: Session, device: Device) -> tuple[str, str, str | None]:
     return host, protocol, token
 
 
-def tv_apps(db: Session, device: Device) -> list[dict[str, str]]:
-    """The apps installed on the TV, by name, for choosing quick apps."""
+def tv_apps(db: Session, device: Device) -> list[dict[str, Any]]:
+    """The apps installed on the TV, by name, for choosing quick apps. A TV
+    that is on but will not say which it has gets the common ones, marked
+    "unconfirmed" (one it lacks just does not open)."""
     if config(device)["protocol"] != "tizen":
         raise SamsungUnavailable(422, "only 2016 and newer TVs can launch apps")
     host, protocol, token = _connection(db, device)
     problem: samsung.TvError | None = None
+    apps: list[dict[str, Any]]
     try:
         apps = samsung.installed_apps(host, protocol, token)
     except samsung.TvDenied:
@@ -268,9 +279,11 @@ def tv_apps(db: Session, device: Device) -> list[dict[str, str]]:
                 409, "the TV is off or not answering: turn it on, then try again"
             )
         apps = tv_app_catalog.installed(host)
-        if not apps and problem is not None:
-            raise SamsungUnavailable(502, str(problem))
-    return sorted(apps, key=lambda app: app["name"].lower())
+        if not apps:
+            why = f" ({problem})" if problem else ""
+            log.info("TV %s will not say which apps it has%s", host, why)
+            apps = [{**a, "unconfirmed": True} for a in tv_app_catalog.common()]
+    return sorted(apps, key=lambda app: str(app["name"]).lower())
 
 
 def set_quick_apps(db: Session, device: Device, apps: list[dict[str, str]]) -> None:
