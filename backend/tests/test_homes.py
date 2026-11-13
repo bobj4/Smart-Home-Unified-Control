@@ -145,6 +145,9 @@ def test_ui_add_switch_and_come_back(open_page, new_client, owner, login, csrf):
     page = open_page()
     _ui.ui_login(page, owner)
     expect(page.get_by_test_id("home-badge")).to_be_visible()
+    # Hold every save of the home last viewed, as a slow link would.
+    held = []
+    page.route("**/api/v1/account/last-home", lambda route: held.append(route))
     panel = _ui.go_settings(page, "admin").get_by_test_id("homes-panel")
     expect(panel.get_by_test_id("home-row")).to_have_count(1)
     panel.get_by_test_id("home-add").click()
@@ -165,8 +168,18 @@ def test_ui_add_switch_and_come_back(open_page, new_client, owner, login, csrf):
         has_text="Lake House"
     ).click()
     expect(page.get_by_test_id("home-name")).to_have_text("Lake House")
-    # Next login opens the home last viewed.
+    # Let them through out of order (newest, then oldest first): what was
+    # chosen last must still be what is saved.
+    for _ in range(6):
+        page.wait_for_timeout(250)
+        order = held[-1:] + held[:-1]
+        held.clear()
+        for route in order:
+            route.continue_()
+            page.wait_for_timeout(150)
+    # Next login opens the home last viewed (logging out waits for its save).
     page.get_by_test_id("logout").click()
+    expect(page.get_by_test_id("login-form")).to_be_visible()
     again = open_page()
     _ui.ui_login(again, owner, owner.totp.at(__import__("time").time() + 30))
     expect(again.get_by_test_id("home-name")).to_have_text("Lake House")

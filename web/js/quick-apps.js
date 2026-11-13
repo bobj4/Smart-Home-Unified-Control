@@ -51,7 +51,8 @@ class QuickAppsPanel {
     } catch (error) {
       if (this.device !== device) return;
       this.list.replaceChildren();
-      this.error.textContent = `${error.message}. The TV must be on.`;
+      // The server says why (off, refused, or not reachable); the TV must be on.
+      this.error.textContent = /off|on\b/.test(error.message) ? error.message : `${error.message}. The TV must be on.`;
     }
   }
 
