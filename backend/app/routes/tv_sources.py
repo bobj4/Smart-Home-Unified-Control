@@ -18,7 +18,16 @@ from app.dependencies import client_ip, current_user, require_csrf
 from app.models import Role, User
 from app.routes.samsung import _tv
 from app.samsung_home import list_tvs
-from app.smartthings_oauth import CALLBACK, OAuthProblem, finish, start, status
+from app.smartthings_oauth import (
+    CALLBACK,
+    OAuthProblem,
+    callback_problem,
+    finish,
+    saved_app,
+    setup,
+    start,
+    status,
+)
 from app.tv_sources import (
     SourcesUnavailable,
     connect,
@@ -94,7 +103,36 @@ def get_smartthings(
     if how["problem"]:  # a sign-in that must be done again: no TVs to list
         return {"connected": True, "tvs": [], "links": links, **how}
     found = _run(lambda: smartthings_tvs(db, home_id))
+    how["app_registered"] = saved_app(db, home_id) is not None
     return {"connected": True, "tvs": found, "links": links, **how}
+
+
+class SetupIn(BaseModel):
+    """A personal token (Devices and Apps permissions) and this server's
+    callback address: connect now, register the SmartApp, start signing in."""
+
+    model_config = ConfigDict(extra="forbid")
+    token: str = Field(min_length=20, max_length=200, pattern=r"^[A-Za-z0-9-]+$")
+    redirect_uri: str = Field(min_length=10, max_length=300)
+
+
+@router.post("/smartthings/setup", dependencies=[Depends(require_csrf)])
+def setup_smartthings(
+    home_id: str,
+    body: SetupIn,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    require_role(db, user.id, home_id, Role.OPERATOR)
+    if not body.redirect_uri.endswith(CALLBACK):
+        raise HTTPException(422, f"the redirect address must end in {CALLBACK}")
+    try:
+        result = setup(db, home_id, user.id, body.token, body.redirect_uri)
+    except OAuthProblem as problem:
+        raise HTTPException(problem.status_code, problem.reason) from None
+    _audit(db, request, user, home_id, "smartthings_connected")
+    return result
 
 
 @router.post("/smartthings/oauth", dependencies=[Depends(require_csrf)])
@@ -114,13 +152,13 @@ def start_oauth(
         "redirect_uri": body.redirect_uri,
     }
     if not app["client_id"] or not app["client_secret"]:
-        saved = saved_login(db, home_id) or {}
-        if not saved.get("oauth"):
+        known = saved_app(db, home_id)  # signed in before, or registered here
+        if known is None:
             raise HTTPException(422, "enter the SmartApp's client ID and secret")
         app = {
             **app,
-            "client_id": saved["client_id"],
-            "client_secret": saved["client_secret"],
+            "client_id": known["client_id"],
+            "client_secret": known["client_secret"],
         }
     try:
         url = start(home_id, user.id, app)
@@ -198,9 +236,7 @@ def oauth_callback(
     here: see smartthings_oauth.finish."""
     back = "#settings/integrations"
     if error or not code or not state:
-        why = (
-            "SmartThings was not allowed" if error else "SmartThings sent nothing back"
-        )
+        why = callback_problem(dict(request.query_params))
         return RedirectResponse(f"/?{urlencode({'smartthings_error': why})}{back}", 303)
     try:
         home_id, user_id = finish(db, state, code)
