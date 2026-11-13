@@ -42,27 +42,63 @@ class SmartThingsPanel {
   }
 
   /** The SmartApp's details and "Sign in with SmartThings". */
+  /** The main way: one personal token. It connects at once (for its 24
+   * hours), the server registers its own SmartApp with it, and you sign in
+   * to Samsung once; after that it renews itself. */
+  setupForm() {
+    const redirect = `${window.location.origin}${SMARTTHINGS_CALLBACK}`;
+    const token = el('input', { type: 'password', testid: 'smartthings-setup-token', autocomplete: 'off', required: true, maxlength: '200', pattern: '[A-Za-z0-9-]+' });
+    const form = el('form', { testid: 'smartthings-setup' }, [
+      el('ol', { className: 'muted steps' }, [
+        el('li', {}, ['At ', el('a', { href: 'https://account.smartthings.com/tokens', target: '_blank', rel: 'noopener noreferrer', text: 'account.smartthings.com/tokens' }),
+          ', make a token with Devices (list, see and control all devices) and Apps (list, see and manage all apps) ticked.']),
+        el('li', { text: 'Paste it here and press Connect: it works at once, and this server registers its own SmartThings app with it.' }),
+        el('li', { text: 'Sign in to Samsung once on the page that opens. From then on it renews itself; the token is not needed again.' }),
+      ]),
+      redirect.startsWith('https://') ? null : el('p', { className: 'error', text: 'Samsung only sends you back to an https:// address: open this page over HTTPS for the sign-in (the token works either way).' }),
+      field('Personal access token', token),
+      el('button', { type: 'submit', testid: 'smartthings-setup-connect', text: 'Connect SmartThings' }),
+    ]);
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      this.app.run(async () => {
+        const result = await this.app.api.setupSmartThings(this.app.home.id, { token: token.value.trim(), redirect_uri: redirect });
+        if (result.authorize_url) {
+          window.location.assign(result.authorize_url);
+          return;
+        }
+        await this.load();
+        this.app.status.error(`SmartThings connected with the token (24 hours), but the sign-in could not start: ${result.problem}`);
+      });
+    });
+    return form;
+  }
+
+  /** For someone who made their own SmartApp (SmartThings CLI). */
   signInForm() {
     const redirect = `${window.location.origin}${SMARTTHINGS_CALLBACK}`;
     const id = el('input', { type: 'text', testid: 'smartthings-client-id', autocomplete: 'off', required: true, maxlength: '100', pattern: '[A-Za-z0-9-]+' });
     const secret = el('input', { type: 'password', testid: 'smartthings-client-secret', autocomplete: 'off', required: true, maxlength: '200', pattern: '[A-Za-z0-9-]+' });
     const form = el('form', { testid: 'smartthings-oauth' }, [
       el('p', { className: 'muted' }, [
-        'Keeps itself connected. Once: make an OAuth-In SmartApp with the SmartThings CLI (',
+        'Made a SmartApp yourself (',
         el('code', { text: 'smartthings apps:create' }),
-        '), with the scopes r:devices:* and x:devices:* and this redirect URI:',
+        ', OAuth-In, scopes r:devices:* and x:devices:*)? Its redirect URI must be exactly:',
       ]),
       el('p', {}, [el('code', { testid: 'smartthings-redirect', text: redirect })]),
-      redirect.startsWith('https://') ? null : el('p', { className: 'error', text: 'SmartThings only sends you back to an https:// address: open this page over HTTPS first.' }),
-      el('div', { className: 'row' }, [field('Client ID', id), field('Client secret', secret)]),
+      el('div', { className: 'row' }, [
+        field('SmartApp client ID (not your Samsung username)', id),
+        field('SmartApp client secret (not your Samsung password)', secret),
+      ]),
       el('button', { type: 'submit', testid: 'smartthings-signin', text: 'Sign in with SmartThings' }),
     ]);
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       this.signIn(id.value.trim(), secret.value.trim());
     });
-    return form;
+    return el('details', { className: 'subsection', testid: 'smartthings-own-app' }, [el('summary', { text: 'Your own SmartApp instead' }), form]);
   }
+
 
   async load() {
     const homeId = this.app.home.id;
@@ -78,13 +114,13 @@ class SmartThingsPanel {
 
   draw(info, tvs) {
     const intro = el('p', { className: 'muted', text: 'Optional. Lets each TV\'s remote list its inputs by name and switch to one directly.' });
-    const problem = info.problem ? el('p', { className: 'error', testid: 'smartthings-problem', text: info.problem }) : null;
+    const problem = info.problem ? el('p', { className: 'error', testid: 'smartthings-problem', text: info.problem }) : '';
     if (!info.connected) {
       const token = el('input', { type: 'password', testid: 'smartthings-token', autocomplete: 'off', required: true, minlength: '10', maxlength: '200' });
       const form = el('form', {}, [
         field('Personal access token', token),
         el('p', { className: 'muted' }, ['Make one at ', el('a', { href: 'https://account.smartthings.com/tokens', target: '_blank', rel: 'noopener', text: 'account.smartthings.com/tokens' }), ' with the Devices permissions (list, see and control).']),
-        el('button', { type: 'submit', testid: 'smartthings-connect', text: 'Connect SmartThings' }),
+        el('button', { type: 'submit', className: 'secondary', testid: 'smartthings-connect', text: 'Connect with the token only' }),
       ]);
       form.addEventListener('submit', (event) => {
         event.preventDefault();
@@ -95,8 +131,9 @@ class SmartThingsPanel {
         });
       });
       this.box.replaceChildren(
-        el('h3', { text: 'SmartThings (TV inputs by name)' }), intro, problem, this.signInForm(),
-        el('h4', { text: 'Or a personal token (stops working after 24 hours)' }), form,
+        el('h3', { text: 'SmartThings (TV inputs by name)' }), intro, problem, this.setupForm(),
+        el('h4', { text: 'Or only a token (stops working after 24 hours)' }), form,
+        this.signInForm(),
       );
       return;
     }
@@ -126,7 +163,10 @@ class SmartThingsPanel {
       el('p', { className: 'note', testid: 'smartthings-connected', text: 'Connected. Choose which SmartThings TV each TV is.' }),
       el('p', { className: 'muted', testid: 'smartthings-method', text: info.method === 'oauth'
         ? 'Signed in: renews itself every 12 hours.'
-        : 'With a personal token: it stops working after 24 hours. Disconnect and sign in with SmartThings to keep it connected.' }),
+        : 'With a personal token: it stops working after 24 hours. Sign in to keep it connected.' }),
+      info.method === 'token' && info.app_registered
+        ? el('button', { type: 'button', testid: 'smartthings-reconnect', text: 'Sign in to stay connected', onclick: () => this.signIn() })
+        : '',
       rows.length ? el('div', { className: 'grid-fields' }, rows) : el('p', { className: 'muted', text: 'Add a TV above first.' }),
       this.disconnectButton(tvs),
     );

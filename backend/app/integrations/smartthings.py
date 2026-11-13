@@ -153,3 +153,89 @@ def token_request(
     if not isinstance(answer, dict) or not answer.get("access_token"):
         raise SmartThingsError("SmartThings gave no token")
     return answer
+
+
+# ------------------------------------------------- registering the SmartApp
+# Instead of the SmartThings CLI (`smartthings apps:create`): a personal
+# token with the "Apps" permission registers an "OAuth-In" (API only) app
+# for this server, POST /v1/apps (as the CLI does; see smartthings-core-sdk
+# src/endpoint/apps.ts), and the answer carries its OAuth client ID and
+# secret (shown only this once).
+
+APP_NAME = "Smart Home Unified Control"
+
+
+def _detail(response: requests.Response) -> str:
+    try:
+        body = response.json()
+    except ValueError:
+        return ""
+    error = body.get("error") if isinstance(body, dict) else None
+    if isinstance(error, dict):
+        details = error.get("details") or []
+        first = details[0] if details and isinstance(details[0], dict) else {}
+        return str(first.get("message") or error.get("message") or "")
+    return ""
+
+
+def register_app(token: str, redirect_uri: str, suffix: str) -> dict[str, str]:
+    """Register this server's SmartApp: {"app_id", "client_id",
+    "client_secret"}. `suffix` makes its name unique on the account."""
+    body: dict[str, Any] = {
+        "appName": f"smart-home-unified-control-{suffix}",
+        "displayName": APP_NAME,
+        "description": "Smart Home Unified Control: TV inputs by name",
+        "appType": "API_ONLY",
+        "classifications": ["CONNECTED_SERVICE"],
+        "singleInstance": True,
+        "apiOnly": {},
+        "oauth": {
+            "clientName": APP_NAME,
+            "scope": SCOPES.split(),
+            "redirectUris": [redirect_uri],
+        },
+    }
+    try:
+        response = requests.post(
+            f"{API}/apps",
+            headers={"Authorization": f"Bearer {token}"},
+            json=body,
+            timeout=TIMEOUT_SECONDS,
+        )
+    except requests.RequestException as error:
+        raise SmartThingsError(
+            f"could not reach SmartThings: {type(error).__name__}"
+        ) from None
+    if response.status_code in (401, 403):
+        raise SmartThingsDenied(
+            'the token cannot register an app: tick "Apps" (all) when making it'
+        )
+    if response.status_code >= 400:
+        why = _detail(response)
+        raise SmartThingsError(
+            f"SmartThings would not register the app ({response.status_code}"
+            f"{': ' + why if why else ''})"
+        )
+    answer = response.json()
+    app = answer.get("app") or {}
+    if not answer.get("oauthClientId") or not answer.get("oauthClientSecret"):
+        raise SmartThingsError("SmartThings registered the app but gave no client ID")
+    return {
+        "app_id": str(app.get("appId") or ""),
+        "client_id": str(answer["oauthClientId"]),
+        "client_secret": str(answer["oauthClientSecret"]),
+    }
+
+
+def update_redirect(token: str, app_id: str, redirect_uri: str) -> None:
+    """Point the registered app at a new address of this server."""
+    _call(
+        "PUT",
+        f"/apps/{app_id}/oauth",
+        token,
+        {
+            "clientName": APP_NAME,
+            "scope": SCOPES.split(),
+            "redirectUris": [redirect_uri],
+        },
+    )

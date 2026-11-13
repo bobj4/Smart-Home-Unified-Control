@@ -159,6 +159,89 @@ def keep_fresh(db: Session, home_id: str) -> bool:
     return True
 
 
+APP_CREDENTIAL = "samsung_tv:smartthings_app"
+
+
+def setup(
+    db: Session, home_id: str, user_id: str, token: str, redirect_uri: str
+) -> dict[str, Any]:
+    """The one-step setup: a personal token (Devices and Apps permissions).
+    It connects SmartThings at once (for its 24 hours), registers this
+    server's SmartApp if it has none yet, and starts the sign-in that keeps
+    it connected. {"authorize_url": where to sign in, or None, "problem":
+    why the sign-in cannot start, or None}."""
+    try:
+        smartthings.tvs(token)
+    except smartthings.SmartThingsDenied:
+        raise OAuthProblem(
+            422,
+            "SmartThings refused that token: make it with the Devices permissions"
+            " (list, see and control all devices)",
+        ) from None
+    except smartthings.SmartThingsError as error:
+        raise OAuthProblem(502, str(error)) from None
+    current = credentials.load(db, home_id, CREDENTIAL) or {}
+    if not current.get("oauth") or current.get("problem"):
+        credentials.save(db, home_id, CREDENTIAL, "SmartThings", {"token": token})
+    app = credentials.load(db, home_id, APP_CREDENTIAL)
+    try:
+        if not app:
+            made = smartthings.register_app(
+                token, redirect_uri, f"{home_id[:8]}-{secrets.token_hex(2)}"
+            )
+            app = {**made, "redirect_uri": redirect_uri}
+            credentials.save(db, home_id, APP_CREDENTIAL, "SmartThings app", app)
+        elif app.get("redirect_uri") != redirect_uri:
+            smartthings.update_redirect(token, str(app["app_id"]), redirect_uri)
+            app = {**app, "redirect_uri": redirect_uri}
+            credentials.save(db, home_id, APP_CREDENTIAL, "SmartThings app", app)
+    except smartthings.SmartThingsError as error:
+        return {"authorize_url": None, "problem": str(error)}
+    try:
+        url = start(home_id, user_id, _app(app))
+    except OAuthProblem as problem:
+        return {"authorize_url": None, "problem": problem.reason}
+    return {"authorize_url": url, "problem": None}
+
+
+def _app(saved: dict[str, Any]) -> dict[str, str]:
+    return {k: str(saved[k]) for k in ("client_id", "client_secret", "redirect_uri")}
+
+
+def saved_app(db: Session, home_id: str) -> dict[str, str] | None:
+    """The SmartApp to sign in with again: the one signed in with before, or
+    the one registered for this server."""
+    saved = credentials.load(db, home_id, CREDENTIAL) or {}
+    if saved.get("oauth"):
+        return _app(saved)
+    registered = credentials.load(db, home_id, APP_CREDENTIAL)
+    return _app(registered) if registered else None
+
+
+def callback_problem(params: dict[str, str]) -> str:
+    """What SmartThings sent back instead of a sign-in code, in words."""
+    error = params.get("error", "")
+    description = params.get("error_description", "").replace("+", " ")
+    if error:
+        known = {
+            "access_denied": "you (or Samsung) declined the sign-in",
+            "unsupported_response_type": "Samsung refused the app's permissions"
+            " (a known SmartThings fault since September 2026)",
+            "server_error": "Samsung's sign-in failed on their side",
+            "invalid_scope": "Samsung refused the app's permissions",
+        }
+        why = known.get(error, error)
+        return f"SmartThings did not finish the sign-in: {why}" + (
+            f" ({description})" if description else ""
+        )
+    sent = ", ".join(sorted(k for k in params if k)) or "nothing"
+    return (
+        "SmartThings came back without a sign-in code (it sent: "
+        f"{sent}). Samsung's sign-in may be failing on their side;"
+        " the token keeps SmartThings connected meanwhile"
+    )
+
+
 def status(saved: dict[str, Any] | None) -> dict[str, Any]:
     """What Settings shows: how it is connected, and any problem."""
     if not saved:

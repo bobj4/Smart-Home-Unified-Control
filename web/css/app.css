@@ -444,3 +444,4 @@ svg.home-icon { padding: 3px; background: var(--surface-2); }
 .icon-choice { padding: 4px; line-height: 0; background: transparent; border-color: var(--border); }
 .icon-choice.on { border-color: var(--accent, #4c8dff); background: var(--surface-2); }
 .pairing-code { font-size: 1.4rem; letter-spacing: 0.08em; font-family: ui-monospace, monospace; }
+.steps { margin: 0 0 12px; padding-left: 20px; display: grid; gap: 4px; }

@@ -37,7 +37,7 @@ class FakeSmartThings:
         }
 
     def tvs(self, token):
-        assert token.startswith("access-")
+        assert token.startswith("access-") or token == TOKEN  # signed in, or pasted
         return [{"id": "st-tv", "name": "Den TV"}]
 
 
@@ -202,11 +202,18 @@ def test_ui_sign_in_form_and_the_way_back(open_page, db, owner, st, secrets_key)
     _ui.ui_login(page, owner)
     page.goto(page.url.split("#")[0] + "#/settings/integrations")
     panel = page.get_by_test_id("smartthings")
+    expect(panel.get_by_test_id("smartthings-setup-connect")).to_be_visible()
+    expect(panel.get_by_test_id("smartthings-token")).to_be_visible()  # still offered
+    expect(panel).not_to_contain_text("null")
+    # One's own SmartApp: folded away, and plainly not the Samsung login.
+    expect(panel.get_by_test_id("smartthings-signin")).not_to_be_visible()
+    panel.get_by_test_id("smartthings-own-app").locator("summary").click()
     expect(panel.get_by_test_id("smartthings-redirect")).to_have_text(
         page.url.split("/#")[0].rstrip("/") + CALLBACK
     )
-    expect(panel.get_by_test_id("smartthings-signin")).to_be_visible()
-    expect(panel.get_by_test_id("smartthings-token")).to_be_visible()  # still offered
+    expect(panel.get_by_test_id("smartthings-own-app")).to_contain_text(
+        "not your Samsung password"
+    )
     # Back from SmartThings: says so, and tidies the address.
     connect(db, owner)
     page.goto(
@@ -216,3 +223,136 @@ def test_ui_sign_in_form_and_the_way_back(open_page, db, owner, st, secrets_key)
     expect(page.get_by_test_id("status")).to_contain_text("SmartThings connected")
     expect(panel.get_by_test_id("smartthings-method")).to_contain_text("renews itself")
     assert "smartthings=" not in page.url
+
+
+TOKEN = "0123456789abcdef-0123456789abcdef"
+
+
+class Answer:
+    def __init__(self, status_code, data):
+        self.status_code = status_code
+        self.data = data
+
+    def json(self):
+        return self.data
+
+
+def test_register_app_asks_like_the_cli(monkeypatch):
+    asked = {}
+
+    def post(url, headers, json, timeout):
+        asked.update(url=url, headers=headers, json=json)
+        return Answer(
+            200,
+            {
+                "app": {"appId": "app-1"},
+                "oauthClientId": "client-1",
+                "oauthClientSecret": "secret-2",
+            },
+        )
+
+    monkeypatch.setattr(smartthings.requests, "post", post)
+    made = smartthings.register_app(TOKEN, REDIRECT, "abcd")
+    assert made == {
+        "app_id": "app-1",
+        "client_id": "client-1",
+        "client_secret": "secret-2",
+    }
+    assert asked["url"] == "https://api.smartthings.com/v1/apps"
+    assert asked["headers"] == {"Authorization": f"Bearer {TOKEN}"}
+    body = asked["json"]
+    assert (body["appType"], body["classifications"]) == (
+        "API_ONLY",
+        ["CONNECTED_SERVICE"],
+    )
+    assert body["appName"] == "smart-home-unified-control-abcd"
+    assert body["oauth"]["scope"] == ["r:devices:*", "x:devices:*"]
+    assert body["oauth"]["redirectUris"] == [REDIRECT]
+    monkeypatch.setattr(smartthings.requests, "post", lambda *a, **k: Answer(403, {}))
+    with pytest.raises(smartthings.SmartThingsDenied, match="Apps"):
+        smartthings.register_app(TOKEN, REDIRECT, "abcd")
+    refused = {"error": {"message": "x", "details": [{"message": "appName taken"}]}}
+    monkeypatch.setattr(
+        smartthings.requests, "post", lambda *a, **k: Answer(422, refused)
+    )
+    with pytest.raises(smartthings.SmartThingsError, match="appName taken"):
+        smartthings.register_app(TOKEN, REDIRECT, "abcd")
+
+
+def test_one_token_setup(
+    client, new_client, db, owner, login, csrf, st, monkeypatch, secrets_key
+):
+    registered = []
+
+    def register(token, redirect_uri, suffix):
+        registered.append((token, redirect_uri))
+        return {"app_id": "app-1", "client_id": "client-1", "client_secret": "secret-2"}
+
+    monkeypatch.setattr(smartthings, "register_app", register)
+    assert login(client, owner).status_code == 200
+    url = f"{base(owner.home_id)}/setup"
+    r = client.post(
+        url, json={"token": TOKEN, "redirect_uri": REDIRECT}, headers=csrf(client)
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["problem"] is None
+    assert r.json()["authorize_url"].startswith(
+        "https://api.smartthings.com/oauth/authorize?"
+    )
+    assert registered == [(TOKEN, REDIRECT)]
+    # Connected with the token straight away (for its 24 hours).
+    assert saved(db, owner) == {"token": TOKEN}
+    info = client.get(base(owner.home_id)).json()
+    assert info["method"] == "token" and info["app_registered"] is True
+    # Coming back from Samsung: signed in for good.
+    state = parse_qs(urlparse(r.json()["authorize_url"]).query)["state"][0]
+    new_client().get(f"{CALLBACK}?code=c1&state={state}", follow_redirects=False)
+    assert saved(db, owner)["oauth"] is True
+    # Again (a new token): the registered app is used, not registered again.
+    r = client.post(
+        url, json={"token": TOKEN, "redirect_uri": REDIRECT}, headers=csrf(client)
+    )
+    assert len(registered) == 1 and r.json()["authorize_url"]
+    assert saved(db, owner)["oauth"] is True  # a working sign-in is kept
+
+
+def test_setup_without_the_apps_permission(
+    client, db, owner, login, csrf, st, monkeypatch, secrets_key
+):
+    def register(token, redirect_uri, suffix):
+        raise smartthings.SmartThingsDenied(
+            'the token cannot register an app: tick "Apps"'
+        )
+
+    monkeypatch.setattr(smartthings, "register_app", register)
+    assert login(client, owner).status_code == 200
+    url = f"{base(owner.home_id)}/setup"
+    r = client.post(
+        url, json={"token": TOKEN, "redirect_uri": REDIRECT}, headers=csrf(client)
+    )
+    assert r.json() == {
+        "authorize_url": None,
+        "problem": 'the token cannot register an app: tick "Apps"',
+    }
+    assert saved(db, owner) == {"token": TOKEN}  # still connected for now
+    monkeypatch.setattr(
+        smartthings,
+        "tvs",
+        lambda token: (_ for _ in ()).throw(smartthings.SmartThingsDenied("no")),
+    )
+    r = client.post(
+        url, json={"token": TOKEN, "redirect_uri": REDIRECT}, headers=csrf(client)
+    )
+    assert r.status_code == 422 and "Devices permissions" in r.json()["detail"]
+
+
+def test_what_smartthings_sent_back_is_said(new_client):
+    def back(query):
+        r = new_client().get(f"{CALLBACK}?{query}", follow_redirects=False)
+        return parse_qs(urlparse(r.headers["location"]).query)["smartthings_error"][0]
+
+    assert "known SmartThings fault" in back("error=unsupported_response_type&state=x")
+    assert "declined" in back("error=access_denied")
+    assert "(Bad thing)" in back("error=server_error&error_description=Bad+thing")
+    assert "it sent: nothing" in back("")
+    assert "it sent: state" in back("state=abc")
