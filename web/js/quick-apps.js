@@ -68,6 +68,10 @@ class QuickAppsPanel {
       this.list.replaceChildren(el('p', { className: 'muted', text: 'The TV did not list any apps.' }));
       return;
     }
+    // The TV would not say which apps it has: these are the common ones.
+    const note = apps.some((a) => a.unconfirmed)
+      ? [el('p', { className: 'muted', testid: 'quick-apps-unconfirmed', text: "This TV won't say which apps it has, so these are common ones. One it doesn't have just won't open." })]
+      : [];
     const boxes = all.map((entry) => {
       const box = el('input', { type: 'checkbox', testid: `quick-app-${entry.id}`, checked: this.chosen.some((a) => a.id === entry.id) });
       box.addEventListener('change', () => {
@@ -78,7 +82,7 @@ class QuickAppsPanel {
       });
       return box;
     });
-    this.list.replaceChildren(...all.map((entry, i) => el('label', { className: 'check' }, [boxes[i], ` ${entry.name}`])));
+    this.list.replaceChildren(...note, ...all.map((entry, i) => el('label', { className: 'check' }, [boxes[i], ` ${entry.name}`])));
     this.limit(boxes);
   }
 
