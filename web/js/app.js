@@ -256,12 +256,31 @@ class SmartHomeApp {
     this.homeSelect.value = this.home.id;
     this.homeSwitcher.render();
     this.status.show('', 'info');
-    // Opened first next time; a miss only means the top home opens instead.
-    this.api.setLastHome(this.home.id).catch(() => {});
+    this.saveLastHome(this.home.id);
     this.route();
   }
 
+  // Opened first next time (a miss only opens the top home). One save at a
+  // time, newest last, so quick switches can't leave an older home saved.
+  saveLastHome(homeId) {
+    this.lastHomeWanted = homeId;
+    if (this.lastHomeSaving) return;
+    const next = () => {
+      const wanted = this.lastHomeWanted;
+      this.lastHomeWanted = null;
+      this.lastHomeSaving = wanted
+        ? this.api.setLastHome(wanted).catch(() => {}).then(next)
+        : null;
+      return this.lastHomeSaving;
+    };
+    next();
+  }
+
   async logout() {
+    // Let a save of the home last viewed finish first (a few seconds at most).
+    if (this.lastHomeSaving) {
+      await Promise.race([this.lastHomeSaving, new Promise((done) => setTimeout(done, 3000))]);
+    }
     try {
       await this.api.logout();
     } catch (error) {

@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import credentials, tv_power, tv_sources
+from app import credentials, tv_app_catalog, tv_power, tv_sources
 from app.features import integration_enabled
 from app.integrations import samsung
 from app.models import Device
@@ -254,12 +254,22 @@ def tv_apps(db: Session, device: Device) -> list[dict[str, str]]:
     if config(device)["protocol"] != "tizen":
         raise SamsungUnavailable(422, "only 2016 and newer TVs can launch apps")
     host, protocol, token = _connection(db, device)
+    problem: samsung.TvError | None = None
     try:
         apps = samsung.installed_apps(host, protocol, token)
     except samsung.TvDenied:
         raise SamsungUnavailable(409, "the TV refused: pair it again") from None
     except samsung.TvError as error:
-        raise SamsungUnavailable(502, str(error)) from None
+        apps, problem = [], error
+    if not apps:
+        # Off, or one of the TVs that will not list its apps (tv_app_catalog).
+        if tv_power.power_state(host, protocol) is None:
+            raise SamsungUnavailable(
+                409, "the TV is off or not answering: turn it on, then try again"
+            )
+        apps = tv_app_catalog.installed(host)
+        if not apps and problem is not None:
+            raise SamsungUnavailable(502, str(problem))
     return sorted(apps, key=lambda app: app["name"].lower())
 
 
