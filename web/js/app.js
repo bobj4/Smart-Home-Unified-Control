@@ -188,12 +188,12 @@ class SmartHomeApp {
     }
     if (!this.account) {
       const hash = window.location.hash;
-      if (hash === '#/recover' && this.loginOptions && this.loginOptions.allow_recovery) {
+      if (hash.startsWith('#/recover') && this.loginOptions && this.loginOptions.allow_recovery) {
         if (byTestId('recover-page').hidden) this.recover.reset();
         this.showPage('recover');
         return;
       }
-      const enrolling = hash === '#/enroll';
+      const enrolling = hash.startsWith('#/enroll'); // #/enroll/<code> from an email
       if (enrolling && byTestId('enroll-page').hidden) this.enroll.reset();
       this.showPage(enrolling ? 'enroll' : 'login');
       return;

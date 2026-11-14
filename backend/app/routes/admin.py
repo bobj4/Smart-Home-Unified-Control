@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app import member_codes
 from app.audit import record_event
 from app.auth import generate_recovery_codes, hash_password
 from app.authorization import require_role
@@ -245,8 +246,10 @@ def create_reset_code(
     request: Request,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-) -> dict[str, str]:
-    """A one-time code for a member who forgot their password (24 hours)."""
+) -> dict[str, Any]:
+    """A one-time code for a member who forgot their password (24 hours),
+    shown again on their card while active and emailed with a link when an
+    email server is set up ("emailed": where it went, or None)."""
     require_role(db, user.id, home_id, Role.ADMIN)
     if not settings(db).allow_recovery:
         raise HTTPException(
@@ -273,11 +276,21 @@ def create_reset_code(
     reset = PasswordReset(
         user_id=user_id,
         code_hash=_hash(code),
+        code_secret=member_codes.keep(code),
         created_by=user.id,
         expires_at=datetime.now(UTC) + RESET_LIFETIME,
     )
     db.add(reset)
     db.commit()
+    target = db.get(User, user_id)
+    home = db.get(Home, home_id)
+    address = target.email if target else ""
+    subject, text = member_codes.reset_email(
+        home.name if home else "your home",
+        code,
+        member_codes.link(request, "recover", code, address),
+    )
+    emailed = member_codes.send(db, address, subject, text)
     record_event(
         db,
         "reset_code_created",
@@ -286,7 +299,11 @@ def create_reset_code(
         ip_address=client_ip(request),
         details={"member_id": user_id},
     )
-    return {"reset_code": code, "expires_at": as_utc(reset.expires_at).isoformat()}
+    return {
+        "reset_code": code,
+        "expires_at": as_utc(reset.expires_at).isoformat(),
+        "emailed": emailed,
+    }
 
 
 class NewPassword(BaseModel):
@@ -383,6 +400,7 @@ def recover(
     target.pending_totp_secret = None
     target.totp_last_step = None
     reset.used_at = datetime.now(UTC)
+    reset.code_secret = None
     db.execute(delete(SessionModel).where(SessionModel.user_id == target.id))
     forget_all(db, target.id)
     db.commit()

@@ -36,6 +36,7 @@ from app.routes import (
     login_failures,
     login_times,
     member_access,
+    member_codes,
     members,
     motd,
     ratgdo,
@@ -128,6 +129,7 @@ app.include_router(admin.router)
 app.include_router(https_admin.router)
 app.include_router(email_admin.router)
 app.include_router(email_admin.public_router)
+app.include_router(member_codes.router)
 app.include_router(members.router)
 app.include_router(members.enroll_router)
 app.include_router(member_access.router)
