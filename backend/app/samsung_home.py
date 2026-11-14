@@ -3,6 +3,8 @@ Network calls go through app.integrations.samsung (replaced by fakes in tests)."
 
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from typing import Any
 
 from sqlalchemy import select
@@ -222,7 +224,7 @@ def send_tv_command(
             if step == "wake":
                 tv_power.wake(str(settings["mac"]), host)
             elif step == "key":
-                samsung.send_keys(host, protocol, token, ["KEY_POWER"])
+                _power_key(host, protocol, token, command)
         elif command == "launch_app":
             samsung.launch_app(host, protocol, token, payload["app"])
         elif command == "open_app":
@@ -241,6 +243,20 @@ def send_tv_command(
         raise SamsungUnavailable(502, str(error)) from None
 
 
+def _power_key(host: str, protocol: str, token: str | None, command: str) -> None:
+    """Press the TV's power key. An older TV often goes off before it
+    answers: for "turn off", a TV that no longer answers afterwards is off,
+    so that is not an error."""
+    try:
+        samsung.send_keys(host, protocol, token, ["KEY_POWER"])
+    except (samsung.TvDenied, samsung.TvUnsupported):
+        raise
+    except samsung.TvError:
+        if command != "turn_off" or samsung.is_on(host, protocol):
+            raise
+        log.info("TV %s went off before it answered the power key", host)
+
+
 def _connection(db: Session, device: Device) -> tuple[str, str, str | None]:
     """The TV's address, protocol and saved pairing token."""
     settings = config(device)
@@ -257,6 +273,29 @@ def _connection(db: Session, device: Device) -> tuple[str, str, str | None]:
     return host, protocol, token
 
 
+LIST_SECONDS = 8.0  # a TV that will not list its apps may never answer
+
+
+def _listed(
+    host: str, protocol: str, token: str | None
+) -> tuple[list[dict[str, Any]], str | None]:
+    """The TV's own list of its apps, within LIST_SECONDS: (apps, None), or
+    ([], why not). Many TVs ignore the request; the TV library then raises
+    its own websocket timeout (not a TvError), or waits."""
+    pool = ThreadPoolExecutor(max_workers=1)
+    future = pool.submit(samsung.installed_apps, host, protocol, token)
+    try:
+        return list(future.result(timeout=LIST_SECONDS)), None
+    except samsung.TvDenied:
+        raise
+    except FutureTimeout:
+        return [], "the TV did not answer the app list"
+    except Exception as error:  # noqa: BLE001 - any failure: ask app by app
+        return [], f"{type(error).__name__}: {error}".rstrip(": ")
+    finally:
+        pool.shutdown(wait=False)
+
+
 def tv_apps(db: Session, device: Device) -> list[dict[str, Any]]:
     """The apps installed on the TV, by name, for choosing quick apps. A TV
     that is on but will not say which it has gets the common ones, marked
@@ -264,14 +303,10 @@ def tv_apps(db: Session, device: Device) -> list[dict[str, Any]]:
     if config(device)["protocol"] != "tizen":
         raise SamsungUnavailable(422, "only 2016 and newer TVs can launch apps")
     host, protocol, token = _connection(db, device)
-    problem: samsung.TvError | None = None
-    apps: list[dict[str, Any]]
     try:
-        apps = samsung.installed_apps(host, protocol, token)
+        apps, problem = _listed(host, protocol, token)
     except samsung.TvDenied:
         raise SamsungUnavailable(409, "the TV refused: pair it again") from None
-    except samsung.TvError as error:
-        apps, problem = [], error
     if not apps:
         # Off, or one of the TVs that will not list its apps (tv_app_catalog).
         if tv_power.power_state(host, protocol) is None:
