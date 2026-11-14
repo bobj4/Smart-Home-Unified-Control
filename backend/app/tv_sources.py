@@ -5,6 +5,7 @@ its fixed inputs (TV, HDMI 1-4, USB) sent as keys."""
 import json
 import logging
 import re
+import time
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -145,6 +146,31 @@ def turn_on(db: Session, device: Device) -> bool:
         )
         return False
     return True
+
+
+CLOUD_SECONDS = 120  # ask SmartThings at most this often per TV
+# device id -> (when asked, online)
+_cloud_seen: dict[str, tuple[float, bool]] = {}
+
+
+def cloud_online(db: Session, device: Device, now: float | None = None) -> bool:
+    """Whether SmartThings can still reach a TV that does not answer on the
+    network (so it can be turned on, and is not offline). False when not
+    connected, not linked to a SmartThings TV, or SmartThings cannot say."""
+    now = time.monotonic() if now is None else now
+    seen = _cloud_seen.get(device.id)
+    if seen is not None and now - seen[0] < CLOUD_SECONDS:
+        return seen[1]
+    found = False
+    if connected(db, device.home_id):
+        try:
+            token = _token(db, device.home_id)
+            st_id = _power_link(db, device, token)
+            found = st_id is not None and smartthings.online(token, st_id)
+        except (SourcesUnavailable, smartthings.SmartThingsError):
+            found = False
+    _cloud_seen[device.id] = (now, found)
+    return found
 
 
 def saved_login(db: Session, home_id: str) -> dict[str, Any] | None:

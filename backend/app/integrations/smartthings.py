@@ -108,6 +108,13 @@ def switch_on(token: str, device_id: str) -> None:
     _call("POST", f"/devices/{device_id}/commands", token, {"commands": [command]})
 
 
+def online(token: str, device_id: str) -> bool:
+    """Whether SmartThings can reach the TV (its health): a TV that is off
+    but online can still be turned on through the cloud."""
+    health = _call("GET", f"/devices/{device_id}/health", token) or {}
+    return str(health.get("state", "")).upper() == "ONLINE"
+
+
 # ---------------------------------------------------------------- OAuth
 # Personal access tokens made since late 2024 last 24 hours. An "OAuth-In"
 # (API only) SmartApp gets a 24-hour access token plus a refresh token that
