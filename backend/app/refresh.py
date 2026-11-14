@@ -27,6 +27,7 @@ from app import (
     smartthings_oauth,
     tv_pending,
     tv_power,
+    tv_sources,
     verbose,
 )
 from app.db_config import SessionLocal
@@ -53,10 +54,15 @@ def refresh_tvs(db: Session, home_id: str) -> int:
             continue
         host, protocol = str(tv.external_id), settings["protocol"]
         on = samsung.is_on(host, protocol)
-        # Off but answering (2018+ network standby) or not answering at all:
-        # the page greys out a TV that does not answer. It stays "online",
-        # as one that can be woken still takes the power button.
-        reachable = on or tv_power.power_state(host, protocol) == "standby"
+        # Off but answering (2018+ network standby), or not answering but
+        # still online in SmartThings (it can turn it on): only a TV neither
+        # way is greyed out. It stays "online", as one that can be woken
+        # (Wake-on-LAN) still takes the power button.
+        reachable = (
+            on
+            or tv_power.power_state(host, protocol) == "standby"
+            or tv_sources.cloud_online(db, tv)
+        )
         tv_pending.seen(tv.id, on)
         state = json.loads(tv.state or "{}")
         if state.get("on") != on or state.get("reachable") != reachable:
