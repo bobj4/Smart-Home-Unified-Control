@@ -278,6 +278,9 @@ class Enrollment(Base):
     name: Mapped[str | None] = mapped_column(String(100))
     role: Mapped[str] = mapped_column(String(20))
     code_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    # The code encrypted, to show the admin while it is active (dropped once
+    # used; see app/member_codes.py).
+    code_secret: Mapped[str | None] = mapped_column(Text)
     # TOTP secret offered by /enroll/start, confirmed by /enroll/finish.
     pending_totp_secret: Mapped[str | None] = mapped_column(String(128))
     created_by: Mapped[str | None] = mapped_column(
@@ -436,6 +439,8 @@ class PasswordReset(Base):
         String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     code_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    # An admin's code encrypted, to show while it is active (dropped once used).
+    code_secret: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL")
     )

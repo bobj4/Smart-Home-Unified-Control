@@ -32,6 +32,13 @@ class EnrollView {
     byTestId('enroll-qr').removeAttribute('src');
     byTestId('enroll-recovery-codes').replaceChildren();
     this.error.textContent = '';
+    // From the emailed link (#/enroll/<code>): fill it in, then drop it
+    // from the address bar and history.
+    const [, , code] = window.location.hash.split('/');
+    if (code) {
+      byTestId('enroll-code').value = decodeURIComponent(code);
+      window.history.replaceState(null, '', `${window.location.pathname}#/enroll`);
+    }
   }
 
   async start(event) {

@@ -278,6 +278,7 @@ class SmartHomeAPI {
   setMemberActive(homeId, userId, active) { return this.put(`/homes/${enc(homeId)}/members/${enc(userId)}/active`, { active }); }
   createEnrollment(homeId, invite) { return this.post(`/homes/${enc(homeId)}/members/enrollments`, invite); }
   getEnrollments(homeId) { return this.get(`/homes/${enc(homeId)}/members/enrollments`); }
+  getMemberCodes(homeId) { return this.get(`/homes/${enc(homeId)}/members/codes`); }
   cancelEnrollment(homeId, id) { return this.del(`/homes/${enc(homeId)}/members/enrollments/${enc(id)}`); }
 
   // Joining a home with an enrollment code (no session needed)

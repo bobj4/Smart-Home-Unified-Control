@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app import member_codes
 from app.audit import record_event
 from app.auth import (
     generate_recovery_codes,
@@ -26,7 +27,7 @@ from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
 from app.login_policy import check_password, normalize_login
 from app.login_times import forget_all
-from app.models import Enrollment, HomeMembership, Role, User
+from app.models import Enrollment, Home, HomeMembership, Role, User
 from app.models import Session as SessionModel
 from app.rate_limiter import check_login_allowed, record_login_failure
 from app.sessions import as_utc
@@ -174,8 +175,10 @@ def create_enrollment(
     request: Request,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-) -> dict[str, str]:
-    """Create a one-time code for a new member. The code is returned once."""
+) -> dict[str, Any]:
+    """Create a one-time code for a new member (the admin sees it again on
+    its card while it is active, from GET .../members/codes). Emailed with
+    a link when an email server is set up: "emailed" is where it went."""
     require_role(db, user.id, home_id, Role.ADMIN)
     email = normalize_login(db, body.email)
     existing = db.scalars(select(User).where(func.lower(User.email) == email)).first()
@@ -195,11 +198,20 @@ def create_enrollment(
         name=body.name,
         role=body.role,
         code_hash=_hash_code(code),
+        code_secret=member_codes.keep(code),
         created_by=user.id,
         expires_at=datetime.now(UTC) + ENROLLMENT_LIFETIME,
     )
     db.add(enrollment)
     db.commit()
+    home = db.get(Home, home_id)
+    subject, text = member_codes.enrollment_email(
+        home.name if home else "a home",
+        body.role,
+        code,
+        member_codes.link(request, "enroll", code),
+    )
+    emailed = member_codes.send(db, email, subject, text)
     record_event(
         db,
         "enrollment_created",
@@ -212,6 +224,7 @@ def create_enrollment(
         "id": enrollment.id,
         "enrollment_code": code,
         "expires_at": as_utc(enrollment.expires_at).isoformat(),
+        "emailed": emailed,
     }
 
 
@@ -378,6 +391,7 @@ def finish_enrollment(
     )
     enrollment.used_at = datetime.now(UTC)
     enrollment.pending_totp_secret = None
+    enrollment.code_secret = None
     db.commit()
     record_event(
         db,

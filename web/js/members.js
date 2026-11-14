@@ -32,10 +32,12 @@ class MembersSection {
 
   async loadMembers() {
     const owner = this.app.can('admin');
-    const [members, states] = await Promise.all([
+    const [members, states, codes] = await Promise.all([
       this.app.api.getMembers(this.app.home.id),
       owner ? this.app.api.getMemberStatus(this.app.home.id) : {},
+      owner ? this.app.api.getMemberCodes(this.app.home.id) : { resets: {} },
     ]);
+    this.resetCodes = codes.resets; // shown on the card while active
     members.forEach((m) => { m.active = states[m.user_id] !== false; });
     this.list.replaceChildren(...members.map((m) => this.memberRow(m, owner && m.user_id !== this.app.account.id)));
   }
@@ -93,14 +95,20 @@ class MembersSection {
     if (this.confirming === member.user_id) confirmRemove();
     const options = this.app.loginOptions;
     if (options && options.allow_recovery && member.role !== 'admin') {
-      const resetOut = el('span', { className: 'secret', testid: 'member-reset-code', hidden: true });
+      const active = (this.resetCodes || {})[member.user_id];
+      const resetOut = el('span', {
+        className: 'secret', testid: 'member-reset-code', hidden: !active,
+        text: active ? active.code : '', title: active ? `Works once, until ${formatTime(active.expires_at)}` : '',
+      });
       const reset = el('button', {
-        type: 'button', className: 'secondary', testid: 'member-reset', text: 'Reset code',
+        type: 'button', className: 'secondary', testid: 'member-reset', text: active ? 'New reset code' : 'Reset code',
         onclick: () => this.app.run(async () => {
           const result = await this.app.api.createResetCode(this.app.home.id, member.user_id);
           resetOut.textContent = result.reset_code;
           resetOut.hidden = false;
-          this.app.status.success(`Give this code to ${member.email}. It works once, for 24 hours.`);
+          this.app.status.success(result.emailed
+            ? `Reset code emailed to ${result.emailed}. It works once, for 24 hours.`
+            : `Give this code to ${member.email}. It works once, for 24 hours.`);
         }),
       });
       actions.append(reset, resetOut);
@@ -205,7 +213,9 @@ class MembersSection {
         if (name.value.trim()) body.name = name.value.trim();
         const created = await this.app.api.createEnrollment(this.app.home.id, body);
         result.replaceChildren(
-          el('p', { className: 'note', text: `Give this code to ${body.email}. It is shown only now.` }),
+          el('p', { className: 'note', testid: 'invite-note', text: created.emailed
+            ? `Emailed to ${created.emailed} with a link. It also shows under Waiting to join until it's used.`
+            : `Give this code to ${body.email}. It also shows under Waiting to join until it's used.` }),
           el('p', { className: 'secret', testid: 'invite-code', text: created.enrollment_code }),
         );
         email.value = '';
@@ -218,7 +228,10 @@ class MembersSection {
   }
 
   async loadEnrollments() {
-    const rows = await this.app.api.getEnrollments(this.app.home.id);
+    const [rows, codes] = await Promise.all([
+      this.app.api.getEnrollments(this.app.home.id),
+      this.app.api.getMemberCodes(this.app.home.id),
+    ]);
     if (rows.length === 0) {
       this.pending.replaceChildren(el('p', { className: 'muted', text: 'Nobody.' }));
       return;
@@ -227,6 +240,7 @@ class MembersSection {
       el('div', {}, [
         el('strong', { text: e.email }),
         el('p', { className: 'muted', text: `${e.role} · code expires ${formatTime(e.expires_at)}` }),
+        codes.enrollments[e.id] ? el('p', { className: 'secret', testid: 'enrollment-code', text: codes.enrollments[e.id] }) : '',
       ]),
       el('button', {
         type: 'button', className: 'secondary', testid: 'enrollment-cancel', text: 'Cancel code',
