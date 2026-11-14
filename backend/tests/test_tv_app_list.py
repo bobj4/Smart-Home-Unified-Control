@@ -126,3 +126,50 @@ def test_ui_common_apps_say_so(open_page, db, owner, make_device, monkeypatch):
     )
     expect(panel.get_by_test_id(f"quick-app-{common[0]['id']}")).to_be_visible()
     expect(panel.get_by_test_id("quick-apps-error")).to_be_empty()
+
+
+def test_the_tv_library_timing_out_is_not_a_500(
+    client, owner, login, csrf, tv, secrets_key, monkeypatch
+):
+    """The TV library's own websocket timeout (not a TvError) crashed it."""
+    import websocket
+
+    device_id = ready_tv(client, csrf, login, owner, tv)
+
+    def times_out(host, protocol, token):
+        raise websocket.WebSocketTimeoutException("timed out")
+
+    monkeypatch.setattr(samsung, "installed_apps", times_out)
+    monkeypatch.setattr(tv_power, "power_state", lambda host, protocol: "on")
+    get, _ = fake_tv({"111299001912": "YouTube"})
+    monkeypatch.setattr(tv_app_catalog.requests, "get", get)
+    r = client.get(apps_url(owner, device_id))
+    assert r.status_code == 200, r.text
+    assert r.json() == [{"id": "111299001912", "name": "YouTube"}]
+
+
+def test_a_tv_that_never_answers_the_list_is_not_waited_on(
+    client, owner, login, csrf, tv, secrets_key, monkeypatch
+):
+    import threading
+    import time
+
+    from app import samsung_home
+
+    device_id = ready_tv(client, csrf, login, owner, tv)
+    release = threading.Event()
+
+    def waits(host, protocol, token):
+        release.wait(10)
+        return []
+
+    monkeypatch.setattr(samsung, "installed_apps", waits)
+    monkeypatch.setattr(samsung_home, "LIST_SECONDS", 0.3)
+    monkeypatch.setattr(tv_power, "power_state", lambda host, protocol: "on")
+    monkeypatch.setattr(tv_app_catalog.requests, "get", fake_tv({})[0])
+    started = time.monotonic()
+    r = client.get(apps_url(owner, device_id))
+    release.set()
+    assert r.status_code == 200, r.text
+    assert time.monotonic() - started < 3
+    assert r.json() and all(a["unconfirmed"] for a in r.json())  # the common ones

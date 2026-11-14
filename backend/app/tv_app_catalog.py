@@ -17,7 +17,7 @@ from typing import Any
 import requests
 from urllib3.exceptions import InsecureRequestWarning
 
-ASK_SECONDS = 2.5
+ASK_SECONDS = 2.0  # x2 rounds x2 ports: 8 seconds at most
 # Samsung's store ids of well-known apps (an id the TV does not have just
 # answers 404). Some apps have had more than one id: the first is the one
 # offered when the TV will not say (common()).
