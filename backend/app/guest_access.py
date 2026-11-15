@@ -16,6 +16,8 @@ What each permission allows:
                   wires, thresholds, calibration...)
   water_heater    control of the water heaters, within the safety limits
   cameras         the Cameras page (Frigate cameras and events)
+  scenes          run the home's scenes (Schedules and Scenes), whatever
+                  their devices; not make or change them
   show_blocked    devices they may not use are shown greyed out (True) or
                   hidden (False); their state is never sent either way
 """
@@ -41,6 +43,7 @@ FLAGS = (
     "show_blocked",
     "thermostat_settings",
     "thermostat_installer",
+    "scenes",
 )
 
 

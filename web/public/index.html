@@ -129,6 +129,7 @@
             <nav class="nav">
                 <a href="#/devices" class="nav-link" data-testid="nav-devices">Devices</a>
                 <a href="#/devices/thermostats" class="nav-link" data-testid="nav-thermostats" hidden>Thermostats</a>
+                <a href="#/schedules" class="nav-link nav-stacked" data-testid="nav-schedules" aria-label="Schedules and Scenes" hidden><span>Schedules</span><span>&amp; Scenes</span></a>
                 <a href="#/devices/doors" class="nav-link" data-testid="nav-doors" hidden>Doors</a>
                 <a href="#/cameras" class="nav-link" data-testid="nav-cameras">Cameras</a>
                 <a href="#/settings" class="nav-link" data-testid="nav-settings">Settings</a>
@@ -139,13 +140,16 @@
         <p class="status" data-testid="status" data-kind="info" role="status"></p>
         <main>
             <section data-testid="view-devices" hidden></section>
+            <section data-testid="view-schedules" hidden></section>
             <section data-testid="view-cameras" hidden></section>
             <section data-testid="view-settings" class="settings" hidden></section>
         </main>
     </div>
 
     <script src="/js/api.js"></script>
+    <script src="/js/api-more.js"></script>
     <script src="/js/ui.js"></script>
+    <script src="/js/nav-access.js"></script>
     <script src="/js/pwa.js"></script>
     <script src="/js/theme-custom.js"></script>
     <script src="/js/background.js"></script>
@@ -189,6 +193,10 @@
     <script src="/js/tv-scan.js"></script>
     <script src="/js/frigate.js"></script>
     <script src="/js/cameras.js"></script>
+    <script src="/js/schedule-steps.js"></script>
+    <script src="/js/schedule-editor.js"></script>
+    <script src="/js/schedules.js"></script>
+    <script src="/js/schedule-settings.js"></script>
     <script src="/js/activity-log.js"></script>
     <script src="/js/home-settings.js"></script>
     <script src="/js/home-icons.js"></script>

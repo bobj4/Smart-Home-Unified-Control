@@ -50,6 +50,7 @@ FORWARDED = frozenset(
         "safety-limits",
         "tv-scan",
         "thermostat-access",
+        "automation",
     }
 )
 OFFLINE = "This home's server at the other site is not connected right now."

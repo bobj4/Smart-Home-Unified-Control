@@ -35,6 +35,12 @@ through the backend's permission checks and device safety limits.
   filters by type or "on only".
 - Thermostats and water heaters on a page of their own, and garage doors
   on a Doors page, shown while their integration is on.
+- Schedules and Scenes (its own tab): scenes switch devices and groups
+  together with one press; schedules run on this server at a time of day,
+  or at sunrise or sunset (minutes before or after), on chosen days, in the
+  home's time zone. Admins set the time zone, location, who may edit, and
+  can pause every schedule. Devices' own schedules (thermostats, water
+  heaters) still live on their cards.
 - Themes: light, dark, device theme, preset colors or your own accent and
   background color, and a background picture.
 - More than one home (Admin › Home: Add a Home, an address and an icon

@@ -599,6 +599,97 @@ class GuestAccess(Base):
         Boolean, default=False, server_default=sa_false()
     )
     thermostat_ids: Mapped[str] = mapped_column(Text, default="[]")  # JSON list
+    # Run the home's scenes (Schedules and Scenes), whatever their devices.
+    scenes: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class Scene(Base):
+    """A set of device and group commands run together, on demand or by a
+    schedule. steps: JSON [{"kind": "device"|"group", "id", "command",
+    "payload"}] (see app/automation.py)."""
+
+    __tablename__ = "scenes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    home_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("homes.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(100))
+    steps: Mapped[str] = mapped_column(Text, default="[]")
+    created_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class Schedule(Base):
+    """Run by this server (not the device's own schedule): at a time of
+    day, or at sunrise or sunset (with an offset), on chosen weekdays; runs
+    a scene and/or its own steps. trigger: JSON {"kind": "time", "at":
+    "HH:MM"} or {"kind": "sunrise"|"sunset", "offset": minutes}; days: JSON
+    weekdays, Monday 0."""
+
+    __tablename__ = "schedules"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    home_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("homes.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(100))
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=sa_true()
+    )
+    trigger: Mapped[str] = mapped_column(Text)
+    days: Mapped[str] = mapped_column(Text, default="[0, 1, 2, 3, 4, 5, 6]")
+    scene_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("scenes.id", ondelete="SET NULL")
+    )
+    steps: Mapped[str] = mapped_column(Text, default="[]")
+    next_run_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_result: Mapped[str | None] = mapped_column(String(500))
+    created_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class ScheduleSettings(Base):
+    """A home's settings for its schedules (Admin > Schedules and Scenes):
+    its time zone and location (for sunrise and sunset), who may make and
+    change scenes and schedules, and a switch pausing every schedule."""
+
+    __tablename__ = "schedule_settings"
+
+    home_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("homes.id", ondelete="CASCADE"), primary_key=True
+    )
+    time_zone: Mapped[str] = mapped_column(String(64), default="UTC")
+    latitude: Mapped[float | None] = mapped_column(Float)
+    longitude: Mapped[float | None] = mapped_column(Float)
+    editors: Mapped[str] = mapped_column(
+        String(10), default="admin"
+    )  # or operator, member
+    paused: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )

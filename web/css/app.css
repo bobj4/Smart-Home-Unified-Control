@@ -85,6 +85,9 @@ button.link { background: none; border: 0; padding: 0; font-weight: inherit; tex
 .nav > * { flex: 0 0 auto; white-space: nowrap; }
 .nav-link { color: var(--text); text-decoration: none; padding: 8px 12px; border-radius: 8px; font-weight: 600; }
 .nav-link.active { background: var(--surface-2); color: var(--accent-fg); }
+/* Schedules and Scenes: two short lines, so the tab stays narrow. */
+.nav-link.nav-stacked { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; padding-top: 4px; padding-bottom: 4px; font-size: 0.82rem; text-align: center; }
+.nav-link.nav-stacked[hidden] { display: none; }
 main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 .status { max-width: 1100px; margin: 8px auto 0; padding: 0 16px; min-height: 1.4em; font-size: 0.92rem; }
 .status[data-kind="error"] { color: var(--danger); }
@@ -445,3 +448,18 @@ svg.home-icon { padding: 3px; background: var(--surface-2); }
 .icon-choice.on { border-color: var(--accent, #4c8dff); background: var(--surface-2); }
 .pairing-code { font-size: 1.4rem; letter-spacing: 0.08em; font-family: ui-monospace, monospace; }
 .steps { margin: 0 0 12px; padding-left: 20px; display: grid; gap: 4px; }
+
+/* Schedules and Scenes */
+.notice { padding: 8px 12px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border); }
+.scene-card h3, .schedule-row h3 { overflow-wrap: anywhere; flex: 1 1 auto; min-width: 0; }
+.automation-editor { max-width: 560px; max-height: calc(100vh - 24px); overflow-y: auto; }
+.step-list { display: grid; gap: 8px; }
+.step-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding-bottom: 8px; border-bottom: 1px solid #3a3f4a; }
+.step-row > select:first-child { flex: 2 1 180px; min-width: 0; }
+.step-row > select:nth-child(2) { flex: 1 1 120px; min-width: 0; }
+.step-value { flex: 1 1 90px; min-width: 0; display: flex; }
+.step-value > * { width: 100%; min-width: 0; }
+.step-value:empty { display: none; }
+.step-row > .ghost, .automation-editor .remote-head .ghost { color: #e8eaed; flex: none; }
+.scenes-actions, [data-testid="scene-new"], [data-testid="schedule-new"] { margin-top: 12px; justify-self: start; }
+.day-choices { display: flex; flex-wrap: wrap; gap: 6px 12px; }

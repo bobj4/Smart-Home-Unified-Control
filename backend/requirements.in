@@ -13,4 +13,5 @@ requests
 samsungtvws[async,encrypted]
 segno
 sqlalchemy
+tzdata
 uvicorn

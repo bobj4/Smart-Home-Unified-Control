@@ -56,6 +56,7 @@ class GuestAccessIn(BaseModel):
     show_blocked: StrictBool
     thermostat_settings: StrictBool = False
     thermostat_installer: StrictBool = False
+    scenes: StrictBool = False
     thermostat_ids: list[str] = Field(max_length=100)
 
 
