@@ -4,7 +4,7 @@
  * (#/enroll).
  */
 
-const VIEWS = ['devices', 'cameras', 'settings'];
+const VIEWS = ['devices', 'schedules', 'cameras', 'settings'];
 
 class SmartHomeApp {
   constructor() {
@@ -22,6 +22,7 @@ class SmartHomeApp {
     this.devices = new DevicesView(this, byTestId('view-devices'));
     this.settings = new SettingsView(this, byTestId('view-settings'));
     this.cameras = new CamerasView(this, byTestId('view-cameras'));
+    this.schedules = new SchedulesView(this, byTestId('view-schedules'));
     this.enroll = new EnrollView(this);
     this.recover = new RecoverView(this);
     this.twoFactorGate = new TwoFactorGate(this);
@@ -220,7 +221,8 @@ class SmartHomeApp {
       return;
     }
     this.camerasAvailable();
-    const loaders = { settings: () => this.settings.load(sub), cameras: () => this.cameras.load(), devices: () => this.devices.load() };
+    if (view === 'schedules' && !(await schedulesAvailable(this))) { window.location.hash = '#/devices'; return; }
+    const loaders = { settings: () => this.settings.load(sub), cameras: () => this.cameras.load(), devices: () => this.devices.load(), schedules: () => this.schedules.load() };
     this.run(loaders[view]);
   }
 
@@ -228,27 +230,10 @@ class SmartHomeApp {
     return Boolean(this.home) && this.home.role === 'guest';
   }
 
-  /** Cameras is shown to operators and up (and guests allowed to see them),
-   * and only while Frigate is on. */
-  async camerasAvailable() {
-    let on = false;
-    if (this.isGuest()) {
-      try {
-        const page = await this.api.getGuestPage(this.home.id);
-        on = page.access.cameras && page.integrations_on.includes('frigate');
-      } catch (error) {
-        on = false;
-      }
-    } else if (this.can('operator')) {
-      try {
-        const integrations = await this.api.getIntegrations(this.home.id);
-        on = integrations.some((i) => i.id === 'frigate' && i.enabled);
-      } catch (error) {
-        on = false;
-      }
-    }
-    byTestId('nav-cameras').hidden = !on;
-    return on;
+  /** The Cameras and Schedules and Scenes tabs (nav-access.js). */
+  camerasAvailable() {
+    schedulesAvailable(this);
+    return camerasAvailable(this);
   }
 
   selectHome(homeId) {
