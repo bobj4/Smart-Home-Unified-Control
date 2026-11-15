@@ -8,31 +8,36 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import alerts, webpush
+from app import alerts, device_alerts, webpush
 from app.audit import record_event
 from app.authorization import require_role
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
-from app.models import PushSubscription, Role, User
+from app.models import Device, PushSubscription, Role, User
 
 router = APIRouter(prefix="/api/v1/homes/{home_id}/alerts", tags=["alerts"])
 push_router = APIRouter(prefix="/api/v1/account/push", tags=["alerts"])
 
 Kind = Literal[
-    "garage_open", "auto_close", "obstruction", "offline", "water_heater", "camera"
+    "garage_open",
+    "auto_close",
+    "obstruction",
+    "offline",
+    "water_heater",
+    "temperature",
+    "camera",
 ]
-DeviceType = Literal["thermostat", "water_heater", "garage_door", "light", "plug", "tv"]
 
 
 class SettingsIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    garage_open_minutes: int | None = Field(default=None, ge=0, le=1440)
-    auto_close_minutes: int | None = Field(default=None, ge=0, le=1440)
-    obstruction: StrictBool | None = None
-    offline_minutes: int | None = Field(default=None, ge=0, le=1440)
-    offline_types: list[DeviceType] | None = Field(default=None, max_length=6)
-    water_heater: StrictBool | None = None
     frigate_labels: list[str] | None = Field(default=None, max_length=10)
+
+
+class DeviceAlertIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: StrictBool | None = None
+    settings: dict[str, Any] | None = None
 
 
 class PrefsIn(BaseModel):
@@ -112,6 +117,46 @@ def change_settings(
         details=changes,
     )
     return alerts.settings_out(row)
+
+
+@router.get("/devices")
+def device_alerts_list(
+    home_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict[str, dict[str, Any]]:
+    """Each device's alerts (the bells in Settings > Devices)."""
+    require_role(db, user.id, home_id)
+    return device_alerts.for_home(db, home_id)
+
+
+@router.put("/devices/{device_id}", dependencies=[Depends(require_csrf)])
+def change_device_alerts(
+    home_id: str,
+    device_id: str,
+    body: DeviceAlertIn,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """A device's alerts on or off, and its own alert settings (operators
+    and up, as for the rest of Settings > Devices)."""
+    require_role(db, user.id, home_id, Role.OPERATOR)
+    device = db.get(Device, device_id)
+    if device is None or device.home_id != home_id:
+        raise HTTPException(404, "Not found")
+    try:
+        out = device_alerts.save(db, device, body.enabled, body.settings)
+    except device_alerts.DeviceAlertError as error:
+        db.rollback()
+        raise HTTPException(422, error.reason) from None
+    record_event(
+        db,
+        "device_alerts_changed",
+        user_id=user.id,
+        home_id=home_id,
+        ip_address=client_ip(request),
+        details={"device_id": device_id, **out},
+    )
+    return out
 
 
 @router.put("/mine", dependencies=[Depends(require_csrf)])

@@ -34,12 +34,19 @@ function setAttrs(node, attrs) {
   }
 }
 
-/** "light" -> "Light", "tv" -> "TV", "water_heater" -> "Water heater". */
+/** "light" -> "Light", "tv" -> "TV", "water_heater" -> "Water Heater". */
 function typeLabel(type) {
-  const known = { tv: 'TV', water_heater: 'Water heater' };
-  if (known[type]) return known[type];
-  const words = String(type || '').replace(/_/g, ' ');
-  return words.charAt(0).toUpperCase() + words.slice(1);
+  if (type === 'tv') return 'TV';
+  return String(type || '').split('_').filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+/** The brand as people write it ("cync" -> "GE Cync"). */
+const BRAND_NAMES = {
+  simulated: 'Demo', cync: 'GE Cync', hue: 'Philips Hue', kasa: 'TP-Link Kasa', samsung_tv: 'Samsung',
+  lg_tv: 'LG', roku_tv: 'Roku', rheem_econet: 'Rheem EcoNet', ratgdo: 'ratgdo', frigate: 'Frigate',
+};
+function brandName(integration) {
+  return BRAND_NAMES[integration] || typeLabel(integration);
 }
 
 function field(label, input) {

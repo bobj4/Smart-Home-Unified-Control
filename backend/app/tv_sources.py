@@ -28,10 +28,13 @@ class SourcesUnavailable(Exception):
 def _guard(action: Any) -> Any:
     try:
         return action()
-    except smartthings.SmartThingsDenied:
+    except smartthings.SmartThingsDenied as error:
+        ours = (smartthings_oauth.RECONNECT, smartthings_oauth.PAT_LAPSED)
         raise SourcesUnavailable(
             409,
-            "SmartThings refused the sign-in: connect it again in Settings > Integrations",
+            str(error)
+            if str(error) in ours
+            else "SmartThings refused the sign-in: connect it again in Settings > Integrations",
         ) from None
     except smartthings.SmartThingsError as error:
         raise SourcesUnavailable(502, str(error)) from None
@@ -68,9 +71,27 @@ def disconnect(db: Session, home_id: str) -> None:
     credentials.remove(db, home_id, CREDENTIAL)
 
 
-def smartthings_tvs(db: Session, home_id: str) -> list[dict[str, str]]:
+def _call(db: Session, home_id: str, action: Any) -> Any:
+    """action(token), once more with a renewed sign-in if SmartThings
+    refuses it; a lapsed personal token is noted (smartthings_oauth.rejected)
+    and says what to do."""
     token = _token(db, home_id)
-    return list(_guard(lambda: smartthings.tvs(token)))
+    try:
+        return action(token)
+    except smartthings.SmartThingsDenied:
+        try:
+            token = smartthings_oauth.rejected(db, home_id, token)
+        except smartthings.SmartThingsDenied as why:
+            raise SourcesUnavailable(409, str(why)) from None
+        except smartthings.SmartThingsError as error:
+            raise SourcesUnavailable(502, str(error)) from None
+        return _guard(lambda: action(token))
+    except smartthings.SmartThingsError as error:
+        raise SourcesUnavailable(502, str(error)) from None
+
+
+def smartthings_tvs(db: Session, home_id: str) -> list[dict[str, str]]:
+    return list(_call(db, home_id, smartthings.tvs))
 
 
 def linked_id(device: Device) -> str | None:
@@ -90,16 +111,18 @@ def tv_sources(db: Session, device: Device) -> dict[str, Any]:
     st_id = linked_id(device)
     if not st_id:
         raise SourcesUnavailable(409, "link this TV to SmartThings first")
-    token = _token(db, device.home_id)
-    return dict(_guard(lambda: smartthings.sources(token, st_id)))
+    return dict(
+        _call(db, device.home_id, lambda token: smartthings.sources(token, st_id))
+    )
 
 
 def set_tv_source(db: Session, device: Device, source: str) -> None:
     st_id = linked_id(device)
     if not st_id:
         raise SourcesUnavailable(409, "link this TV to SmartThings first")
-    token = _token(db, device.home_id)
-    _guard(lambda: smartthings.set_source(token, st_id, source))
+    _call(
+        db, device.home_id, lambda token: smartthings.set_source(token, st_id, source)
+    )
 
 
 def _plain(name: str) -> str:
@@ -129,15 +152,19 @@ def turn_on(db: Session, device: Device) -> bool:
     has Wake-on-LAN or the power key."""
     if not connected(db, device.home_id):
         return False
-    try:
-        token = _token(db, device.home_id)
+
+    def power(token: str) -> str | None:
         st_id = _power_link(db, device, token)
-        if st_id is None:
+        if st_id is not None:
+            smartthings.switch_on(token, st_id)
+        return st_id
+
+    try:
+        if _call(db, device.home_id, power) is None:
             log.info(
                 "%s: no SmartThings TV to turn on (link it in Settings)", device.name
             )
             return False
-        smartthings.switch_on(token, st_id)
     except (SourcesUnavailable, smartthings.SmartThingsError) as error:
         log.info(
             "%s: SmartThings could not turn it on: %s",

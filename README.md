@@ -38,18 +38,26 @@ through the backend's permission checks and device safety limits.
 - Schedules and Scenes (its own tab): scenes switch devices and groups
   together with one press; schedules run on this server at a time of day,
   or at sunrise or sunset (minutes before or after), on chosen days, in the
-  home's time zone. Admins set the time zone, location, who may edit, and
-  can pause every schedule. Devices' own schedules (thermostats, water
+  home's time zone. Admins set the time zone, location (typed in, or from
+  the home's address, which it then follows), who may edit, and can pause
+  every schedule. Devices' own schedules (thermostats, water
   heaters) still live on their cards.
 - Alerts by email and as notifications on phones and computers (Web
   Push, no app store): a garage door left open (and, if wanted, closed
   for you after a while), something in its way, devices offline, water
-  heater problems and camera detections (Frigate). Admins pick what the
-  home watches; each person picks what they get. Notifications need
+  heater problems, thermostats too hot or too cold, and camera detections
+  (Frigate). Each device's bell in Settings › Devices sets what it alerts
+  about (grey: on, red and struck through: off, a plus: more settings);
+  camera labels are set in the Frigate settings. Each person picks what
+  they get. Notifications need
   HTTPS and SECRETS_KEY; on an iPhone, add the app to the Home Screen.
   A bell at the top right counts the alerts you have not seen yet.
 - Energy: power now and use today from Kasa plugs that measure it, and
   water heaters' use today (the ⚡ button on the Devices page).
+- Network details (the ⓘ beside each device): IP and MAC address, type
+  and brand. Cync's cloud reports only the MAC, so the IP is found from
+  this server's neighbour table: only when the server sees the home
+  network (installed directly, or Docker with `network_mode: host`).
 - Philips Hue: lights take their Hue app rooms, Hue scenes can be steps in
   Schedules and Scenes, and changes made anywhere show at once (the
   bridge's event stream).

@@ -6,12 +6,28 @@ import base64
 import struct
 import zlib
 
+import pytest
 from playwright.sync_api import expect
 
 from app.models import DeviceSafetyLimits, HomeMembership
 from tests import test_ui as _ui
 
 HOMES = "/api/v1/homes"
+
+
+@pytest.fixture(autouse=True)
+def no_geocoding(monkeypatch):
+    """Saving an address looks up its location (geocode.py): not from tests."""
+    from app import geocode
+
+    looked_up = []
+
+    def get(url, params):
+        looked_up.append(params)
+        return {"result": {"addressMatches": []}} if "census" in url else []
+
+    monkeypatch.setattr(geocode, "get", get)
+    return looked_up
 
 
 def png(width=4, height=4):

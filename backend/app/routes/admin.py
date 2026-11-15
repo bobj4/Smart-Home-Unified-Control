@@ -16,6 +16,7 @@ from app import member_codes
 from app.audit import record_event
 from app.auth import generate_recovery_codes, hash_password
 from app.authorization import require_role
+from app.automation import follow_address
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
 from app.home_icons import ICONS
@@ -145,7 +146,7 @@ def rename_home(
         raise HTTPException(422, "nothing to change")
     if body.icon is not None and body.icon not in ICONS:
         raise HTTPException(422, "choose one of the icons")
-    old = home.name
+    old, old_address = home.name, home.address
     if body.name is not None:
         home.name = body.name.strip()
         if not home.name:
@@ -165,6 +166,8 @@ def rename_home(
             ip_address=ip,
             details={"old": old, "new": home.name},
         )
+    if home.address and home.address != old_address:  # schedules' location
+        follow_address(db, home_id)
     if body.address is not None or body.icon is not None:
         record_event(
             db,

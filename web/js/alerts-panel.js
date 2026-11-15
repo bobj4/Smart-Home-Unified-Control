@@ -1,7 +1,8 @@
 /**
  * My account > Alerts: which of this home's alerts I get, by email and as
- * notifications on this phone or computer. Settings > Admin > Alerts sets
- * what the home watches for (AlertSettingsPanel, below).
+ * notifications on this phone or computer. What each device alerts about
+ * is set with its bell in Settings > Devices; cameras in Integrations >
+ * Frigate.
  */
 
 function keyBytes(text) {
@@ -84,58 +85,4 @@ class AlertsPanel {
   }
 }
 
-class AlertSettingsPanel {
-  constructor(app) {
-    this.app = app;
-  }
-
-  async render(container) {
-    const data = await this.app.api.getAlerts(this.app.home.id).catch(() => null);
-    if (!data) return;
-    const s = data.settings;
-    const minutes = (testid, value, label) => el('input', { type: 'number', min: '0', max: '1440', testid, value: String(value), 'aria-label': label });
-    const open = minutes('alert-garage-minutes', s.garage_open_minutes, 'Garage open alert minutes');
-    const close = minutes('alert-auto-close', s.auto_close_minutes, 'Close it after minutes');
-    const offline = minutes('alert-offline-minutes', s.offline_minutes, 'Offline alert minutes');
-    const obstruction = switchInput('alert-obstruction', s.obstruction, 'Obstruction');
-    const heater = switchInput('alert-heater', s.water_heater, 'Water heater');
-    const types = [['thermostat', 'Thermostats'], ['water_heater', 'Water heaters'], ['garage_door', 'Garage doors'], ['tv', 'TVs'], ['light', 'Lights'], ['plug', 'Plugs']].map(([id, label]) => el('label', { className: 'check' }, [
-      el('input', { type: 'checkbox', testid: `alert-offline-${id}`, value: id, checked: s.offline_types.includes(id) }), el('span', { text: label }),
-    ]));
-    const labels = el('input', { type: 'text', testid: 'alert-camera-labels', value: s.frigate_labels.join(', '), placeholder: 'person, car', 'aria-label': 'Camera labels' });
-    const form = el('form', { className: 'subpanel', testid: 'alert-settings' }, [
-      el('h3', { text: 'Alerts' }),
-      el('p', { className: 'muted', text: 'What this home watches for. Each person picks what they get in My account > Alerts. 0 minutes turns that alert off.' }),
-      el('div', { className: 'grid-fields' }, [
-        field('Garage open longer than (minutes)', open),
-        field('Then close it after (minutes, 0: never)', close),
-        field('Offline longer than (minutes)', offline),
-      ]),
-      el('p', { className: 'muted', text: 'Offline alerts for:' }),
-      el('div', { className: 'guest-flags' }, types),
-      settingRow('Garage door blocked', 'A ratgdo\'s obstruction sensor sees something in the way.', obstruction),
-      settingRow('Water heater problems', 'A Rheem water heater reports a new alert.', heater),
-      field('Camera alerts for (Frigate labels, empty: none)', labels),
-      el('button', { type: 'submit', testid: 'alert-settings-save', text: 'Save' }),
-    ]);
-    form.addEventListener('submit', (event) => {
-      event.preventDefault();
-      this.app.run(async () => {
-        await this.app.api.setAlertSettings(this.app.home.id, {
-          garage_open_minutes: Number(open.value || 0),
-          auto_close_minutes: Number(close.value || 0),
-          offline_minutes: Number(offline.value || 0),
-          offline_types: types.map((t) => t.querySelector('input')).filter((b) => b.checked).map((b) => b.value),
-          obstruction: obstruction.checked,
-          water_heater: heater.checked,
-          frigate_labels: labels.value.split(',').map((x) => x.trim()).filter(Boolean),
-        });
-        this.app.status.success('Alert settings saved.');
-      });
-    });
-    container.append(form);
-  }
-}
-
 window.AlertsPanel = AlertsPanel;
-window.AlertSettingsPanel = AlertSettingsPanel;

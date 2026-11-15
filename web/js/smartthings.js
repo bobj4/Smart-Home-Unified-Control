@@ -47,7 +47,7 @@ class SmartThingsPanel {
    * to Samsung once; after that it renews itself. */
   setupForm() {
     const redirect = `${window.location.origin}${SMARTTHINGS_CALLBACK}`;
-    const token = el('input', { type: 'password', testid: 'smartthings-setup-token', autocomplete: 'off', required: true, maxlength: '200', pattern: '[A-Za-z0-9-]+' });
+    const token = el('input', { type: 'password', testid: 'smartthings-setup-token', autocomplete: 'off', required: true, maxlength: '200', pattern: '[A-Za-z0-9\\-]+' });
     const form = el('form', { testid: 'smartthings-setup' }, [
       el('ol', { className: 'muted steps' }, [
         el('li', {}, ['At ', el('a', { href: 'https://account.smartthings.com/tokens', target: '_blank', rel: 'noopener noreferrer', text: 'account.smartthings.com/tokens' }),
@@ -77,8 +77,8 @@ class SmartThingsPanel {
   /** For someone who made their own SmartApp (SmartThings CLI). */
   signInForm() {
     const redirect = `${window.location.origin}${SMARTTHINGS_CALLBACK}`;
-    const id = el('input', { type: 'text', testid: 'smartthings-client-id', autocomplete: 'off', required: true, maxlength: '100', pattern: '[A-Za-z0-9-]+' });
-    const secret = el('input', { type: 'password', testid: 'smartthings-client-secret', autocomplete: 'off', required: true, maxlength: '200', pattern: '[A-Za-z0-9-]+' });
+    const id = el('input', { type: 'text', testid: 'smartthings-client-id', autocomplete: 'off', required: true, maxlength: '100', pattern: '[A-Za-z0-9\\-]+' });
+    const secret = el('input', { type: 'password', testid: 'smartthings-client-secret', autocomplete: 'off', required: true, maxlength: '200', pattern: '[A-Za-z0-9\\-]+' });
     const form = el('form', { testid: 'smartthings-oauth' }, [
       el('p', { className: 'muted' }, [
         'Made a SmartApp yourself (',
@@ -137,11 +137,15 @@ class SmartThingsPanel {
       );
       return;
     }
-    if (info.problem) {  // a sign-in that lapsed: sign in again with the saved app
+    if (info.problem) {  // a sign-in or token that lapsed: sign in again, or a new token
       this.box.replaceChildren(
         el('h3', { text: 'SmartThings (TV inputs by name)' }),
         el('p', { className: 'error', testid: 'smartthings-problem', text: info.problem }),
-        el('button', { type: 'button', testid: 'smartthings-reconnect', text: 'Sign in with SmartThings again', onclick: () => this.signIn() }),
+        info.method === 'oauth' || info.app_registered
+          ? el('button', { type: 'button', testid: 'smartthings-reconnect', text: 'Sign in with SmartThings again', onclick: () => this.signIn() })
+          : '',
+        el('h4', { text: 'Or set it up again with a new token' }),
+        this.setupForm(),
         this.disconnectButton(tvs),
       );
       return;
@@ -167,6 +171,12 @@ class SmartThingsPanel {
       info.method === 'token' && info.app_registered
         ? el('button', { type: 'button', testid: 'smartthings-reconnect', text: 'Sign in to stay connected', onclick: () => this.signIn() })
         : '',
+      // Why the sign-in could not be set up last time (kept, not just a passing message).
+      info.method === 'token' && info.setup_problem
+        ? el('p', { className: 'error', testid: 'smartthings-setup-problem', text: `The sign-in could not be set up: ${info.setup_problem}` })
+        : '',
+      // Connected with a token only and no app yet: set up the sign-in.
+      info.method === 'token' && !info.app_registered ? this.setupForm() : '',
       rows.length ? el('div', { className: 'grid-fields' }, rows) : el('p', { className: 'muted', text: 'Add a TV above first.' }),
       this.disconnectButton(tvs),
     );

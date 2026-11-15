@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.audit import record_event
 from app.authorization import require_role
+from app.automation import follow_address
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
 from app.home_icons import ICONS, IconError, check_picture
@@ -113,6 +114,8 @@ def add_home(
         )
     )
     db.commit()
+    if home.address:  # sunrise and sunset schedules: its location
+        follow_address(db, home.id)
     ip = client_ip(request)
     apply_recommended(db, home.id, user_id=user.id, ip_address=ip)
     record_event(

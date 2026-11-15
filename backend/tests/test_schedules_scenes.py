@@ -348,3 +348,78 @@ def test_guests_run_scenes_only_when_allowed(
 
 def test_scenes_of_a_home_at_another_site_run_there():
     assert "automation" in federation.FORWARDED
+
+
+# ------------------------------------------------- location from the address
+
+
+def test_census_then_nominatim_rounded(monkeypatch):
+    from app import geocode
+
+    asked = []
+
+    def get(url, params):
+        asked.append(url)
+        if "census" in url:
+            return {"result": {"addressMatches": []}}
+        return [{"lat": "40.712776", "lon": "-74.005974"}]
+
+    monkeypatch.setattr(geocode, "get", get)
+    assert geocode.locate("1 Main St, New York") == (40.713, -74.006)
+    assert asked == [geocode.CENSUS, geocode.NOMINATIM]
+
+    def down(url, params):
+        raise geocode.requests.ConnectionError("offline")
+
+    monkeypatch.setattr(geocode, "get", down)
+    assert geocode.locate("1 Main St") is None
+
+
+def test_the_location_follows_the_address(client, db, owner, login, csrf, monkeypatch):
+    from app import geocode
+
+    found = {"x": -74.006, "y": 40.7128}
+
+    def get(url, params):
+        if "census" not in url:
+            return []
+        return {
+            "result": {
+                "addressMatches": [{"coordinates": dict(found)}] if found else []
+            }
+        }
+
+    monkeypatch.setattr(geocode, "get", get)
+    assert login(client, owner).status_code == 200
+    settings = base(owner.home_id, "/settings")
+
+    def shown():
+        return client.get(base(owner.home_id)).json()["settings"]
+
+    r = client.post(f"{settings}/locate", headers=csrf(client))
+    assert r.status_code == 422  # no address yet
+    home = f"/api/v1/homes/{owner.home_id}"
+    r = client.patch(home, json={"address": "1 Main St"}, headers=csrf(client))
+    assert r.status_code == 200, r.text
+    s = shown()
+    assert (s["latitude"], s["longitude"], s["location_source"]) == (
+        40.713,
+        -74.006,
+        "address",
+    )
+    assert s["sun_today"] is not None
+    found.update(x=-71.06, y=42.36)
+    client.patch(home, json={"address": "2 Elm St"}, headers=csrf(client))
+    assert shown()["latitude"] == 42.36  # followed
+    # Typed in: a new address leaves it alone, until asked.
+    client.put(
+        settings, json={"latitude": 30.0, "longitude": -90.0}, headers=csrf(client)
+    )
+    assert shown()["location_source"] == "manual"
+    client.patch(home, json={"address": "3 Oak St"}, headers=csrf(client))
+    assert shown()["latitude"] == 30.0
+    r = client.post(f"{settings}/locate", headers=csrf(client))
+    assert r.status_code == 200 and r.json()["latitude"] == 42.36
+    found.clear()
+    r = client.post(f"{settings}/locate", headers=csrf(client))
+    assert r.status_code == 502 and "found" in r.json()["detail"]

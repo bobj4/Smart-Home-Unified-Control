@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import credentials, tv_pending
+from app import credentials, neighbors, tv_pending
 from app.audit import record_event
 from app.authorization import require_role
 from app.db_config import get_db
@@ -78,13 +78,21 @@ class CommandRejected(Exception):
         self.reason = reason
 
 
+# Added by their IP address (it is their external_id).
+BY_ADDRESS = ("samsung_tv", "lg_tv", "roku_tv", "ratgdo")
+
+
 def _network(device: Device) -> dict[str, str | None]:
-    """The device's address on the home network, when its brand reports it."""
+    """The device's address on the home network: as added (TVs, ratgdo,
+    Kasa), or found from its MAC address (neighbors.py: Cync)."""
     caps = json.loads(device.capabilities or "{}")
-    ip = caps.get("ip")
-    if device.integration == "samsung_tv":
-        ip = device.external_id  # TVs are added by their IP address
-    return {"ip": ip, "mac": caps.get("mac")}
+    ip = caps.get("ip") or caps.get("host")
+    if device.integration in BY_ADDRESS:
+        ip = device.external_id
+    mac = caps.get("mac")
+    if not ip and isinstance(mac, str):
+        ip = neighbors.ip_for(mac)
+    return {"ip": ip, "mac": mac}
 
 
 def _device_out(device: Device) -> dict[str, Any]:

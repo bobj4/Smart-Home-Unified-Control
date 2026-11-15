@@ -204,6 +204,14 @@ def test_ui_sign_in_form_and_the_way_back(open_page, db, owner, st, secrets_key)
     panel = page.get_by_test_id("smartthings")
     expect(panel.get_by_test_id("smartthings-setup-connect")).to_be_visible()
     expect(panel.get_by_test_id("smartthings-token")).to_be_visible()  # still offered
+    # The token's pattern is a valid regular expression (Chrome's "v" mode),
+    # so a mistyped token is caught here.
+    box = panel.get_by_test_id("smartthings-setup-token")
+    box.fill("not a token!")
+    assert box.evaluate("n => n.validity.patternMismatch") is True
+    box.fill("0123-abcd")
+    assert box.evaluate("n => n.validity.patternMismatch") is False
+    box.fill("")
     expect(panel).not_to_contain_text("null")
     # One's own SmartApp: folded away, and plainly not the Samsung login.
     expect(panel.get_by_test_id("smartthings-signin")).not_to_be_visible()
@@ -334,7 +342,13 @@ def test_setup_without_the_apps_permission(
         "authorize_url": None,
         "problem": 'the token cannot register an app: tick "Apps"',
     }
-    assert saved(db, owner) == {"token": TOKEN}  # still connected for now
+    # Still connected for now, and Settings keeps saying why.
+    assert saved(db, owner) == {
+        "token": TOKEN,
+        "setup_problem": 'the token cannot register an app: tick "Apps"',
+    }
+    info = client.get(base(owner.home_id)).json()
+    assert info["method"] == "token" and "tick" in info["setup_problem"]
     monkeypatch.setattr(
         smartthings,
         "tvs",
@@ -356,3 +370,88 @@ def test_what_smartthings_sent_back_is_said(new_client):
     assert "(Bad thing)" in back("error=server_error&error_description=Bad+thing")
     assert "it sent: nothing" in back("")
     assert "it sent: state" in back("state=abc")
+
+
+def test_a_lapsed_token_says_so_and_setting_up_again_clears_it(
+    client, db, owner, login, csrf, st, monkeypatch, secrets_key
+):
+    credentials.save(
+        db, owner.home_id, smartthings_oauth.CREDENTIAL, "SmartThings", {"token": TOKEN}
+    )
+
+    def refused(token):
+        raise smartthings.SmartThingsDenied("SmartThings refused the token")
+
+    monkeypatch.setattr(smartthings, "tvs", refused)
+    assert login(client, owner).status_code == 200
+    info = client.get(base(owner.home_id)).json()
+    assert info["connected"] is True and info["method"] == "token"
+    assert info["problem"] == smartthings_oauth.PAT_LAPSED
+    assert saved(db, owner)["problem"] == smartthings_oauth.PAT_LAPSED
+    monkeypatch.setattr(smartthings, "tvs", st.tvs)  # a new token works
+    r = client.put(base(owner.home_id), json={"token": TOKEN}, headers=csrf(client))
+    assert r.status_code == 200, r.text
+    assert saved(db, owner) == {"token": TOKEN}
+    assert client.get(base(owner.home_id)).json()["problem"] is None
+
+
+def test_a_refused_sign_in_is_renewed_once_and_used_again(
+    client, db, owner, login, st, monkeypatch, secrets_key
+):
+    connect(db, owner)  # not due for renewal, but SmartThings refuses it
+    asked = []
+
+    def tvs(token):
+        asked.append(token)
+        if token == "access-0":
+            raise smartthings.SmartThingsDenied("SmartThings refused the token")
+        return [{"id": "st-tv", "name": "Den TV"}]
+
+    monkeypatch.setattr(smartthings, "tvs", tvs)
+    assert login(client, owner).status_code == 200
+    info = client.get(base(owner.home_id)).json()
+    assert info["problem"] is None and info["tvs"][0]["name"] == "Den TV"
+    assert asked == ["access-0", "access-1"] and len(st.grants) == 1
+    assert saved(db, owner)["refresh_token"] == "refresh-1"
+
+
+def test_renewals_wait_for_each_other(db, owner, st, secrets_key):
+    """A request and the background refresh: the second sees the renewed
+    sign-in instead of using the spent refresh token."""
+    old = time.time() - 13 * 3600
+    connect(db, owner, renewed_at=old, expires_at=time.time() + 60)
+    stale = saved(db, owner)
+    assert smartthings_oauth.access_token(db, owner.home_id, stale) == "access-1"
+    assert smartthings_oauth.access_token(db, owner.home_id, stale) == "access-1"
+    assert smartthings_oauth.keep_fresh(db, owner.home_id) is False  # just renewed
+    assert len(st.grants) == 1
+
+
+def test_ui_token_only_offers_the_sign_in_setup(open_page, db, owner, st, secrets_key):
+    """Connected with "the token only" (no app registered): the one-step
+    setup is still there, so it can be made to last."""
+    features.set_integration(db, owner.home_id, "samsung_tv", True, None, None)
+    credentials.save(
+        db, owner.home_id, smartthings_oauth.CREDENTIAL, "SmartThings", {"token": TOKEN}
+    )
+    page = open_page()
+    _ui.ui_login(page, owner)
+    page.goto(page.url.split("#")[0] + "#/settings/integrations")
+    panel = page.get_by_test_id("smartthings")
+    expect(panel.get_by_test_id("smartthings-connected")).to_be_visible()
+    expect(panel.get_by_test_id("smartthings-setup-connect")).to_be_visible()
+    expect(panel.get_by_test_id("smartthings-setup-problem")).to_have_count(0)
+    credentials.save(
+        db,
+        owner.home_id,
+        smartthings_oauth.CREDENTIAL,
+        "SmartThings",
+        {
+            "token": TOKEN,
+            "setup_problem": "SmartThings would not register the app (422)",
+        },
+    )
+    page.reload()
+    expect(page.get_by_test_id("smartthings-setup-problem")).to_contain_text(
+        "would not register the app (422)"
+    )

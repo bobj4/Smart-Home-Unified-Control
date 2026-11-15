@@ -30,7 +30,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import sun
+from app import geocode, sun
 from app.audit import record_event
 from app.authorization import require_role
 from app.db_config import SessionLocal
@@ -39,6 +39,7 @@ from app.groups import GROUP_COMMANDS, members
 from app.models import (
     Device,
     DeviceGroup,
+    Home,
     Role,
     Scene,
     Schedule,
@@ -86,6 +87,39 @@ def valid_zone(name: str) -> bool:
     return name == "UTC" or name in available_timezones()
 
 
+def from_address(db: Session, home_id: str, force: bool = False) -> bool:
+    """Set the location from the home's address (geocode.py): when asked
+    (force), or when the address changed and the location was not typed in.
+    Returns whether it was set."""
+    home = db.get(Home, home_id)
+    row = settings_for(db, home_id)
+    if home is None or not home.address:
+        return False
+    if not force and row.location_source == "manual" and row.latitude is not None:
+        return False
+    found = geocode.locate(home.address)
+    if found is None:
+        db.commit()
+        return False
+    row.latitude, row.longitude = found
+    row.location_source = "address"
+    db.flush()
+    for schedule in db.scalars(select(Schedule).where(Schedule.home_id == home_id)):
+        schedule.next_run_at = next_run(schedule, row, utcnow())
+    db.commit()
+    return True
+
+
+def follow_address(db: Session, home_id: str) -> None:
+    """After the home's address changed: its location follows (unless typed
+    in). A failed lookup changes nothing and is not an error."""
+    try:
+        from_address(db, home_id)
+    except Exception:  # never fail saving the address over this
+        db.rollback()
+        log.exception("schedules: looking up the home's address failed")
+
+
 def settings_out(row: ScheduleSettings) -> dict[str, Any]:
     """The settings, and today's sunrise and sunset there (local time, to
     check the location), when the location is set."""
@@ -106,6 +140,7 @@ def settings_out(row: ScheduleSettings) -> dict[str, Any]:
         "editors": row.editors,
         "paused": bool(row.paused),
         "sun_today": sun_today,
+        "location_source": row.location_source,
     }
 
 
@@ -118,8 +153,9 @@ def save_settings(
             raise AutomationError(422, "not a time zone this server knows")
         row.time_zone = str(changes["time_zone"])
     for key in ("latitude", "longitude"):
-        if key in changes:
+        if key in changes and changes[key] != getattr(row, key):
             setattr(row, key, changes[key])
+            row.location_source = "manual"  # typed in: an address change keeps it
     if (row.latitude is None) != (row.longitude is None):
         raise AutomationError(422, "give both latitude and longitude, or neither")
     if "editors" in changes:

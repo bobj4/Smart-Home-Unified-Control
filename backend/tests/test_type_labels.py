@@ -1,4 +1,5 @@
-"""Device types always start with a capital letter, and TV is all capitals."""
+"""Device types are in title case ("Water Heater"), TV all capitals, and
+brands as written ("GE Cync")."""
 
 from playwright.sync_api import expect
 
@@ -24,4 +25,4 @@ def test_type_label_helper(open_page, owner):
     labels = page.evaluate(
         "() => ['light', 'tv', 'water_heater', 'smart_switch', ''].map(typeLabel)"
     )
-    assert labels == ["Light", "TV", "Water heater", "Smart switch", ""]
+    assert labels == ["Light", "TV", "Water Heater", "Smart Switch", ""]

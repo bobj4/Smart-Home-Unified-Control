@@ -30,12 +30,25 @@ class ScheduleSettingsPanel {
     const paused = switchInput('schedule-paused', s.paused, 'Pause every schedule');
     const sun = s.sun_today
       ? el('p', { className: 'muted', testid: 'schedule-sun-today', text: `Today there: sunrise ${sunClockText(s.sun_today.sunrise)}, sunset ${sunClockText(s.sun_today.sunset)} (your device's time).` })
-      : el('p', { className: 'muted', text: 'Set the location for sunrise and sunset schedules. In a map app, press and hold (or right-click) your home to copy its latitude and longitude.' });
+      : el('p', { className: 'muted', text: 'Set the location for sunrise and sunset schedules: from the home\'s address (Admin > Home), or in a map app press and hold (or right-click) your home to copy its latitude and longitude.' });
+    const source = el('p', { className: 'muted', testid: 'schedule-location-source', text: s.location_source === 'address' ? 'Location from the home\'s address; it follows when the address changes.' : (s.latitude === null ? '' : 'Location typed in.') });
+    const locate = el('button', {
+      type: 'button', className: 'secondary', testid: 'schedule-locate', text: 'Use the home\'s address',
+      onclick: () => this.app.run(async () => {
+        await this.app.api.locateFromAddress(this.app.home.id);
+        this.app.status.success('Location set from the home\'s address.');
+        const fresh = el('div');
+        await this.render(fresh);
+        form.replaceWith(...fresh.childNodes);
+      }),
+    });
     const note = formNote('schedule-settings-note');
     const form = el('form', { className: 'subpanel', testid: 'schedule-settings' }, [
       el('h3', { text: 'Schedules and Scenes' }),
       el('p', { className: 'muted', text: 'Schedules this server runs (the Schedules and Scenes tab), in this home\'s time zone.' }),
       el('div', { className: 'row' }, [field('Time zone', zone), field('Location (latitude, longitude)', place)]),
+      el('div', { className: 'actions' }, [locate]),
+      source,
       sun,
       field('Who may make and change scenes and schedules', editors),
       settingRow('Pause every schedule', 'Going away, say. Scenes still run when pressed.', paused),

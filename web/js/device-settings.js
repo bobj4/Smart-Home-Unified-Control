@@ -4,7 +4,7 @@
  * the top and the bottom for every changed row; Delete per device.
  */
 
-const DEVICE_TYPE_LABELS = { light: 'Lights', plug: 'Plugs', tv: 'TVs', thermostat: 'Thermostats', water_heater: 'Water heaters', camera: 'Cameras', sensor: 'Sensors', garage_door: 'Garage doors' };
+const DEVICE_TYPE_LABELS = { light: 'Lights', plug: 'Plugs', tv: 'TVs', thermostat: 'Thermostats', water_heater: 'Water Heaters', camera: 'Cameras', sensor: 'Sensors', garage_door: 'Garage Doors' };
 
 class DeviceSettings {
   constructor(app) {
@@ -14,9 +14,11 @@ class DeviceSettings {
   async render(container) {
     const admin = this.app.can('operator');
     const homeId = this.app.home.id;
-    const [devices, groups, rooms] = await Promise.all([
+    const [devices, groups, rooms, alerts] = await Promise.all([
       this.app.api.getDevices(homeId), this.app.api.getGroups(homeId), this.app.api.getRooms(homeId),
+      this.app.api.getDeviceAlerts(homeId).catch(() => ({})), // at another site: none
     ]);
+    this.alerts = alerts;
     if (admin) await new GroupSettings(this.app).render(container, { rooms, groups });
     if (devices.length === 0) {
       container.append(el('p', { className: 'muted', text: 'No devices yet.' }));
@@ -88,7 +90,10 @@ class DeviceSettings {
     const row = el('form', { className: 'device-row', testid: 'device-row', 'data-device-id': device.id, 'data-device-type': device.type }, [
       el('div', { className: 'grid-fields' }, fields),
       deviceInfoButton(device),
-      el('span', { className: 'muted', text: typeLabel(device.type) }),
+      el('span', { className: 'device-kind' }, [
+        el('span', { className: 'muted', text: typeLabel(device.type) }),
+        this.alerts[device.id] ? deviceAlertBell(this.app, device, this.alerts[device.id], admin) : '',
+      ]),
     ]);
     if (admin) {
       row.addEventListener('input', () => { row.dataset.changed = 'true'; });

@@ -100,11 +100,22 @@ def get_smartthings(
     if not connected(db, home_id):
         return {"connected": False, "tvs": [], "links": links}
     how = status(saved_login(db, home_id))
-    if how["problem"]:  # a sign-in that must be done again: no TVs to list
-        return {"connected": True, "tvs": [], "links": links, **how}
-    found = _run(lambda: smartthings_tvs(db, home_id))
     how["app_registered"] = saved_app(db, home_id) is not None
-    return {"connected": True, "tvs": found, "links": links, **how}
+    if not how["problem"]:
+        try:
+            found = smartthings_tvs(db, home_id)
+        except SourcesUnavailable as error:
+            if error.status_code != 409:
+                raise HTTPException(error.status_code, error.reason) from None
+            how = {
+                **status(saved_login(db, home_id)),
+                "app_registered": how["app_registered"],
+            }
+            how["problem"] = how["problem"] or error.reason
+        else:
+            return {"connected": True, "tvs": found, "links": links, **how}
+    # A sign-in or token that must be done again: no TVs to list.
+    return {"connected": True, "tvs": [], "links": links, **how}
 
 
 class SetupIn(BaseModel):

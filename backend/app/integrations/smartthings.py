@@ -222,8 +222,10 @@ def register_app(token: str, redirect_uri: str, suffix: str) -> dict[str, str]:
             f"could not reach SmartThings: {type(error).__name__}"
         ) from None
     if response.status_code in (401, 403):
+        why = _detail(response)  # Samsung's own words, to tell the cases apart
         raise SmartThingsDenied(
             'the token cannot register an app: tick "Apps" (all) when making it'
+            f" (SmartThings said {response.status_code}{': ' + why if why else ''})"
         )
     if response.status_code >= 400:
         why = _detail(response)
