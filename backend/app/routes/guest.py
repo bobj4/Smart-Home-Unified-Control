@@ -10,6 +10,7 @@ the integration, the device answering) after the guest check.
 """
 
 import json
+import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -57,6 +58,7 @@ class GuestAccessIn(BaseModel):
     thermostat_settings: StrictBool = False
     thermostat_installer: StrictBool = False
     scenes: StrictBool = False
+    camera_names: list[str] = Field(default_factory=list, max_length=50)
     thermostat_ids: list[str] = Field(max_length=100)
 
 
@@ -184,6 +186,12 @@ def set_guest_access(
     for flag in FLAGS:
         setattr(access, flag, getattr(body, flag))
     access.thermostat_ids = json.dumps(wanted)
+    names = sorted(
+        {n for n in body.camera_names if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", n)}
+    )
+    if len(names) != len(set(body.camera_names)):
+        raise HTTPException(422, "Camera names are letters, digits, _ and -")
+    access.camera_names = json.dumps(names)
     db.commit()
     out = access_out(access)
     record_event(

@@ -15,7 +15,8 @@ What each permission allows:
   thermostat_installer  and the installer settings there (system type,
                   wires, thresholds, calibration...)
   water_heater    control of the water heaters, within the safety limits
-  cameras         the Cameras page (Frigate cameras and events)
+  cameras         the Cameras page (Frigate cameras and events); with
+  camera_names    only those cameras (empty: every camera)
   scenes          run the home's scenes (Schedules and Scenes), whatever
                   their devices; not make or change them
   show_blocked    devices they may not use are shown greyed out (True) or
@@ -94,6 +95,7 @@ def access_out(access: GuestAccess) -> dict[str, Any]:
     return {
         **{flag: bool(getattr(access, flag)) for flag in FLAGS},
         "thermostat_ids": thermostats(access),
+        "camera_names": camera_names(access),
     }
 
 
@@ -121,11 +123,23 @@ def allowed(access: GuestAccess, device: Device, command: str) -> bool:
     return False
 
 
-def require_camera_viewer(db: Session, user: User, home_id: str) -> None:
-    """Cameras: operators and up, or a guest allowed to see them."""
+def camera_names(access: GuestAccess) -> list[str]:
+    try:
+        names = json.loads(access.camera_names or "[]")
+    except ValueError:
+        return []
+    return [str(n) for n in names] if isinstance(names, list) else []
+
+
+def require_camera_viewer(db: Session, user: User, home_id: str) -> set[str] | None:
+    """Cameras: operators and up, or a guest allowed to see them. The
+    cameras the caller may see: None for every camera, else those names."""
     member = membership(db, user.id, home_id)
     if member is not None and member.role == GUEST_ROLE:
-        if not require_guest(db, user, home_id).cameras:
+        access = require_guest(db, user, home_id)
+        if not access.cameras:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Forbidden")
-        return
+        names = camera_names(access)
+        return set(names) if names else None
     require_role(db, user.id, home_id, Role.OPERATOR)
+    return None

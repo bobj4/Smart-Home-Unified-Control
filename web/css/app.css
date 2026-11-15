@@ -478,3 +478,6 @@ svg.home-icon { padding: 3px; background: var(--surface-2); }
 .scenes-actions, [data-testid="scene-new"], [data-testid="schedule-new"] { margin-top: 12px; justify-self: start; }
 .day-choices { display: flex; flex-wrap: wrap; gap: 6px 12px; }
 .garage-blocked { margin: 0; color: var(--danger); font-weight: 600; }
+.garage-parking { display: grid; gap: 6px; }
+.parking-target { align-items: center; }
+.parking-target input { width: 6em; }

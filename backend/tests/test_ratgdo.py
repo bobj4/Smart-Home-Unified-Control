@@ -67,7 +67,14 @@ def opener(monkeypatch):
         "extras",
         lambda host: {"obstruction": None, "light": None, "locked": None},
     )
-    monkeypatch.setattr(ratgdo, "act", lambda host, command: sent.append(command))
+    monkeypatch.setattr(
+        ratgdo, "act", lambda host, command, payload=None: sent.append(command)
+    )
+    monkeypatch.setattr(
+        ratgdo,
+        "measures",
+        lambda host: {"vehicle_distance_mm": None, "parking_target_mm": None},
+    )
     return {"sent": sent, "door": door}
 
 

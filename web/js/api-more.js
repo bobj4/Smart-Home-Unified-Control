@@ -18,6 +18,9 @@ Object.assign(SmartHomeAPI.prototype, {
   runScene(homeId, id) {
     return this.post(this.guest ? `/homes/${enc(homeId)}/guest/scenes/${enc(id)}/run` : `/homes/${enc(homeId)}/automation/scenes/${enc(id)}/run`);
   },
+  getHueScenes(homeId) {
+    return this.get(`/homes/${enc(homeId)}/integrations/hue/scenes`);
+  },
   getGuestScenes(homeId) {
     return this.get(`/homes/${enc(homeId)}/guest/scenes`);
   },

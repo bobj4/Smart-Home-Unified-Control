@@ -327,6 +327,8 @@ def test_ratgdo_extras(monkeypatch):
         "obstruction": True,
         "light": False,
         "locked": None,
+        "laser": None,  # not a ratgdo32 disco
+        "vehicle": None,
     }
     ratgdo.act("192.168.1.80", "light_on")
     assert calls[-1] == ("POST", "/light/Light/turn_on")

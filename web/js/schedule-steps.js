@@ -8,7 +8,7 @@ const STEP_COMMANDS = {
   light: [['turn_on', 'On'], ['turn_off', 'Off'], ['set_brightness', 'Brightness', 'brightness'], ['set_color_temp', 'White', 'kelvin'], ['set_color', 'Color', 'color']],
   plug: [['turn_on', 'On'], ['turn_off', 'Off']],
   tv: [['turn_on', 'On'], ['turn_off', 'Off']],
-  garage_door: [['open', 'Open'], ['close', 'Close']],
+  garage_door: [['open', 'Open'], ['close', 'Close'], ['light_on', 'Light on'], ['light_off', 'Light off'], ['laser_on', 'Parking laser on'], ['laser_off', 'Parking laser off']],
   thermostat: [['set_mode', 'Mode', 'mode'], ['set_temperature', 'Heat to (or set to)', 'temperature'], ['set_cool_temperature', 'Cool to', 'temperature'], ['set_fan', 'Fan', 'fan'], ['set_hold', 'Hold', 'hold']],
   water_heater: [['set_temperature', 'Set to', 'temperature'], ['turn_on', 'On'], ['turn_off', 'Off'], ['set_away', 'Away', 'away'], ['resume_schedule', 'Follow its schedule']],
 };
@@ -26,10 +26,11 @@ function stepChoice(options, value, testid) {
 }
 
 class StepList {
-  /** devices, groups: the home's; steps: [{kind, id, command, payload}]. */
-  constructor(devices, groups, steps) {
+  /** devices, groups, hueScenes: the home's; steps: [{kind, id, command, payload}]. */
+  constructor(devices, groups, steps, hueScenes = []) {
     this.devices = devices.filter((d) => STEP_COMMANDS[d.type]);
     this.groups = groups;
+    this.hueScenes = hueScenes;
     this.list = el('div', { className: 'step-list', testid: 'step-list' });
     this.box = el('div', { className: 'grid' }, [
       this.list,
@@ -41,6 +42,7 @@ class StepList {
   target(key) {
     const [kind, id] = key.split(':');
     if (kind === 'group') return { kind, id, commands: GROUP_STEP_COMMANDS };
+    if (kind === 'hue_scene') return { kind, id, commands: [['recall', 'Show scene']] };
     const device = this.devices.find((d) => d.id === id);
     return { kind, id, device, commands: device ? STEP_COMMANDS[device.type] : [] };
   }
@@ -49,6 +51,7 @@ class StepList {
     const options = [
       ...this.devices.map((d) => el('option', { value: `device:${d.id}`, text: d.room ? `${d.name} (${d.room})` : d.name })),
       ...this.groups.map((g) => el('option', { value: `group:${g.id}`, text: `${g.name} (group)` })),
+      ...this.hueScenes.map((s) => el('option', { value: `hue_scene:${s.id}`, text: `Hue: ${s.name}${s.room ? ` (${s.room})` : ''}` })),
     ];
     if (!options.length) return;
     const target = el('select', { testid: 'step-target', 'aria-label': 'Device or group' }, options);

@@ -84,18 +84,39 @@ EXTRAS = {
     "obstruction": ("binary_sensor", ("Obstruction", "obstruction"), ("ON",)),
     "light": ("light", ("Light", "light"), ("ON",)),
     "locked": ("lock", ("Lock%20remotes", "lock_remotes"), ("LOCKED",)),
+    # ratgdo32 disco: the parking-assist laser and its car sensor.
+    "laser": ("switch", ("LASER", "laser"), ("ON",)),
+    "vehicle": (
+        "binary_sensor",
+        ("Vehicle%20detected", "vehicle_detected"),
+        ("ON",),
+    ),
+}
+# Readings in millimetres (ratgdo32 disco): how far the car is, and where
+# the laser tells the driver to stop.
+MEASURES = {
+    "vehicle_distance_mm": (
+        "sensor",
+        ("Vehicle%20distance%20actual%20filtered", "vehicle_distance_actual_filtered"),
+    ),
+    "parking_target_mm": (
+        "number",
+        ("Vehicle%20distance%20target", "vehicle_distance_target"),
+    ),
 }
 EXTRA_ACTIONS = {
     "light_on": ("light", "turn_on"),
     "light_off": ("light", "turn_off"),
     "lock": ("locked", "lock"),
     "unlock": ("locked", "unlock"),
+    "laser_on": ("laser", "turn_on"),
+    "laser_off": ("laser", "turn_off"),
 }
 _extra_path: dict[tuple[str, str], str | None] = {}  # None: the opener has none
 
 
 def _extra_call(method: str, host: str, key: str, suffix: str = "") -> Any:
-    domain, names, _ = EXTRAS[key]
+    domain, names = EXTRAS[key][:2] if key in EXTRAS else MEASURES[key]
     known = _extra_path.get((host, key), "")
     if known is None:
         raise RatgdoNotFound("this opener has none")
@@ -125,7 +146,30 @@ def extras(host: str) -> dict[str, bool | None]:
     return out
 
 
-def act(host: str, command: str) -> None:
+def measures(host: str) -> dict[str, int | None]:
+    """The parking readings in mm, or None (no such sensor, or no reading)."""
+    out: dict[str, int | None] = {}
+    for key in MEASURES:
+        try:
+            value = (_extra_call("GET", host, key) or {}).get("value")
+        except RatgdoError:
+            value = None
+        out[key] = round(float(value)) if isinstance(value, int | float) else None
+    return out
+
+
+def set_parking_target(host: str, mm: int) -> None:
+    """Where the laser tells the driver to stop, in mm from the opener."""
+    try:
+        _extra_call("POST", host, "parking_target_mm", f"/set?value={int(mm)}")
+    except RatgdoNotFound:
+        raise RatgdoError("this opener has no parking assist") from None
+
+
+def act(host: str, command: str, payload: dict[str, Any] | None = None) -> None:
+    if command == "set_parking_target":
+        set_parking_target(host, int((payload or {})["mm"]))
+        return
     if command in EXTRA_ACTIONS:
         key, action = EXTRA_ACTIONS[command]
         try:

@@ -106,7 +106,7 @@ def _send(
             raise DeviceUnavailable(error.status_code, error.reason) from None
     elif device.integration == "ratgdo":
         try:
-            send_ratgdo_command(device, command)
+            send_ratgdo_command(device, command, payload)
         except RatgdoUnavailable as error:
             raise DeviceUnavailable(error.status_code, error.reason) from None
     elif device.integration == "roku_tv":

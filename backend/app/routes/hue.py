@@ -12,7 +12,7 @@ from app.audit import record_event
 from app.authorization import require_role
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
-from app.hue_home import HueUnavailable, pair, status, sync, unpair
+from app.hue_home import HueUnavailable, list_scenes, pair, status, sync, unpair
 from app.models import Role, User
 
 router = APIRouter(prefix="/api/v1/homes/{home_id}/integrations/hue", tags=["hue"])
@@ -83,6 +83,16 @@ def sync_bridge(
     require_role(db, user.id, home_id, Role.OPERATOR)
     found = _run(lambda: sync(db, home_id))
     return {**status(db, home_id), **found}
+
+
+@router.get("/scenes")
+def hue_scenes(
+    home_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> list[dict[str, str]]:
+    """The Hue app's scenes, for steps in Schedules and Scenes."""
+    require_role(db, user.id, home_id)
+    found: list[dict[str, str]] = _run(lambda: list_scenes(db, home_id))
+    return found
 
 
 @router.delete("", dependencies=[Depends(require_csrf)])

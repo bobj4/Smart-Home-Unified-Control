@@ -12,7 +12,10 @@ EXTRA_COMMANDS = {
     "light_off": ("light", False),
     "lock": ("locked", True),
     "unlock": ("locked", False),
+    "laser_on": ("laser", True),  # ratgdo32 disco: the parking-assist laser
+    "laser_off": ("laser", False),
 }
+PARKING_RANGE = (100, 5000)  # mm from the opener where the car should stop
 
 
 class GarageError(Exception):
@@ -24,6 +27,14 @@ class GarageError(Exception):
 def garage_state(
     state: dict[str, Any], command: str, payload: dict[str, Any]
 ) -> dict[str, Any]:
+    if command == "set_parking_target":
+        if state.get("parking_target_mm") is None:
+            raise GarageError(422, "this opener has no parking assist")
+        mm = payload.get("mm") if set(payload) == {"mm"} else None
+        low, high = PARKING_RANGE
+        if not isinstance(mm, int) or isinstance(mm, bool) or not low <= mm <= high:
+            raise GarageError(422, f"the stopping point is {low}-{high} mm")
+        return {**state, "parking_target_mm": mm}
     if command not in COMMANDS and command not in EXTRA_COMMANDS:
         raise GarageError(422, "unsupported command")
     if payload:
@@ -31,7 +42,9 @@ def garage_state(
     if command in EXTRA_COMMANDS:
         key, value = EXTRA_COMMANDS[command]
         if state.get(key) is None:
-            what = "light" if key == "light" else "remote lockout"
+            what = {"light": "light", "locked": "remote lockout"}.get(
+                key, "parking laser"
+            )
             raise GarageError(422, f"this opener reports no {what}")
         return {**state, key: value}
     return {**state, "door": COMMANDS[command]}

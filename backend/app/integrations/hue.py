@@ -91,6 +91,49 @@ def lights(host: str, key: str) -> list[dict[str, Any]]:
     return out
 
 
+def rooms(host: str, key: str) -> dict[str, str]:
+    """Each light's room in the Hue app: light id -> room name."""
+    data = _call("GET", f"{_base(host, key)}/groups") or {}
+    out: dict[str, str] = {}
+    for group in data.values() if isinstance(data, dict) else []:
+        if isinstance(group, dict) and group.get("type") in ("Room", "Zone"):
+            for light_id in group.get("lights") or []:
+                if group.get("type") == "Room" or str(light_id) not in out:
+                    out[str(light_id)] = str(group.get("name") or "")[:50]
+    return out
+
+
+def scenes(host: str, key: str) -> list[dict[str, str]]:
+    """Scenes saved in the Hue app: [{"id": "<room>/<scene>", "name",
+    "room"}] (room scenes; a scene is recalled on its room)."""
+    groups = _call("GET", f"{_base(host, key)}/groups") or {}
+    data = _call("GET", f"{_base(host, key)}/scenes") or {}
+    out = []
+    for scene_id, scene in data.items() if isinstance(data, dict) else []:
+        group = str(scene.get("group") or "")
+        if scene.get("type") != "GroupScene" or not group.isdigit():
+            continue
+        room = (
+            (groups.get(group) or {}).get("name") if isinstance(groups, dict) else None
+        )
+        out.append(
+            {
+                "id": f"{group}/{scene_id}",
+                "name": str(scene.get("name") or "Scene"),
+                "room": str(room or ""),
+            }
+        )
+    return sorted(out, key=lambda s: (s["room"].lower(), s["name"].lower()))
+
+
+def recall(host: str, key: str, scene: str) -> None:
+    """Show a Hue scene ("<room>/<scene>") on its room's lights."""
+    group, _, scene_id = scene.partition("/")
+    if not group.isdigit() or not scene_id.replace("-", "").isalnum():
+        raise HueError("not a Hue scene")
+    _call("PUT", f"{_base(host, key)}/groups/{group}/action", {"scene": scene_id})
+
+
 def set_state(host: str, key: str, light_id: str, body: dict[str, Any]) -> None:
     if not light_id.isdigit():
         raise HueError("not a Hue light id")

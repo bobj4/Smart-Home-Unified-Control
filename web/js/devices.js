@@ -94,7 +94,7 @@ class DevicesView {
     this.root.style.minHeight = `${this.root.offsetHeight}px`;
     if (bar.parentNode !== this.root) this.root.replaceChildren(bar);
     while (this.root.lastChild !== bar) this.root.lastChild.remove();
-    this.root.append(...[el('div', { className: 'devices-top' }, [top, layout].filter(Boolean)), none, roomsGrid(this, names.map((room) => roomSection(this, room, rooms.get(room))))].filter(Boolean));
+    this.root.append(...[el('div', { className: 'devices-top' }, [top, energyButton(this, devices), layout].filter(Boolean)), none, roomsGrid(this, names.map((room) => roomSection(this, room, rooms.get(room))))].filter(Boolean));
     if (window.scrollY !== scrollY) window.scrollTo(scrollX, scrollY);
     // Let go of the height once the rooms have their sizes.
     requestAnimationFrame(() => requestAnimationFrame(() => { this.root.style.minHeight = ''; }));

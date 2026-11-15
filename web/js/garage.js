@@ -39,7 +39,32 @@ function garageExtras(view, device, state) {
     parts.push(el('button', { type: 'button', className: `toggle${state.locked ? ' on' : ''}`, testid: 'garage-lock', text: state.locked ? 'Remotes locked' : 'Remotes work', title: 'Lock out the wall button and remotes', disabled, onclick: () => view.command(device, state.locked ? 'unlock' : 'lock') }));
   }
   if (parts.length) extras.push(el('div', { className: 'row' }, parts));
+  const parking = parkingAssist(view, device, state, disabled);
+  if (parking) extras.push(parking);
   return [line, ...extras, buttons];
+}
+
+/** ratgdo32 disco: the parking laser, whether a car is in, how far, and
+ * where the laser tells the driver to stop (set here, in cm). */
+function parkingAssist(view, device, state, disabled) {
+  if (state.laser === undefined || state.laser === null) return null;
+  const cm = (mm) => `${Math.round(mm / 10)} cm`;
+  const car = state.vehicle === true ? 'Car in' : state.vehicle === false ? 'No car' : '';
+  const far = typeof state.vehicle_distance_mm === 'number' && state.vehicle ? ` · ${cm(state.vehicle_distance_mm)} away` : '';
+  const parts = [
+    el('div', { className: 'row' }, [
+      el('button', { type: 'button', className: `toggle${state.laser ? ' on' : ''}`, testid: 'garage-laser', text: state.laser ? 'Parking laser on' : 'Parking laser off', disabled, onclick: () => view.command(device, state.laser ? 'laser_off' : 'laser_on') }),
+    ]),
+    car ? el('p', { className: 'muted', testid: 'garage-vehicle', text: `${car}${far}` }) : '',
+  ];
+  if (typeof state.parking_target_mm === 'number') {
+    const input = el('input', { type: 'number', min: '10', max: '500', step: '1', testid: 'garage-parking-target', value: String(Math.round(state.parking_target_mm / 10)), 'aria-label': 'Stop at (cm from the opener)', disabled });
+    parts.push(el('div', { className: 'row parking-target' }, [
+      el('label', { className: 'muted', text: 'Stop at (cm)' }), input,
+      el('button', { type: 'button', className: 'secondary', testid: 'garage-parking-set', text: 'Set', disabled, onclick: () => view.command(device, 'set_parking_target', { mm: Number.parseInt(input.value, 10) * 10 }) }),
+    ]));
+  }
+  return el('div', { className: 'garage-parking', testid: 'garage-parking' }, parts);
 }
 
 window.garageExtras = garageExtras;

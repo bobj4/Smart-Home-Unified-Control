@@ -48,6 +48,14 @@ through the backend's permission checks and device safety limits.
   home watches; each person picks what they get. Notifications need
   HTTPS and SECRETS_KEY; on an iPhone, add the app to the Home Screen.
   A bell at the top right counts the alerts you have not seen yet.
+- Energy: power now and use today from Kasa plugs that measure it, and
+  water heaters' use today (the ⚡ button on the Devices page).
+- Philips Hue: lights take their Hue app rooms, Hue scenes can be steps in
+  Schedules and Scenes, and changes made anywhere show at once (the
+  bridge's event stream).
+- ratgdo: door, opener light, remote lockout and obstruction sensor; on a
+  ratgdo32 disco, the parking-assist laser, whether a car is in and how
+  far, and where the laser says to stop.
 - Themes: light, dark, device theme, preset colors or your own accent and
   background color, and a background picture.
 - More than one home (Admin › Home: Add a Home, an address and an icon
@@ -56,7 +64,7 @@ through the backend's permission checks and device safety limits.
   ([docs/MULTI-HOME.md](docs/MULTI-HOME.md)).
 - Multiple homes and users, with admin, operator and member roles, and
   guests who get only what an admin ticks for them (lights, light settings,
-  cameras, the water heater, and chosen thermostats).
+  all or some cameras, the water heater, chosen thermostats, and scenes).
 - Two-factor login (authenticator app) asked for after the password,
   single-use recovery codes, named "remembered" devices, and "keep me
   logged in" (times set by an admin).

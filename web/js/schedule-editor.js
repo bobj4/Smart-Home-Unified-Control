@@ -51,7 +51,7 @@ class AutomationEditor {
 
   scene(scene) {
     const name = el('input', { type: 'text', testid: 'scene-name', maxlength: '100', required: true, value: scene ? scene.name : '' });
-    const steps = new StepList(this.view.devices, this.view.groups, scene ? scene.steps : []);
+    const steps = new StepList(this.view.devices, this.view.groups, scene ? scene.steps : [], this.view.hueScenes);
     if (!scene) steps.add();
     this.open(scene ? 'Change scene' : 'New scene', 'scene-editor', [field('Name', name), el('h3', { text: 'Steps' }), steps.box], async () => {
       const saved = await this.app.api.saveScene(this.app.home.id, scene && scene.id, { name: name.value.trim(), steps: steps.value() });
@@ -77,7 +77,7 @@ class AutomationEditor {
     const scenes = this.view.data.scenes;
     const scene = stepChoice([['', 'No scene'], ...scenes.map((s) => [s.id, s.name])], schedule ? schedule.scene_id || '' : '', 'schedule-scene');
     const enabled = switchInput('schedule-enabled', schedule ? schedule.enabled : true, 'Schedule on');
-    const steps = new StepList(this.view.devices, this.view.groups, schedule ? schedule.steps : []);
+    const steps = new StepList(this.view.devices, this.view.groups, schedule ? schedule.steps : [], this.view.hueScenes);
     if (!schedule && !scenes.length) steps.add();
     const sunNote = this.view.data.settings.latitude === null
       ? el('p', { className: 'muted', testid: 'schedule-sun-note', text: 'Sunrise and sunset need the home\'s location: Settings > Admin > Schedules and Scenes.' })

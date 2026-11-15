@@ -42,12 +42,13 @@ class SchedulesView {
       this.root.replaceChildren(this.scenesPanel(scenes, false));
       return;
     }
-    const [data, devices, groups] = await Promise.all([
+    const [data, devices, groups, hueScenes] = await Promise.all([
       this.app.api.getAutomation(home),
       this.app.api.getDevices(home),
       this.app.api.getGroups(home),
+      this.app.api.getHueScenes(home).catch(() => []), // Hue off or not paired: none
     ]);
-    Object.assign(this, { data, devices, groups });
+    Object.assign(this, { data, devices, groups, hueScenes });
     this.root.replaceChildren(
       el('p', { className: 'muted', text: 'Run here, by this server. Thermostat and water heater schedules stay on their own cards.' }),
       data.settings.paused ? el('p', { className: 'notice', testid: 'schedules-paused', text: 'All schedules are paused (Settings > Admin > Schedules and Scenes).' }) : '',
