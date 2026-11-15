@@ -427,11 +427,25 @@ body:has(.overlay:not([hidden])) .layout-open { display: none; }
 /* Homes: the icon at the top right and its list (home-switcher.js), and
    Admin > Home (homes-panel.js). A picture of one's own is an <img>. */
 .home-badge-slot { flex: none; order: 3; }
+/* The alerts bell: between Log out and the home's icon (alert-bell.js). */
+.alert-bell-slot { flex: none; order: 2; }
+.alert-bell-slot[hidden] { display: none; }
+.bell { position: relative; padding: 6px; line-height: 0; border: 0; color: var(--text); }
+.bell-icon { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.bell-count { position: absolute; top: 0; right: 0; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #d93025; color: #fff; font-size: 0.72rem; font-weight: 700; line-height: 18px; text-align: center; box-shadow: 0 0 0 2px var(--surface); }
+.bell-count[hidden] { display: none; }
+.bell-menu { width: min(360px, calc(100vw - 16px)); max-height: 70vh; overflow-y: auto; padding: 10px 12px; }
+.bell-menu h3 { margin: 0 0 4px; }
+.bell-item { padding: 8px 0; border-top: 1px solid var(--border); display: grid; gap: 2px; }
+.bell-item p { margin: 0; }
+.bell-item.new strong::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: #d93025; vertical-align: middle; }
+.bell-time { font-size: 0.8rem; }
 .topbar .nav { margin-left: auto; } /* the links sit beside the home's icon */
 /* Phones: the icon stays in the top right corner, beside the home's name. */
 @media (max-width: 560px) {
   .home-badge-slot { position: absolute; top: 10px; right: 12px; }
-  .brand { padding-right: 48px; }
+  .alert-bell-slot { position: absolute; top: 12px; right: 58px; }
+  .brand { padding-right: 96px; }
 }
 .home-badge { padding: 4px; border-radius: 10px; line-height: 0; }
 .home-icon { width: 28px; height: 28px; flex: none; border-radius: 8px; object-fit: cover; fill: none; stroke: var(--text); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -463,3 +477,4 @@ svg.home-icon { padding: 3px; background: var(--surface-2); }
 .step-row > .ghost, .automation-editor .remote-head .ghost { color: #e8eaed; flex: none; }
 .scenes-actions, [data-testid="scene-new"], [data-testid="schedule-new"] { margin-top: 12px; justify-self: start; }
 .day-choices { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.garage-blocked { margin: 0; color: var(--danger); font-weight: 600; }

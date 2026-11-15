@@ -1,6 +1,8 @@
 /**
  * More of the API client (api.js stays under 300 lines): Schedules and
- * Scenes (automation.py). Guests allowed to run scenes use the guest routes.
+ * Scenes (automation.py; guests allowed to run scenes use the guest
+ * routes), and alerts (alerts.py: the home's settings, my choices, this
+ * browser's notifications, and the bell's list).
  */
 
 Object.assign(SmartHomeAPI.prototype, {
@@ -30,5 +32,32 @@ Object.assign(SmartHomeAPI.prototype, {
   },
   setAutomationSettings(homeId, body) {
     return this.put(`/homes/${enc(homeId)}/automation/settings`, body);
+  },
+  getAlerts(homeId) {
+    return this.get(`/homes/${enc(homeId)}/alerts`);
+  },
+  setAlertSettings(homeId, body) {
+    return this.put(`/homes/${enc(homeId)}/alerts/settings`, body);
+  },
+  setMyAlerts(homeId, body) {
+    return this.put(`/homes/${enc(homeId)}/alerts/mine`, body);
+  },
+  testAlert(homeId) {
+    return this.post(`/homes/${enc(homeId)}/alerts/test`);
+  },
+  getPushKey() {
+    return this.get('/account/push/key');
+  },
+  addPushDevice(body) {
+    return this.post('/account/push', body);
+  },
+  removePushDevice(endpoint) {
+    return this.post('/account/push/remove', { endpoint });
+  },
+  getAlertFeed(homeId) {
+    return this.get(`/homes/${enc(homeId)}/alerts/feed`);
+  },
+  markAlertsSeen(homeId) {
+    return this.post(`/homes/${enc(homeId)}/alerts/feed/seen`);
   },
 });

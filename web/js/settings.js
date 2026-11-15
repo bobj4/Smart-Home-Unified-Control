@@ -5,8 +5,8 @@
  */
 
 const SETTINGS_SECTIONS = [
-  { id: 'account', label: 'My account', intro: 'Password, appearance, 2 Factor Login and logged-in devices.' },
-  { id: 'admin', label: 'Admin', intro: 'Users, home name, login rules, email server and HTTPS.', role: 'admin' },
+  { id: 'account', label: 'My account', intro: 'Password, appearance, 2 Factor Login, logged-in devices and alerts.' },
+  { id: 'admin', label: 'Admin', intro: 'Users, home name, login rules, schedules, alerts, email server and HTTPS.', role: 'admin' },
   { id: 'devices', label: 'Devices', intro: 'Rename devices and choose their room.', role: 'operator' },
   { id: 'integrations', label: 'Integrations', intro: 'Device brands this home uses. A brand that is off accepts no commands and no new devices.', role: 'operator' },
   { id: 'safety', label: 'Safety Settings', intro: 'Thermostats and water heaters only accept targets inside these limits (new devices start at the default target), and who may change thermostat installer settings.', role: 'operator' },
@@ -132,7 +132,7 @@ class SettingsView {
 
   renderSectionBody(id, panel) {
     switch (id) {
-      case 'account': return this.account.render(panel);
+      case 'account': return this.account.render(panel).then(() => new AlertsPanel(this.app).render(panel));
       case 'devices': return this.home.renderDevices(panel);
       case 'integrations': return this.home.renderIntegrations(panel);
       case 'safety': return this.home.renderSafety(panel);

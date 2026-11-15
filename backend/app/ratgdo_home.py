@@ -44,7 +44,7 @@ def add_door(
     if any(d.external_id == host for d in list_doors(db, home_id)):
         raise RatgdoUnavailable(409, "an opener with that address is already added")
     try:
-        found = ratgdo.door(host)
+        found = _read(host)
     except ratgdo.RatgdoError as error:
         raise RatgdoUnavailable(502, str(error)) from None
     device = Device(
@@ -75,6 +75,12 @@ def send_command(device: Device, command: str) -> None:
         raise RatgdoUnavailable(502, str(error)) from None
 
 
+def _read(host: str) -> dict[str, Any]:
+    """The door, and the opener's obstruction sensor, light and lockout."""
+    found = ratgdo.door(host)
+    return {**found, **ratgdo.extras(host)}
+
+
 def refresh(db: Session, home_id: str) -> int:
     """Read each opener's door; returns how many changed."""
     if not integration_enabled(db, home_id, INTEGRATION):
@@ -82,9 +88,7 @@ def refresh(db: Session, home_id: str) -> int:
     doors = [
         d for d in list_doors(db, home_id) if probes.due(f"ratgdo:{d.external_id}")
     ]
-    answers = probes.gather(
-        {d.id: partial(ratgdo.door, str(d.external_id)) for d in doors}
-    )
+    answers = probes.gather({d.id: partial(_read, str(d.external_id)) for d in doors})
     changed = 0
     for device in doors:
         answer = answers[device.id]

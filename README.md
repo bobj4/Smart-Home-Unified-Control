@@ -41,6 +41,13 @@ through the backend's permission checks and device safety limits.
   home's time zone. Admins set the time zone, location, who may edit, and
   can pause every schedule. Devices' own schedules (thermostats, water
   heaters) still live on their cards.
+- Alerts by email and as notifications on phones and computers (Web
+  Push, no app store): a garage door left open (and, if wanted, closed
+  for you after a while), something in its way, devices offline, water
+  heater problems and camera detections (Frigate). Admins pick what the
+  home watches; each person picks what they get. Notifications need
+  HTTPS and SECRETS_KEY; on an iPhone, add the app to the Home Screen.
+  A bell at the top right counts the alerts you have not seen yet.
 - Themes: light, dark, device theme, preset colors or your own accent and
   background color, and a background picture.
 - More than one home (Admin › Home: Add a Home, an address and an icon
