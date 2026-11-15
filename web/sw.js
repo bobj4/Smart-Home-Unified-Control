@@ -1,7 +1,8 @@
 /**
- * Service worker: lets phones install the app (Add to Home Screen) and shows
- * a short page when the server cannot be reached. It stores nothing: every
- * request still goes to the server, so no home data is kept on the phone.
+ * Service worker: lets phones install the app (Add to Home Screen), shows
+ * a short page when the server cannot be reached, and shows alerts sent as
+ * notifications (My account > Alerts). It stores nothing: every request
+ * still goes to the server, so no home data is kept on the phone.
  */
 
 const OFFLINE_PAGE = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
@@ -19,4 +20,34 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(fetch(event.request).catch(() => new Response(OFFLINE_PAGE, {
     status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' },
   })));
+});
+
+// An alert from the server (app/alerts.py): show it; a tap opens the app.
+self.addEventListener('push', (event) => {
+  let message = {};
+  try {
+    message = event.data ? event.data.json() : {};
+  } catch (error) {
+    message = { title: 'Smart home', body: event.data ? event.data.text() : '' };
+  }
+  event.waitUntil(self.registration.showNotification(message.title || 'Smart home', {
+    body: message.body || '',
+    tag: message.tag || undefined,
+    icon: '/icons/icon-192.png',
+    badge: '/icons/favicon-32.png',
+    data: { url: message.url || '/' },
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+    const open = windows.find((w) => new URL(w.url).origin === self.location.origin);
+    if (open) {
+      open.navigate(url);
+      return open.focus();
+    }
+    return self.clients.openWindow(url);
+  }));
 });

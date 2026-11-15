@@ -695,6 +695,114 @@ class ScheduleSettings(Base):
     )
 
 
+class AlertSettings(Base):
+    """A home's alerts (Admin > Alerts). Minutes of 0 turn that alert off.
+    offline_types: comma-separated device types watched for going offline;
+    frigate_labels: comma-separated Frigate labels that alert ("" = off)."""
+
+    __tablename__ = "alert_settings"
+
+    home_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("homes.id", ondelete="CASCADE"), primary_key=True
+    )
+    garage_open_minutes: Mapped[int] = mapped_column(Integer, default=15)
+    auto_close_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    obstruction: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=sa_true()
+    )
+    offline_minutes: Mapped[int] = mapped_column(Integer, default=15)
+    offline_types: Mapped[str] = mapped_column(
+        String(200), default="thermostat,water_heater,garage_door"
+    )
+    water_heater: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=sa_true()
+    )
+    frigate_labels: Mapped[str] = mapped_column(String(200), default="person")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class AlertPrefs(Base):
+    """What one person wants from a home's alerts (My account > Alerts):
+    kinds is a JSON list (see app/alerts.py KINDS); nothing until chosen."""
+
+    __tablename__ = "alert_prefs"
+
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    home_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("homes.id", ondelete="CASCADE"), primary_key=True
+    )
+    email: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
+    push: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
+    kinds: Mapped[str] = mapped_column(Text, default="[]")
+
+
+class PushSubscription(Base):
+    """A browser (phone or computer) that takes this person's notifications."""
+
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    endpoint: Mapped[str] = mapped_column(String(1000), unique=True)
+    p256dh: Mapped[str] = mapped_column(String(200))
+    auth: Mapped[str] = mapped_column(String(100))
+    label: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+
+
+class AlertItem(Base):
+    """An alert that went out, for the bell at the top of the page (the
+    newest KEEP_ALERTS per home are kept; app/alerts.py)."""
+
+    __tablename__ = "alert_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    home_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("homes.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(20))
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+
+
+class AlertSeen(Base):
+    """When a person last opened the bell for a home: newer alerts count."""
+
+    __tablename__ = "alert_seen"
+
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    home_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("homes.id", ondelete="CASCADE"), primary_key=True
+    )
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ServerKey(Base):
+    """This server's own keys (the push notification key), encrypted."""
+
+    __tablename__ = "server_keys"
+
+    name: Mapped[str] = mapped_column(String(50), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+
+
 class ThermostatReading(Base):
     """A thermostat's reading, kept for its History window: every few
     minutes, and whenever it starts or stops heating or cooling. Readings

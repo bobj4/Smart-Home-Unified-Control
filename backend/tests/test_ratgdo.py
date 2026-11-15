@@ -62,6 +62,11 @@ def opener(monkeypatch):
     sent = []
     door = {"door": "closed", "position": 0}
     monkeypatch.setattr(ratgdo, "door", lambda host: dict(door))
+    monkeypatch.setattr(
+        ratgdo,
+        "extras",
+        lambda host: {"obstruction": None, "light": None, "locked": None},
+    )
     monkeypatch.setattr(ratgdo, "act", lambda host, command: sent.append(command))
     return {"sent": sent, "door": door}
 

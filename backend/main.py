@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from app import automation, backup, cync_live, federation_site, init_db, refresh
+from app import alerts, automation, backup, cync_live, federation_site, init_db, refresh
 from app.db_config import settings
 from app.headers import SecurityHeadersMiddleware
 from app.routes import (
@@ -52,6 +52,7 @@ from app.routes import (
     user_info,
     verbose,
 )
+from app.routes import alerts as alerts_routes
 from app.routes import automation as automation_routes
 from app.routes import federation as federation_routes
 from app.verbose import VerboseRequestMiddleware
@@ -83,6 +84,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if settings.REFRESH_SECONDS > 0
         else None
     )
+    # Alerts: garage left open, devices offline, cameras... (app/alerts.py).
+    watching = (
+        asyncio.create_task(alerts.run_forever())
+        if settings.REFRESH_SECONDS > 0
+        else None
+    )
     # Schedules and Scenes: the server runs schedules when they are due.
     schedules = (
         asyncio.create_task(automation.run_forever())
@@ -95,7 +102,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         else None
     )
     yield
-    for running in (task, live, sites, schedules, backups):
+    for running in (task, live, sites, watching, schedules, backups):
         if running is not None:
             running.cancel()
 
@@ -138,6 +145,8 @@ app.include_router(email_admin.router)
 app.include_router(email_admin.public_router)
 app.include_router(member_codes.router)
 app.include_router(automation_routes.router)
+app.include_router(alerts_routes.router)
+app.include_router(alerts_routes.push_router)
 app.include_router(automation_routes.guest_router)
 app.include_router(members.router)
 app.include_router(members.enroll_router)

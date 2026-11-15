@@ -77,7 +77,62 @@ def door(host: str) -> dict[str, Any]:
     return {"door": state, "position": position}
 
 
+# The ratgdo's other parts: the state key, ESPHome domain, the names it may
+# answer to (by name on ESPHome 2026.7+, else the object id), and how its
+# state reads as True.
+EXTRAS = {
+    "obstruction": ("binary_sensor", ("Obstruction", "obstruction"), ("ON",)),
+    "light": ("light", ("Light", "light"), ("ON",)),
+    "locked": ("lock", ("Lock%20remotes", "lock_remotes"), ("LOCKED",)),
+}
+EXTRA_ACTIONS = {
+    "light_on": ("light", "turn_on"),
+    "light_off": ("light", "turn_off"),
+    "lock": ("locked", "lock"),
+    "unlock": ("locked", "unlock"),
+}
+_extra_path: dict[tuple[str, str], str | None] = {}  # None: the opener has none
+
+
+def _extra_call(method: str, host: str, key: str, suffix: str = "") -> Any:
+    domain, names, _ = EXTRAS[key]
+    known = _extra_path.get((host, key), "")
+    if known is None:
+        raise RatgdoNotFound("this opener has none")
+    paths = [known] if known else [f"/{domain}/{name}" for name in names]
+    for path in paths:
+        try:
+            found = _call(method, f"http://{host}{path}{suffix}")
+        except RatgdoNotFound:
+            continue
+        _extra_path[(host, key)] = path
+        return found
+    _extra_path[(host, key)] = None
+    raise RatgdoNotFound("this opener has none")
+
+
+def extras(host: str) -> dict[str, bool | None]:
+    """Obstruction, light and remote lockout: True, False, or None when
+    the opener has no such part (or would not say)."""
+    out: dict[str, bool | None] = {}
+    for key, (_, _, truthy) in EXTRAS.items():
+        try:
+            data = _extra_call("GET", host, key) or {}
+        except RatgdoError:
+            out[key] = None
+            continue
+        out[key] = str(data.get("state", "")).upper() in truthy
+    return out
+
+
 def act(host: str, command: str) -> None:
+    if command in EXTRA_ACTIONS:
+        key, action = EXTRA_ACTIONS[command]
+        try:
+            _extra_call("POST", host, key, f"/{action}")
+        except RatgdoNotFound:
+            raise RatgdoError("this opener has no such part") from None
+        return
     if command not in ("open", "close", "stop"):
         raise RatgdoError("not a garage door command")
     _door_call("POST", host, f"/{command}")
