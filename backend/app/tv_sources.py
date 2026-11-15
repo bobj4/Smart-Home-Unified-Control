@@ -61,7 +61,9 @@ def connect(db: Session, home_id: str, token: str) -> list[dict[str, str]]:
     """Check the token by listing the TVs, then save it. Returns the TVs."""
     found = _guard(lambda: smartthings.tvs(token))
     try:
-        credentials.save(db, home_id, CREDENTIAL, "SmartThings", {"token": token})
+        credentials.save(
+            db, home_id, CREDENTIAL, "SmartThings", smartthings_oauth.token_login(token)
+        )
     except VaultError as error:
         raise SourcesUnavailable(409, str(error)) from None
     return list(found)

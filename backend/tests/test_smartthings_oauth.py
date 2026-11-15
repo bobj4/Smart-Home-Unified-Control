@@ -75,6 +75,17 @@ def saved(db, owner):
     return credentials.load(db, owner.home_id, smartthings_oauth.CREDENTIAL)
 
 
+def token_only(db, owner):
+    """Connected with the personal token, saved with when (to warn before
+    its 24 hours end)."""
+    data = saved(db, owner)
+    return (
+        data["token"] == TOKEN
+        and not data.get("oauth")
+        and abs(time.time() - data["saved_at"]) < 60
+    )
+
+
 def test_sign_in_and_come_back(
     client, new_client, db, owner, login, csrf, st, secrets_key
 ):
@@ -309,7 +320,7 @@ def test_one_token_setup(
     )
     assert registered == [(TOKEN, REDIRECT)]
     # Connected with the token straight away (for its 24 hours).
-    assert saved(db, owner) == {"token": TOKEN}
+    assert token_only(db, owner)
     info = client.get(base(owner.home_id)).json()
     assert info["method"] == "token" and info["app_registered"] is True
     # Coming back from Samsung: signed in for good.
@@ -343,10 +354,10 @@ def test_setup_without_the_apps_permission(
         "problem": 'the token cannot register an app: tick "Apps"',
     }
     # Still connected for now, and Settings keeps saying why.
-    assert saved(db, owner) == {
-        "token": TOKEN,
-        "setup_problem": 'the token cannot register an app: tick "Apps"',
-    }
+    assert token_only(db, owner)
+    assert saved(db, owner)["setup_problem"] == (
+        'the token cannot register an app: tick "Apps"'
+    )
     info = client.get(base(owner.home_id)).json()
     assert info["method"] == "token" and "tick" in info["setup_problem"]
     monkeypatch.setattr(
@@ -391,7 +402,7 @@ def test_a_lapsed_token_says_so_and_setting_up_again_clears_it(
     monkeypatch.setattr(smartthings, "tvs", st.tvs)  # a new token works
     r = client.put(base(owner.home_id), json={"token": TOKEN}, headers=csrf(client))
     assert r.status_code == 200, r.text
-    assert saved(db, owner) == {"token": TOKEN}
+    assert token_only(db, owner)
     assert client.get(base(owner.home_id)).json()["problem"] is None
 
 
