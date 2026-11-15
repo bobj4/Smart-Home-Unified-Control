@@ -60,6 +60,7 @@ KINDS = {
     "water_heater": "The water heater reports a problem",
     "temperature": "A thermostat reads too hot or too cold",
     "camera": "A camera sees someone",
+    "smartthings": "SmartThings needs a new token or sign-in (TV inputs, turning TVs on)",
 }
 PUSH_KEY = "webpush"
 # Push services browsers use; nothing else is ever sent a notification.
@@ -447,6 +448,36 @@ def check_home(
                 db, home_id, device, state, rules, on, where, now, watch
             )
     sent += _check_cameras(db, home_id, row, where, watch)
+    sent += _check_smartthings(db, home_id, where, watch)
+    return sent
+
+
+def _check_smartthings(db: Session, home_id: str, where: str, watch: Watch) -> int:
+    """A SmartThings token about to end (an hour before) or ended, or a
+    sign-in that must be done again: once each time it happens."""
+    from app import credentials, features, smartthings_oauth
+
+    found = None
+    if features.integration_enabled(db, home_id, "samsung_tv") and credentials.label(
+        db, home_id, smartthings_oauth.CREDENTIAL
+    ):
+        try:
+            saved = credentials.load(db, home_id, smartthings_oauth.CREDENTIAL)
+        except vault.VaultError:
+            saved = None
+        found = smartthings_oauth.health(saved, time.time())
+    sent = 0
+    for state, title in (
+        ("soon", "SmartThings token ends soon"),
+        ("lapsed", "SmartThings needs connecting again"),
+    ):
+        key = (home_id, f"smartthings-{state}")
+        holds = found is not None and found[0] == state
+        watch.condition(key, holds, 0.0)
+        if holds and found is not None and watch.once(key):
+            sent += deliver(
+                db, home_id, "smartthings", title, f"{where}: {found[1]}.", key[1]
+            )
     return sent
 
 

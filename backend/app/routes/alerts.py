@@ -26,6 +26,7 @@ Kind = Literal[
     "water_heater",
     "temperature",
     "camera",
+    "smartthings",
 ]
 
 

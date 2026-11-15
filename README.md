@@ -46,7 +46,8 @@ through the backend's permission checks and device safety limits.
   Push, no app store): a garage door left open (and, if wanted, closed
   for you after a while), something in its way, devices offline, water
   heater problems, thermostats too hot or too cold, and camera detections
-  (Frigate). Each device's bell in Settings › Devices sets what it alerts
+  (Frigate), and SmartThings' 24-hour token ending (an hour before, and
+  when it has). Each device's bell in Settings › Devices sets what it alerts
   about (grey: on, red and struck through: off, a plus: more settings);
   camera labels are set in the Frigate settings. Each person picks what
   they get. Notifications need

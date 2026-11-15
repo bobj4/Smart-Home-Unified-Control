@@ -362,6 +362,51 @@ def test_each_device_sets_its_own_alerts(
     assert "Garage is open" in outbox[-1][1]  # blocked, but that alert is off
 
 
+def test_smartthings_token_ending_and_ended(
+    client, db, owner, login, csrf, secrets_key, outbox, pushed
+):
+    import time
+
+    from app import credentials, features, smartthings_oauth
+
+    features.set_integration(db, owner.home_id, "samsung_tv", True, None, None)
+    ready(client, db, owner, login, csrf, ["smartthings"], push=False)
+
+    def token_age(hours, **more):
+        credentials.save(
+            db,
+            owner.home_id,
+            smartthings_oauth.CREDENTIAL,
+            "SmartThings",
+            {"token": "t" * 20, "saved_at": time.time() - hours * 3600, **more},
+        )
+
+    watch = alerts.Watch()
+    token_age(2)
+    assert alerts.check_home(db, owner.home_id, now=0, watch=watch) == 0
+    token_age(23.5)
+    assert alerts.check_home(db, owner.home_id, now=30, watch=watch) == 1
+    assert "SmartThings token ends soon" in outbox[-1][1]
+    assert alerts.check_home(db, owner.home_id, now=60, watch=watch) == 0  # once
+    token_age(25)
+    assert alerts.check_home(db, owner.home_id, now=90, watch=watch) == 1
+    assert "SmartThings needs connecting again" in outbox[-1][1]
+    assert "24 hours" in outbox[-1][2]
+    token_age(0)  # a new token: quiet, and the next lapse alerts again
+    assert alerts.check_home(db, owner.home_id, now=120, watch=watch) == 0
+    token_age(1, problem=smartthings_oauth.RECONNECT)  # a sign-in to redo
+    assert alerts.check_home(db, owner.home_id, now=150, watch=watch) == 1
+    # A sign-in that renews itself never warns.
+    credentials.save(
+        db,
+        owner.home_id,
+        smartthings_oauth.CREDENTIAL,
+        "SmartThings",
+        {"oauth": True, "access_token": "a", "problem": None},
+    )
+    assert alerts.check_home(db, owner.home_id, now=180, watch=watch) == 0
+
+
 # ------------------------------------------------------------ ratgdo extras
 
 

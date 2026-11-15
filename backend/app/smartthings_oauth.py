@@ -136,6 +136,35 @@ def _renew(db: Session, home_id: str, saved: dict[str, Any]) -> dict[str, Any]:
     return fresh
 
 
+TOKEN_SECONDS = 24 * 3600  # how long SmartThings accepts a personal token
+WARN_SECONDS = 3600  # say so this long before it ends
+
+
+def token_login(token: str) -> dict[str, Any]:
+    """A personal token as saved: with when, to tell before it lapses."""
+    return {"token": token, "saved_at": time.time()}
+
+
+def health(saved: dict[str, Any] | None, now: float) -> tuple[str, str] | None:
+    """("lapsed" | "soon", what to do) for the alerts (alerts.py), or None
+    while SmartThings is fine (or not used). `now`: epoch seconds."""
+    if not saved:
+        return None
+    if saved.get("problem"):
+        return "lapsed", str(saved["problem"])
+    if saved.get("oauth") or not saved.get("saved_at"):
+        return None  # a sign-in renews itself; an old token's age is unknown
+    age = now - float(saved["saved_at"])
+    if age >= TOKEN_SECONDS:
+        return "lapsed", PAT_LAPSED
+    if age >= TOKEN_SECONDS - WARN_SECONDS:
+        return "soon", (
+            "The SmartThings token stops working within the hour (they last 24"
+            " hours): paste a new one in Settings > Integrations"
+        )
+    return None
+
+
 def _current(db: Session, home_id: str, saved: dict[str, Any]) -> dict[str, Any]:
     """The saved sign-in as it is now (another thread may have renewed it)."""
     return credentials.load(db, home_id, CREDENTIAL) or saved
@@ -236,7 +265,7 @@ def setup(
         raise OAuthProblem(502, str(error)) from None
     current = credentials.load(db, home_id, CREDENTIAL) or {}
     if not current.get("oauth") or current.get("problem"):
-        credentials.save(db, home_id, CREDENTIAL, "SmartThings", {"token": token})
+        credentials.save(db, home_id, CREDENTIAL, "SmartThings", token_login(token))
     app = credentials.load(db, home_id, APP_CREDENTIAL)
     try:
         if not app:
