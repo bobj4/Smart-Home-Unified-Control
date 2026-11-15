@@ -117,6 +117,9 @@ def bridge(monkeypatch):
         ]
     }
     monkeypatch.setattr(hue, "pair", lambda host: "KEY")
+    # No real bridge: the Hue app's rooms too (a real request to BRIDGE
+    # waits out its timeout on a network where that address exists).
+    monkeypatch.setattr(hue, "rooms", lambda host, key: {"1": "Living room"})
     monkeypatch.setattr(
         hue, "lights", lambda host, key: [dict(i) for i in data["lights"]]
     )

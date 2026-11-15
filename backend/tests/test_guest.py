@@ -42,6 +42,7 @@ NONE = {
     "thermostat_installer": False,
     "scenes": False,
     "thermostat_ids": [],
+    "camera_names": [],
 }
 
 

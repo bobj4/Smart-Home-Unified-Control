@@ -9,7 +9,16 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from app import alerts, automation, backup, cync_live, federation_site, init_db, refresh
+from app import (
+    alerts,
+    automation,
+    backup,
+    cync_live,
+    federation_site,
+    hue_events,
+    init_db,
+    refresh,
+)
 from app.db_config import settings
 from app.headers import SecurityHeadersMiddleware
 from app.routes import (
@@ -90,6 +99,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if settings.REFRESH_SECONDS > 0
         else None
     )
+    # Hue lights change here at once (the bridge's event stream).
+    hue_stream = (
+        asyncio.create_task(hue_events.run_forever())
+        if settings.REFRESH_SECONDS > 0
+        else None
+    )
     # Schedules and Scenes: the server runs schedules when they are due.
     schedules = (
         asyncio.create_task(automation.run_forever())
@@ -102,7 +117,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         else None
     )
     yield
-    for running in (task, live, sites, watching, schedules, backups):
+    for running in (task, live, sites, watching, hue_stream, schedules, backups):
         if running is not None:
             running.cancel()
 

@@ -25,9 +25,10 @@ class GuestAccessDialog {
 
   async open(member) {
     const homeId = this.app.home.id;
-    const [access, devices] = await Promise.all([
+    const [access, devices, cameras] = await Promise.all([
       this.app.api.getGuestAccess(homeId, member.user_id),
       this.app.api.getDevices(homeId),
+      this.app.api.getCameras(homeId).catch(() => []), // Frigate off or not set up: none
     ]);
     const boxes = {};
     const flagRows = GUEST_FLAGS.map(([key, label]) => {
@@ -39,11 +40,25 @@ class GuestAccessDialog {
       const box = el('input', { type: 'checkbox', testid: 'guest-thermostat', 'data-device-id': d.id, checked: access.thermostat_ids.includes(d.id) });
       return { id: d.id, box, label: el('label', { className: 'check' }, [box, el('span', { text: d.name })]) };
     });
+    // With "See the cameras": only some of them (none ticked: every camera).
+    const cameraBoxes = cameras.map((name) => {
+      const box = el('input', { type: 'checkbox', testid: 'guest-camera', value: name, checked: (access.camera_names || []).includes(name) });
+      return el('label', { className: 'check' }, [box, el('span', { text: name.replace(/_/g, ' ') })]);
+    });
+    const cameraPart = el('div', { testid: 'guest-camera-list' }, [
+      el('h3', { text: 'Cameras' }),
+      el('p', { className: 'muted', text: 'None ticked: every camera.' }),
+      el('div', { className: 'guest-flags' }, cameraBoxes),
+    ]);
+    const showCameras = () => { cameraPart.hidden = !boxes.cameras.checked || !cameraBoxes.length; };
+    boxes.cameras.addEventListener('change', showCameras);
+    showCameras();
     const save = el('button', {
       type: 'button', testid: 'guest-access-save', text: 'Save',
       onclick: () => this.app.run(async () => {
         const body = Object.fromEntries(Object.entries(boxes).map(([key, box]) => [key, box.checked]));
         body.thermostat_ids = thermoBoxes.filter((t) => t.box.checked).map((t) => t.id);
+        body.camera_names = cameraBoxes.map((l) => l.querySelector('input')).filter((b) => b.checked).map((b) => b.value);
         await this.app.api.setGuestAccess(homeId, member.user_id, body);
         this.close();
         this.app.status.success(`Saved what ${member.email} can use.`);
@@ -55,6 +70,7 @@ class GuestAccessDialog {
         el('button', { type: 'button', className: 'ghost', testid: 'guest-access-close', text: '✕', 'aria-label': 'Close', onclick: () => this.close() }),
       ]),
       el('div', { className: 'guest-flags' }, flagRows),
+      cameraPart,
       el('h3', { text: 'Thermostats' }),
       thermoBoxes.length
         ? el('div', { className: 'guest-flags' }, thermoBoxes.map((t) => t.label))

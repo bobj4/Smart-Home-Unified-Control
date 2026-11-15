@@ -68,17 +68,20 @@ def remove_door(db: Session, device: Device) -> None:
     db.commit()
 
 
-def send_command(device: Device, command: str) -> None:
+def send_command(
+    device: Device, command: str, payload: dict[str, Any] | None = None
+) -> None:
     try:
-        ratgdo.act(str(device.external_id), command)
+        ratgdo.act(str(device.external_id), command, payload)
     except ratgdo.RatgdoError as error:
         raise RatgdoUnavailable(502, str(error)) from None
 
 
 def _read(host: str) -> dict[str, Any]:
-    """The door, and the opener's obstruction sensor, light and lockout."""
+    """The door, and the opener's obstruction sensor, light, lockout and
+    (ratgdo32 disco) parking assist: laser, car detected, distance, target."""
     found = ratgdo.door(host)
-    return {**found, **ratgdo.extras(host)}
+    return {**found, **ratgdo.extras(host), **ratgdo.measures(host)}
 
 
 def refresh(db: Session, home_id: str) -> int:

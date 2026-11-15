@@ -599,6 +599,8 @@ class GuestAccess(Base):
         Boolean, default=False, server_default=sa_false()
     )
     thermostat_ids: Mapped[str] = mapped_column(Text, default="[]")  # JSON list
+    # With cameras: only these Frigate cameras (JSON list; empty: every one).
+    camera_names: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
     # Run the home's scenes (Schedules and Scenes), whatever their devices.
     scenes: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa_false()

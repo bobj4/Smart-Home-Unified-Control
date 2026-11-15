@@ -75,6 +75,10 @@ def sync(db: Session, home_id: str) -> dict[str, int]:
     the bridge."""
     host, key = _bridge(db, home_id)
     found = _guard(lambda: hue.lights(host, key))
+    try:  # the Hue app's rooms, for lights not given a room here
+        rooms = hue.rooms(host, key)
+    except hue.HueError:
+        rooms = {}
     existing = {d.external_id: d for d in list_lights(db, home_id)}
     created = 0
     for info in found:
@@ -90,6 +94,8 @@ def sync(db: Session, home_id: str) -> dict[str, int]:
             )
             db.add(device)
             created += 1
+        if not device.room and rooms.get(info["id"]):
+            device.room = rooms[info["id"]]
         device.capabilities = json.dumps(
             {
                 "dimming": info["kind"] == "light",
@@ -123,6 +129,24 @@ def unpair(db: Session, home_id: str) -> None:
         db.delete(device)
     credentials.remove(db, home_id, INTEGRATION)
     db.commit()
+
+
+def list_scenes(db: Session, home_id: str) -> list[dict[str, str]]:
+    """The scenes saved in the Hue app ([] when Hue is off or not paired)."""
+    if not integration_enabled(db, home_id, INTEGRATION):
+        return []
+    if credentials.label(db, home_id, INTEGRATION) is None:
+        return []
+    host, key = _bridge(db, home_id)
+    found: list[dict[str, str]] = _guard(lambda: hue.scenes(host, key))
+    return found
+
+
+def recall_scene(db: Session, home_id: str, scene: str) -> None:
+    if not integration_enabled(db, home_id, INTEGRATION):
+        raise HueUnavailable(409, "the Philips Hue integration is turned off")
+    host, key = _bridge(db, home_id)
+    _guard(lambda: hue.recall(host, key, scene))
 
 
 def send_command(

@@ -34,6 +34,7 @@ from app import sun
 from app.audit import record_event
 from app.authorization import require_role
 from app.db_config import SessionLocal
+from app.features import integration_enabled
 from app.groups import GROUP_COMMANDS, members
 from app.models import (
     Device,
@@ -162,7 +163,15 @@ def check_steps(
         command, payload = str(step.get("command", "")), step.get("payload") or {}
         if not isinstance(payload, dict):
             raise AutomationError(422, f"step {number}: payload must be an object")
-        if kind == "group":
+        if kind == "hue_scene":
+            if (
+                not re.fullmatch(r"\d{1,4}/[A-Za-z0-9-]{1,40}", target)
+                or command != "recall"
+            ):
+                raise AutomationError(422, f"step {number}: not a Hue scene")
+            if not integration_enabled(db, home_id, "hue"):
+                raise AutomationError(422, f"step {number}: Philips Hue is turned off")
+        elif kind == "group":
             group = db.get(DeviceGroup, target)
             if group is None or group.home_id != home_id:
                 raise AutomationError(422, f"step {number}: no such group in this home")
@@ -193,7 +202,9 @@ def check_steps(
             finally:
                 device.state = saved
         else:
-            raise AutomationError(422, f"step {number}: a device or a group")
+            raise AutomationError(
+                422, f"step {number}: a device, a group or a Hue scene"
+            )
         out.append({"kind": kind, "id": target, "command": command, "payload": payload})
     return out
 
@@ -211,6 +222,15 @@ def run_steps(
     audit = {"user_id": user_id, "home_id": home_id, "ip_address": None}
     done, failed = 0, []
     for step in steps:
+        if step["kind"] == "hue_scene":  # shown by the Hue Bridge itself
+            from app import hue_home
+
+            try:
+                hue_home.recall_scene(db, home_id, step["id"])
+                done += 1
+            except hue_home.HueUnavailable as error:
+                failed.append({"name": "a Hue scene", "reason": error.reason})
+            continue
         cmd = _device_command(step["command"], step.get("payload") or {})
         if step["kind"] == "group":
             group = db.get(DeviceGroup, step["id"])

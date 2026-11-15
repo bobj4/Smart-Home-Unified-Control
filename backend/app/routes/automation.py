@@ -26,7 +26,7 @@ guest_router = APIRouter(prefix="/api/v1/homes/{home_id}/guest", tags=["guests"]
 
 class Step(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    kind: Literal["device", "group"]
+    kind: Literal["device", "group", "hue_scene"]
     id: str = Field(min_length=1, max_length=36)
     command: str = Field(min_length=1, max_length=50, pattern=r"^[a-z_]+$")
     payload: dict[str, Any] = Field(default_factory=dict)

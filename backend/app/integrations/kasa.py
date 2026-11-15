@@ -278,6 +278,7 @@ def devices(host: str, login: tuple[str, str] | None = None) -> list[dict[str, A
                 "brightness": light.get("brightness"),
             }
         ]
+    metered = "ENE" in str(info.get("feature") or "")  # power monitoring
     children = info.get("children") or []
     if children:  # a power strip: one device per outlet
         return [
@@ -288,6 +289,7 @@ def devices(host: str, login: tuple[str, str] | None = None) -> list[dict[str, A
                 "model": model,
                 "on": bool(child.get("state")),
                 "child": child["id"],
+                "energy": metered,
             }
             for child in children
         ]
@@ -301,6 +303,7 @@ def devices(host: str, login: tuple[str, str] | None = None) -> list[dict[str, A
             "dimming": dimmer,
             "on": bool(info.get("relay_state")),
             "brightness": info.get("brightness"),
+            "energy": metered,
         }
     ]
 
@@ -358,6 +361,13 @@ def _smart_devices(host: str, login: tuple[str, str] | None) -> list[dict[str, A
     bulb = "BULB" in kind_text
     dimmer = "brightness" in info
     limits = info.get("color_temp_range")
+    try:  # power monitoring: only models that have it answer
+        smart(host, "get_energy_usage", login=login)
+        metered = True
+    except KasaLogin:
+        raise
+    except KasaError:
+        metered = False
     entry: dict[str, Any] = {
         "id": host,
         "name": _name(info.get("nickname"), model),
@@ -368,6 +378,7 @@ def _smart_devices(host: str, login: tuple[str, str] | None) -> list[dict[str, A
         "dimming": dimmer,
         "on": bool(info.get("device_on")),
         "brightness": info.get("brightness"),
+        "energy": metered,
     }
     if bulb:
         entry["white"] = "color_temp" in info
@@ -487,6 +498,64 @@ def _hsv(r: int, g: int, b: int) -> tuple[int, int, int]:
         hue = 60 * ((r - g) / delta + 4)
     sat = 0 if high == 0 else delta / high
     return round(hue), round(sat * 100), round(high / 255 * 100)
+
+
+DAY_SECONDS = 600  # today's total is read at most this often
+_today: dict[tuple[str, str | None], tuple[float, float | None]] = {}
+
+
+def energy(
+    host: str,
+    login: tuple[str, str] | None = None,
+    child: str | None = None,
+    is_smart: bool = False,
+) -> dict[str, float | None]:
+    """A metered plug's power now (W) and use today (kWh)."""
+    if is_smart:
+        usage = smart(host, "get_energy_usage", login=login)
+        power = usage.get("current_power")
+        today = usage.get("today_energy")
+        return {
+            "power_w": round(float(power) / 1000, 1) if power is not None else None,
+            "today_kwh": round(float(today) / 1000, 3) if today is not None else None,
+        }
+    context = {"context": {"child_ids": [child]}} if child else {}
+    now = _check(request(host, {"emeter": {"get_realtime": {}}, **context}, login))
+    real = (now.get("emeter") or {}).get("get_realtime") or {}
+    if "power_mw" in real:
+        power_w: float | None = float(real["power_mw"]) / 1000
+    else:
+        power_w = float(real["power"]) if "power" in real else None
+    key = (host, child)
+    saved = _today.get(key)
+    if saved is not None and time.monotonic() - saved[0] < DAY_SECONDS:
+        today_kwh = saved[1]
+    else:
+        today_kwh = _today_kwh(host, login, context)
+        _today[key] = (time.monotonic(), today_kwh)
+    return {
+        "power_w": round(power_w, 1) if power_w is not None else None,
+        "today_kwh": today_kwh,
+    }
+
+
+def _today_kwh(
+    host: str, login: tuple[str, str] | None, context: dict[str, Any]
+) -> float | None:
+    day = time.localtime()
+    asked = {"get_daystat": {"year": day.tm_year, "month": day.tm_mon}}
+    try:
+        stats = _check(request(host, {"emeter": asked, **context}, login))
+    except KasaError:
+        return None
+    for entry in (stats.get("emeter") or {}).get("get_daystat", {}).get(
+        "day_list"
+    ) or []:
+        if entry.get("day") == day.tm_mday:
+            if "energy_wh" in entry:
+                return round(float(entry["energy_wh"]) / 1000, 3)
+            return round(float(entry.get("energy", 0)), 3)
+    return 0.0
 
 
 def send(host: str, body: dict[str, Any], login: tuple[str, str] | None = None) -> None:

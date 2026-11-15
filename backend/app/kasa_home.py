@@ -112,6 +112,7 @@ def add_host(db: Session, home_id: str, host: str, room: str | None) -> list[Dev
                     "color": bool(info.get("color")),
                     "smart": bool(info.get("smart")),
                     "ct_range": info.get("ct_range"),
+                    "energy": bool(info.get("energy")),
                 }
             ),
             state="{}",
@@ -129,6 +130,9 @@ def _apply(device: Device, info: dict[str, Any]) -> bool:
     new = {**state, "on": bool(info["on"])}
     if device.type == "light" and info.get("brightness") is not None:
         new["brightness"] = int(info["brightness"])
+    for key in ("power_w", "today_kwh"):  # a metered plug's readings
+        if key in info:
+            new[key] = info[key]
     changed = new != state
     device.state = json.dumps(new)
     if changed:
@@ -163,6 +167,30 @@ def send_command(
     _guard(lambda: kasa.send(host, body, who))
 
 
+def _read_host(
+    host: str, who: tuple[str, str] | None, metered: dict[str, dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Everything at the address, with readings from its metered plugs
+    (metered: device id -> its capabilities)."""
+    found = kasa.devices(host, who)
+    for info in found:
+        caps = metered.get(str(info["id"]))
+        if not (info.get("energy") or (caps and caps.get("energy"))):
+            continue
+        try:
+            info.update(
+                kasa.energy(
+                    host,
+                    who,
+                    info.get("child") if not info.get("smart") else None,
+                    bool(info.get("smart")),
+                )
+            )
+        except kasa.KasaError:
+            pass  # the switch state still counts
+    return found
+
+
 def refresh(db: Session, home_id: str) -> int:
     """Read each address once; returns how many devices changed."""
     if not integration_enabled(db, home_id, INTEGRATION):
@@ -174,7 +202,14 @@ def refresh(db: Session, home_id: str) -> int:
             json.loads(device.capabilities or "{}").get("host"), []
         ).append(device)
     hosts = [h for h in by_host if probes.due(f"kasa:{h}")]
-    answers = probes.gather({str(h): partial(kasa.devices, str(h), who) for h in hosts})
+    caps = {
+        str(d.external_id): json.loads(d.capabilities or "{}")
+        for group in by_host.values()
+        for d in group
+    }
+    answers = probes.gather(
+        {str(h): partial(_read_host, str(h), who, caps) for h in hosts}
+    )
     changed = 0
     for host in hosts:
         group = by_host[host]
@@ -187,6 +222,9 @@ def refresh(db: Session, home_id: str) -> int:
         for device in group:
             info = found.get(str(device.external_id))
             online = info is not None
+            known = json.loads(device.capabilities or "{}")
+            if info is not None and info.get("energy") and not known.get("energy"):
+                device.capabilities = json.dumps({**known, "energy": True})
             if device.online != online:
                 device.online = online
                 device.last_updated = utcnow()
