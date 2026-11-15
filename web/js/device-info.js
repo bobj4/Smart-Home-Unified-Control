@@ -10,17 +10,19 @@ class DeviceInfoPanel {
 
   open(device) {
     const net = device.network || {};
-    const line = (label, value) => el('div', { className: 'info-line' }, [el('dt', { text: label }), el('dd', { text: value || 'not reported by the device' })]);
+    const line = (label, value, missing = 'not reported by the device') => el('div', { className: 'info-line' }, [el('dt', { text: label }), el('dd', { text: value || missing })]);
+    // Brands without an address of their own on the network.
+    const noAddress = { cync: 'not found (Cync reports only the MAC)', hue: 'none (Zigbee, through the Hue Bridge)', rheem_econet: 'not reported (EcoNet cloud)', simulated: 'not reported by the device (demo)' };
     this.overlay.replaceChildren(el('div', { className: 'remote info-panel', testid: 'device-info-panel', role: 'dialog', 'aria-label': `${device.name} network details` }, [
       el('div', { className: 'remote-head' }, [
         el('h2', { text: device.name }),
         el('button', { type: 'button', className: 'ghost', testid: 'device-info-close', text: '✕', 'aria-label': 'Close', onclick: () => this.close() }),
       ]),
       el('dl', {}, [
-        line('IP address', net.ip),
+        line('IP address', net.ip, noAddress[device.integration]),
         line('MAC address', net.mac),
-        line('Type', device.type.replace('_', ' ')),
-        line('Brand', device.integration),
+        line('Type', typeLabel(device.type)),
+        line('Brand', brandName(device.integration)),
       ]),
     ]));
     this.overlay.hidden = false;

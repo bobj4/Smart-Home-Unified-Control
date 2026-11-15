@@ -5,7 +5,7 @@
 
 const LIMIT_TYPES = [
   ['thermostat', 'Thermostat'],
-  ['water_heater', 'Water heater'],
+  ['water_heater', 'Water Heater'],
 ];
 
 function numberOrNull(input) {

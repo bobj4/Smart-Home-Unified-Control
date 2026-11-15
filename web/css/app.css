@@ -481,3 +481,17 @@ svg.home-icon { padding: 3px; background: var(--surface-2); }
 .garage-parking { display: grid; gap: 6px; }
 .parking-target { align-items: center; }
 .parking-target input { width: 6em; }
+
+/* Settings > Devices: each device's alert bell (device-alert-bell.js). */
+.device-kind { display: inline-flex; align-items: center; gap: 6px; }
+.device-bell { padding: 4px; line-height: 0; border: 0; background: transparent; }
+.device-bell-icon { width: 24px; height: 24px; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.device-bell-icon.on { stroke: #b0b4ba; }
+.device-bell-icon.off { stroke: #d93025; }
+.device-bell-icon .slash { stroke-width: 2.2; }
+.device-bell-icon .plus-dot { fill: var(--surface); stroke: currentColor; stroke-width: 1.4; }
+.device-bell-icon.on .plus-dot { stroke: #b0b4ba; }
+.device-bell-icon.off .plus-dot { stroke: #d93025; }
+.device-bell-icon .plus { stroke-width: 1.6; }
+.device-bell:disabled { opacity: 0.6; cursor: default; }
+.dimmed { opacity: 0.5; }

@@ -45,7 +45,6 @@ class AdminSection {
     nestSections(twoFactor);
     await new MotdPanel(this.app).render(container);
     await new ScheduleSettingsPanel(this.app).render(container);
-    await new AlertSettingsPanel(this.app).render(container);
     container.append(this.emailForm(email), this.httpsBox);
   }
 

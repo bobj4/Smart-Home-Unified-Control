@@ -63,4 +63,13 @@ Object.assign(SmartHomeAPI.prototype, {
   markAlertsSeen(homeId) {
     return this.post(`/homes/${enc(homeId)}/alerts/feed/seen`);
   },
+  getDeviceAlerts(homeId) {
+    return this.get(`/homes/${enc(homeId)}/alerts/devices`);
+  },
+  setDeviceAlerts(homeId, deviceId, body) {
+    return this.put(`/homes/${enc(homeId)}/alerts/devices/${enc(deviceId)}`, body);
+  },
+  locateFromAddress(homeId) {
+    return this.post(`/homes/${enc(homeId)}/automation/settings/locate`);
+  },
 });

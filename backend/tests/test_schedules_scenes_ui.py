@@ -126,3 +126,28 @@ def test_ui_guests_see_scenes_only_when_allowed(
     time.sleep(0.2)
     db.expire_all()
     assert json.loads(db.get(Device, lamp).state)["on"] is True
+
+
+def test_ui_location_from_the_homes_address(open_page, db, owner, monkeypatch):
+    from app import geocode
+    from app.models import Home
+
+    monkeypatch.setattr(
+        geocode,
+        "get",
+        lambda url, params: {
+            "result": {
+                "addressMatches": [{"coordinates": {"x": -74.006, "y": 40.7128}}]
+            }
+        },
+    )
+    db.get(Home, owner.home_id).address = "1 Main St, New York"
+    db.commit()
+    page = open_page()
+    _ui.ui_login(page, owner)
+    panel = _ui.go_settings(page, "admin").get_by_test_id("schedule-settings")
+    panel.get_by_test_id("schedule-locate").click()
+    expect(page.get_by_test_id("status")).to_contain_text("from the home's address")
+    panel = page.get_by_test_id("schedule-settings")
+    expect(panel.get_by_test_id("schedule-location")).to_have_value("40.713, -74.006")
+    expect(panel.get_by_test_id("schedule-location-source")).to_contain_text("follows")

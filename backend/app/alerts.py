@@ -2,12 +2,14 @@
 who asked, by email (the email server in Admin) and by notifications on
 their phones and computers (Web Push, see app/webpush.py).
 
-What it watches (Admin > Alerts sets each, per home):
-  garage_open   a garage door open longer than garage_open_minutes
+What it watches (each device's bell in Settings > Devices sets its own,
+see app/device_alerts.py; camera labels are in Integrations > Frigate):
+  garage_open   a garage door open longer than its open_minutes
   auto_close    and closes it after auto_close_minutes (0: never)
   obstruction   a ratgdo's obstruction sensor sees something in the way
-  offline       a device of offline_types offline longer than offline_minutes
+  offline       a device offline longer than its offline_minutes
   water_heater  a water heater reports a new alert (Rheem EcoNet)
+  temperature   a thermostat reads below too_cold or above too_hot
   camera        Frigate sees one of frigate_labels (a person, say)
 
 Each person picks the kinds they want and how (My account > Alerts):
@@ -28,7 +30,7 @@ from urllib.parse import urlsplit
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app import mailer, vault, webpush
+from app import device_alerts, mailer, vault, webpush
 from app.audit import record_event
 from app.db_config import SessionLocal
 from app.features import integration_enabled
@@ -56,9 +58,9 @@ KINDS = {
     "obstruction": "Something is in a garage door's way",
     "offline": "A device stopped answering",
     "water_heater": "The water heater reports a problem",
+    "temperature": "A thermostat reads too hot or too cold",
     "camera": "A camera sees someone",
 }
-DEVICE_TYPES = ("thermostat", "water_heater", "garage_door", "light", "plug", "tv")
 PUSH_KEY = "webpush"
 # Push services browsers use; nothing else is ever sent a notification.
 PUSH_HOSTS = (
@@ -77,45 +79,18 @@ PUSH_HOSTS = (
 def settings_for(db: Session, home_id: str) -> AlertSettings:
     row = db.get(AlertSettings, home_id)
     if row is None:
-        row = AlertSettings(
-            home_id=home_id,
-            garage_open_minutes=15,
-            auto_close_minutes=0,
-            obstruction=True,
-            offline_minutes=15,
-            offline_types="thermostat,water_heater,garage_door",
-            water_heater=True,
-            frigate_labels="person",
-        )
+        row = AlertSettings(home_id=home_id, frigate_labels="person")
         db.add(row)
         db.flush()
     return row
 
 
 def settings_out(row: AlertSettings) -> dict[str, Any]:
-    return {
-        "garage_open_minutes": row.garage_open_minutes,
-        "auto_close_minutes": row.auto_close_minutes,
-        "obstruction": bool(row.obstruction),
-        "offline_minutes": row.offline_minutes,
-        "offline_types": [t for t in row.offline_types.split(",") if t],
-        "water_heater": bool(row.water_heater),
-        "frigate_labels": [x for x in row.frigate_labels.split(",") if x],
-    }
+    return {"frigate_labels": [x for x in row.frigate_labels.split(",") if x]}
 
 
 def save_settings(db: Session, home_id: str, changes: dict[str, Any]) -> AlertSettings:
     row = settings_for(db, home_id)
-    for key in ("garage_open_minutes", "auto_close_minutes", "offline_minutes"):
-        if key in changes:
-            setattr(row, key, int(changes[key]))
-    for key in ("obstruction", "water_heater"):
-        if key in changes:
-            setattr(row, key, bool(changes[key]))
-    if "offline_types" in changes:
-        row.offline_types = ",".join(
-            t for t in changes["offline_types"] if t in DEVICE_TYPES
-        )
     if "frigate_labels" in changes:
         labels = [str(x).strip().lower() for x in changes["frigate_labels"]]
         row.frigate_labels = ",".join(x for x in labels if x)[:200]
@@ -370,30 +345,35 @@ def check_home(
     where = _home_name(db, home_id)
     sent = 0
     devices = list(db.scalars(select(Device).where(Device.home_id == home_id)))
-    offline_types = set(row.offline_types.split(","))
+    configs = device_alerts.for_home(db, home_id)
     for device in devices:
         state = json.loads(device.state or "{}")
+        cfg = configs[device.id]
+        on, rules = cfg["enabled"], cfg["settings"]
         if device.type == "garage_door":
             open_for = watch.condition(
                 (device.id, "open"), state.get("door") == "open", now
             )
+            minutes = rules.get("open_minutes") or 0
             if (
-                row.garage_open_minutes
-                and open_for >= row.garage_open_minutes * 60
+                on
+                and minutes
+                and open_for >= minutes * 60
                 and watch.once((device.id, "open"))
             ):
-                minutes = int(open_for // 60)
                 sent += deliver(
                     db,
                     home_id,
                     "garage_open",
                     f"{device.name} is open",
-                    f"{device.name} at {where} has been open for {minutes} minutes.",
+                    f"{device.name} at {where} has been open for {int(open_for // 60)} minutes.",
                     f"open-{device.id}",
                 )
+            close_after = rules.get("auto_close_minutes") or 0
             if (
-                row.auto_close_minutes
-                and open_for >= row.auto_close_minutes * 60
+                on
+                and close_after
+                and open_for >= close_after * 60
                 and watch.once((device.id, "auto_close"))
             ):
                 try:
@@ -403,7 +383,7 @@ def check_home(
                         DeviceCommand(command="close"),
                         {"user_id": None, "home_id": home_id, "ip_address": None},
                     )
-                    text = f"{device.name} at {where} was open {row.auto_close_minutes} minutes, so it is closing."
+                    text = f"{device.name} at {where} was open {close_after} minutes, so it is closing."
                 except CommandRejected as rejected:
                     db.rollback()
                     text = f"{device.name} at {where} was left open, but could not be closed: {rejected.reason}"
@@ -417,7 +397,12 @@ def check_home(
                 )
             blocked = bool(state.get("obstruction"))
             watch.condition((device.id, "obstruction"), blocked, now)
-            if row.obstruction and blocked and watch.once((device.id, "obstruction")):
+            if (
+                on
+                and rules.get("obstruction")
+                and blocked
+                and watch.once((device.id, "obstruction"))
+            ):
                 sent += deliver(
                     db,
                     home_id,
@@ -426,24 +411,29 @@ def check_home(
                     f"Something is in the way of {device.name} at {where}.",
                     f"block-{device.id}",
                 )
-        if device.type in offline_types and row.offline_minutes:
-            gone_for = watch.condition((device.id, "offline"), not device.online, now)
-            if gone_for >= row.offline_minutes * 60 and watch.once(
-                (device.id, "offline")
-            ):
-                sent += deliver(
-                    db,
-                    home_id,
-                    "offline",
-                    f"{device.name} is offline",
-                    f"{device.name} at {where} has not answered for {int(gone_for // 60)} minutes.",
-                    f"offline-{device.id}",
-                )
-        if device.type == "water_heater" and row.water_heater:
+        # Offline: devices with settings say after how long; the rest use
+        # the usual wait when their alert is on.
+        offline = rules.get("offline_minutes", device_alerts.OFFLINE_MINUTES)
+        gone_for = watch.condition((device.id, "offline"), not device.online, now)
+        if (
+            on
+            and offline
+            and gone_for >= offline * 60
+            and watch.once((device.id, "offline"))
+        ):
+            sent += deliver(
+                db,
+                home_id,
+                "offline",
+                f"{device.name} is offline",
+                f"{device.name} at {where} has not answered for {int(gone_for // 60)} minutes.",
+                f"offline-{device.id}",
+            )
+        if device.type == "water_heater":
             count = int(state.get("alerts") or 0)
             before = watch.heater_alerts.get(device.id)
             watch.heater_alerts[device.id] = count
-            if before is not None and count > before:
+            if on and rules.get("problems") and before is not None and count > before:
                 sent += deliver(
                     db,
                     home_id,
@@ -452,7 +442,50 @@ def check_home(
                     f"{device.name} at {where} reports {count} alert{'s' if count != 1 else ''}. See the Rheem EcoNet app for details.",
                     f"heater-{device.id}",
                 )
+        if device.type == "thermostat":
+            sent += _check_temperature(
+                db, home_id, device, state, rules, on, where, now, watch
+            )
     sent += _check_cameras(db, home_id, row, where, watch)
+    return sent
+
+
+def _check_temperature(
+    db: Session,
+    home_id: str,
+    device: Device,
+    state: dict[str, Any],
+    rules: dict[str, Any],
+    on: bool,
+    where: str,
+    now: float,
+    watch: Watch,
+) -> int:
+    """A thermostat reading below too_cold or above too_hot, once per spell."""
+    reading = state.get("current_temperature", state.get("temperature"))
+    unit = state.get("unit") or "F"
+    sent = 0
+    for key, word, beyond in (
+        ("too_cold", "cold", lambda r, t: r < t),
+        ("too_hot", "hot", lambda r, t: r > t),
+    ):
+        limit = rules.get(key)
+        holds = (
+            on
+            and limit is not None
+            and isinstance(reading, int | float)
+            and beyond(reading, limit)
+        )
+        watch.condition((device.id, key), bool(holds), now)
+        if holds and watch.once((device.id, key)):
+            sent += deliver(
+                db,
+                home_id,
+                "temperature",
+                f"{device.name} is too {word}",
+                f"{device.name} at {where} reads {reading:g} °{unit} (alert at {limit} °{unit}).",
+                f"{key}-{device.id}",
+            )
     return sent
 
 

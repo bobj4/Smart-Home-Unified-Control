@@ -17,6 +17,7 @@ from app import (
     federation_site,
     hue_events,
     init_db,
+    neighbors,
     refresh,
 )
 from app.db_config import settings
@@ -77,6 +78,8 @@ WEB_ICONS = {p.name: p for p in (WEB_DIR / "icons").glob("*.png")}
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db()
+    if settings.REFRESH_SECONDS > 0:
+        neighbors.enable()  # Cync IP addresses from their MAC (neighbors.py)
     task = (
         asyncio.create_task(refresh.run_forever(settings.REFRESH_SECONDS))
         if settings.REFRESH_SECONDS > 0

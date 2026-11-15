@@ -689,6 +689,11 @@ class ScheduleSettings(Base):
     editors: Mapped[str] = mapped_column(
         String(10), default="admin"
     )  # or operator, member
+    # Where latitude and longitude came from: "address" (the home's address,
+    # looked up; follows it when it changes) or "manual" (typed in).
+    location_source: Mapped[str] = mapped_column(
+        String(10), default="manual", server_default="manual"
+    )
     paused: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa_false()
     )
@@ -698,28 +703,32 @@ class ScheduleSettings(Base):
 
 
 class AlertSettings(Base):
-    """A home's alerts (Admin > Alerts). Minutes of 0 turn that alert off.
-    offline_types: comma-separated device types watched for going offline;
-    frigate_labels: comma-separated Frigate labels that alert ("" = off)."""
+    """A home's camera alerts: the Frigate labels that alert (comma-separated,
+    "" = none; Integrations > Frigate). What each device watches for is set
+    per device (DeviceAlert, Settings > Devices)."""
 
     __tablename__ = "alert_settings"
 
     home_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("homes.id", ondelete="CASCADE"), primary_key=True
     )
-    garage_open_minutes: Mapped[int] = mapped_column(Integer, default=15)
-    auto_close_minutes: Mapped[int] = mapped_column(Integer, default=0)
-    obstruction: Mapped[bool] = mapped_column(
-        Boolean, default=True, server_default=sa_true()
-    )
-    offline_minutes: Mapped[int] = mapped_column(Integer, default=15)
-    offline_types: Mapped[str] = mapped_column(
-        String(200), default="thermostat,water_heater,garage_door"
-    )
-    water_heater: Mapped[bool] = mapped_column(
-        Boolean, default=True, server_default=sa_true()
-    )
     frigate_labels: Mapped[str] = mapped_column(String(200), default="person")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class DeviceAlert(Base):
+    """What one device alerts about (the bell in Settings > Devices): on or
+    off, and its own settings (JSON; see app/device_alerts.py)."""
+
+    __tablename__ = "device_alerts"
+
+    device_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("devices.id", ondelete="CASCADE"), primary_key=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    settings: Mapped[str] = mapped_column(Text, default="{}")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )

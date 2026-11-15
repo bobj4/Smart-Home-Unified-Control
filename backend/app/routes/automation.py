@@ -18,7 +18,7 @@ from app.automation import AutomationError
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
 from app.guest_access import require_guest
-from app.models import Role, Scene, Schedule, User, utcnow
+from app.models import Home, Role, Scene, Schedule, User, utcnow
 
 router = APIRouter(prefix="/api/v1/homes/{home_id}/automation", tags=["automation"])
 guest_router = APIRouter(prefix="/api/v1/homes/{home_id}/guest", tags=["guests"])
@@ -295,6 +295,26 @@ def change_settings(
         raise _fail(error) from None
     _audit(db, request, user, home_id, "schedule_settings_changed", **changes)
     return automation.settings_out(row)
+
+
+@router.post("/settings/locate", dependencies=[Depends(require_csrf)])
+def locate_from_address(
+    home_id: str,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Set the location from the home's address (Admin > Home)."""
+    require_role(db, user.id, home_id, Role.ADMIN)
+    home = db.get(Home, home_id)
+    if home is None or not home.address:
+        raise HTTPException(422, "add the home's address first (Admin > Home)")
+    if not automation.from_address(db, home_id, force=True):
+        raise HTTPException(
+            502, "the address could not be found; check it, or type the location in"
+        )
+    _audit(db, request, user, home_id, "schedule_location_from_address")
+    return automation.settings_out(automation.settings_for(db, home_id))
 
 
 # ------------------------------------------------------------ guests

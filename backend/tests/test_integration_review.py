@@ -22,7 +22,13 @@ from app import (
 from app.integrations import hue, kasa, lg, ratgdo, roku
 from app.models import Device
 from tests.test_hue import BRIDGE, bridge  # noqa: F401
-from tests.test_rheem import econet, ready, rheem_devices, secrets_key, sync  # noqa: F401
+from tests.test_rheem import (  # noqa: F401
+    econet,
+    ready,
+    rheem_devices,
+    secrets_key,
+    sync,
+)
 
 HOST = "192.168.1.80"
 

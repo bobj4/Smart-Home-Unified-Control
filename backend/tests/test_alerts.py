@@ -1,7 +1,8 @@
 # ruff: noqa: F811 (fixtures shared with test_package1)
 """Alerts: the server watches for a garage left open (and can close it),
-something in a garage door's way, devices offline, water heater problems
-and camera detections, and tells the people who asked, by email and by
+something in a garage door's way, devices offline, water heater problems,
+thermostats too hot or too cold and camera detections (each device's own
+settings: its bell in Settings > Devices), and tells the people who asked, by email and by
 notifications (Web Push: RFC 8291 encryption, RFC 8292 signing)."""
 
 import json
@@ -129,6 +130,16 @@ def ready(client, db, owner, login, csrf, kinds, email=True, push=True):
     assert r.status_code == 200, r.text
 
 
+def bell(client, csrf, owner, device, enabled=None, settings=None):
+    """The device's bell in Settings > Devices."""
+    body = {"enabled": enabled, "settings": settings or {}}
+    return client.put(
+        f"/api/v1/homes/{owner.home_id}/alerts/devices/{device.id}",
+        json=body,
+        headers=csrf(client),
+    )
+
+
 def garage(db, owner, make_device, door="closed", **more):
     device = db.get(
         Device, make_device(owner.home_id, device_type="garage_door", name="Garage")
@@ -163,11 +174,14 @@ def test_garage_left_open_alerts_once_and_can_close_it(
 ):
     door = garage(db, owner, make_device, "open")
     ready(client, db, owner, login, csrf, ["garage_open", "auto_close"])
-    client.put(
-        f"/api/v1/homes/{owner.home_id}/alerts/settings",
-        json={"garage_open_minutes": 10, "auto_close_minutes": 30},
-        headers=csrf(client),
+    r = bell(
+        client,
+        csrf,
+        owner,
+        door,
+        settings={"open_minutes": 10, "auto_close_minutes": 30},
     )
+    assert r.status_code == 200 and r.json()["settings"]["auto_close_minutes"] == 30
     watch = alerts.Watch()
     assert alerts.check_home(db, owner.home_id, now=0, watch=watch) == 0
     assert alerts.check_home(db, owner.home_id, now=9 * 60, watch=watch) == 0
@@ -280,22 +294,72 @@ def test_a_gone_browser_is_forgotten_and_test_alerts(
     assert db.query(PushSubscription).count() == 0
 
 
-def test_settings_are_for_admins(client, new_client, owner, make_user, login, csrf):
+def test_settings_are_for_admins(
+    client, new_client, db, owner, make_user, login, csrf, make_device
+):
     member = make_user(owner.home_id, role="member")
     other = new_client()
     assert login(other, member).status_code == 200
     url = f"/api/v1/homes/{owner.home_id}/alerts"
     assert other.get(url).json()["can_admin"] is False
-    r = other.put(
-        f"{url}/settings", json={"garage_open_minutes": 5}, headers=csrf(other)
-    )
+    r = other.put(f"{url}/settings", json={"frigate_labels": []}, headers=csrf(other))
     assert r.status_code == 403
+    door = garage(db, owner, make_device)
+    assert other.get(f"{url}/devices").json()[door.id]["enabled"] is True
+    r = bell(other, csrf, owner, door, enabled=False)
+    assert r.status_code == 403  # operators and admins
     r = other.put(
         f"{url}/mine", json={"kinds": ["camera", "nonsense"]}, headers=csrf(other)
     )
     assert r.status_code == 422
     r = other.put(f"{url}/mine", json={"kinds": ["camera"]}, headers=csrf(other))
     assert r.json()["kinds"] == ["camera"]
+
+
+def test_each_device_sets_its_own_alerts(
+    client, db, owner, login, csrf, make_device, secrets_key, outbox, pushed
+):
+    door = garage(db, owner, make_device, "open", obstruction=True)
+    lamp = db.get(Device, make_device(owner.home_id, device_type="light", name="Lamp"))
+    hall = db.get(
+        Device, make_device(owner.home_id, device_type="thermostat", name="Hall")
+    )
+    hall.state = json.dumps({"current_temperature": 70, "unit": "F"})
+    lamp.online = False
+    db.commit()
+    ready(
+        client,
+        db,
+        owner,
+        login,
+        csrf,
+        ["garage_open", "obstruction", "offline", "temperature"],
+        push=False,
+    )
+    url = f"/api/v1/homes/{owner.home_id}/alerts/devices"
+    shown = client.get(url).json()
+    assert shown[door.id]["popup"] and shown[door.id]["enabled"]
+    assert shown[lamp.id] == {"enabled": False, "popup": False, "settings": {}}
+    assert shown[hall.id]["settings"]["too_cold"] is None
+    # Off: the open, blocked door says nothing; the light (bell only) is on.
+    assert bell(client, csrf, owner, door, enabled=False).status_code == 200
+    assert bell(client, csrf, owner, lamp, enabled=True).json()["enabled"] is True
+    r = bell(client, csrf, owner, lamp, settings={"open_minutes": 5})
+    assert r.status_code == 422  # a light has no settings
+    r = bell(client, csrf, owner, hall, settings={"too_cold": 80, "too_hot": 75})
+    assert r.status_code == 422 and "below" in r.json()["detail"]
+    r = bell(client, csrf, owner, hall, settings={"too_cold": 65, "too_hot": 68})
+    assert r.status_code == 200
+    watch = alerts.Watch()
+    assert alerts.check_home(db, owner.home_id, now=0, watch=watch) == 1  # too hot
+    assert "Hall is too hot" in outbox[-1][1] and "70 °F" in outbox[-1][2]
+    assert alerts.check_home(db, owner.home_id, now=15 * 60, watch=watch) == 1
+    assert "Lamp is offline" in outbox[-1][1]
+    assert not any("Garage" in s for _, s, _ in outbox)
+    # Back on, with the door's alerts at their settings.
+    bell(client, csrf, owner, door, enabled=True, settings={"obstruction": False})
+    assert alerts.check_home(db, owner.home_id, now=16 * 60, watch=watch) == 1
+    assert "Garage is open" in outbox[-1][1]  # blocked, but that alert is off
 
 
 # ------------------------------------------------------------ ratgdo extras
