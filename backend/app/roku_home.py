@@ -2,12 +2,13 @@
 the on/off refresh. Network calls go through app.integrations.roku."""
 
 import json
+from functools import partial
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import tv_pending
+from app import probes, tv_pending
 from app.features import integration_enabled
 from app.integrations import roku
 from app.models import Device, utcnow
@@ -104,10 +105,17 @@ def refresh(db: Session, home_id: str) -> int:
     """Update each Roku's on/off and reachability; returns how many changed."""
     if not integration_enabled(db, home_id, INTEGRATION):
         return 0
+    tvs = [t for t in list_tvs(db, home_id) if probes.due(f"roku:{t.external_id}")]
+    answers = probes.gather(
+        {t.id: partial(roku.is_on, str(t.external_id)) for t in tvs}
+    )
     changed = 0
-    for tv in list_tvs(db, home_id):
-        on = roku.is_on(str(tv.external_id))
+    for tv in tvs:
+        on = answers[tv.id]
+        if isinstance(on, Exception):
+            raise on
         online = on is not None
+        probes.answered(f"roku:{tv.external_id}", online)
         if on is not None:
             tv_pending.seen(tv.id, on)
         state = json.loads(tv.state or "{}")

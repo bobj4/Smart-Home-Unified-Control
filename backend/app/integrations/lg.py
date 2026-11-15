@@ -210,6 +210,29 @@ def is_on(host: str) -> bool:
     return False
 
 
+STANDBY_STATES = ("Active Standby", "Suspend", "Power Off")
+
+
+def power_state(host: str, key: str | None) -> str | None:
+    """ "on", "standby" (off but answering: Quick Start+ keeps the control
+    port open) or None (not answering). Screen Off counts as on."""
+    if not is_on(host):
+        return None
+    if not key:
+        return "on"
+    try:
+        session = _Session(host, key)
+    except LgError:
+        return "on"  # answering, but would not say: as before
+    try:
+        found = session.request("ssap://com.webos.service.tvpower/power/getPowerState")
+    except LgError:
+        return "on"  # older webOS has no power state
+    finally:
+        session.close()
+    return "standby" if str(found.get("state", "")) in STANDBY_STATES else "on"
+
+
 def apps(host: str, key: str) -> list[dict[str, str]]:
     session = _Session(host, key)
     try:

@@ -7,7 +7,7 @@ import json
 import pytest
 from playwright.sync_api import expect
 
-from app import features
+from app import features, tv_power
 from app.integrations import lg, samsung
 from tests import test_ui as _ui
 from tests.test_samsung import secrets_key  # noqa: F401
@@ -92,7 +92,9 @@ def tv(monkeypatch):
         lambda host, key, name, payload: sent.append((host, key, name, payload)),
     )
     monkeypatch.setattr(lg, "is_on", lambda host: True)
+    monkeypatch.setattr(lg, "power_state", lambda host, key: "on")
     monkeypatch.setattr(samsung, "wake", lambda mac: sent.append(("wake", mac)))
+    monkeypatch.setattr(tv_power, "_targets", lambda host: [])  # no real packets
     return sent
 
 

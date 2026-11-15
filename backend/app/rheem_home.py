@@ -47,11 +47,30 @@ def call(action: Any) -> Any:
         raise RheemUnavailable(502, str(error)) from None
 
 
-def sync(db: Session, home_id: str) -> dict[str, int]:
+def sync(db: Session, home_id: str, keep_when_empty: bool = True) -> dict[str, int]:
     """Create or update a device for every water heater on the account; delete
-    ones no longer on the account (removed in the EcoNet app)."""
+    ones no longer on the account (removed in the EcoNet app).
+
+    keep_when_empty (the default, as the background refresh calls it): an
+    account that suddenly lists no heaters at all is more likely an EcoNet
+    hiccup than every heater removed, so they are kept (marked offline)
+    rather than deleted with their rooms, groups and settings. Sync in
+    Settings passes False: there, an empty account deletes them."""
     client = client_for_home(db, home_id)
     heaters = call(client.list_water_heaters)
+    if not heaters and keep_when_empty:
+        kept = 0
+        for heater_device in db.scalars(
+            select(Device).where(
+                Device.home_id == home_id, Device.integration == INTEGRATION
+            )
+        ):
+            if heater_device.online:
+                heater_device.online = False
+                heater_device.last_updated = utcnow()
+                kept += 1
+        db.commit()
+        return {"created": 0, "updated": 0, "kept": kept}
     existing = {
         d.external_id: d
         for d in db.scalars(

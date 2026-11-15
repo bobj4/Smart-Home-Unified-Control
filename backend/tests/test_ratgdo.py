@@ -39,7 +39,7 @@ def test_adapter(monkeypatch):
     monkeypatch.setattr(ratgdo.requests, "request", request)
     assert ratgdo.door(HOST) == {"door": "open", "position": 100}
     ratgdo.act(HOST, "close")
-    assert calls[-1] == ("POST", f"http://{HOST}/cover/door/close")
+    assert calls[-1] == ("POST", f"http://{HOST}/cover/Door/close")
     with pytest.raises(ratgdo.RatgdoError):
         ratgdo.act(HOST, "explode")
     monkeypatch.setattr(

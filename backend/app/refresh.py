@@ -89,7 +89,7 @@ def refresh_rheem(db: Session, home_id: str, now: float | None = None) -> bool:
         return False
     _rheem_read_at[home_id] = now
     try:
-        rheem_home.sync(db, home_id)
+        rheem_home.sync(db, home_id)  # keeps heaters through an empty answer
     except rheem_home.RheemUnavailable as error:
         db.rollback()
         integration_status.failed(home_id, rheem_home.INTEGRATION, error.reason)
