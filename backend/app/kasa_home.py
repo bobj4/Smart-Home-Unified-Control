@@ -3,12 +3,13 @@ device per outlet), the optional TP-Link login for newer firmware, commands
 and the state refresh. Network calls go through app.integrations.kasa."""
 
 import json
+from functools import partial
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import credentials
+from app import credentials, probes
 from app.features import integration_enabled
 from app.integrations import kasa
 from app.models import Device, utcnow
@@ -109,6 +110,8 @@ def add_host(db: Session, home_id: str, host: str, room: str | None) -> list[Dev
                     "dimming": bool(info.get("dimming")),
                     "white": bool(info.get("white")),
                     "color": bool(info.get("color")),
+                    "smart": bool(info.get("smart")),
+                    "ct_range": info.get("ct_range"),
                 }
             ),
             state="{}",
@@ -146,11 +149,18 @@ def send_command(
     db: Session, device: Device, command: str, state: dict[str, Any]
 ) -> None:
     caps = json.loads(device.capabilities or "{}")
-    body = _guard(
-        lambda: kasa.body_for(command, state, bool(caps.get("bulb")), caps.get("child"))
-    )
     who = login(db, device.home_id)
-    _guard(lambda: kasa.send(str(caps["host"]), body, who))
+    host, child, ct = str(caps["host"]), caps.get("child"), caps.get("ct_range")
+    if caps.get("smart"):  # a newer model: the SMART API
+        params = _guard(lambda: kasa.smart_params(command, state, ct))
+        _guard(lambda: kasa.send_smart(host, params, child, who))
+        return
+    if ct is None and caps.get("bulb"):
+        ct = kasa.ct_range(str(caps.get("model") or ""))
+    body = _guard(
+        lambda: kasa.body_for(command, state, bool(caps.get("bulb")), child, ct)
+    )
+    _guard(lambda: kasa.send(host, body, who))
 
 
 def refresh(db: Session, home_id: str) -> int:
@@ -163,12 +173,17 @@ def refresh(db: Session, home_id: str) -> int:
         by_host.setdefault(
             json.loads(device.capabilities or "{}").get("host"), []
         ).append(device)
+    hosts = [h for h in by_host if probes.due(f"kasa:{h}")]
+    answers = probes.gather({str(h): partial(kasa.devices, str(h), who) for h in hosts})
     changed = 0
-    for host, group in by_host.items():
-        try:
-            found = {i["id"]: i for i in kasa.devices(str(host), who)}
-        except kasa.KasaError:
-            found = {}
+    for host in hosts:
+        group = by_host[host]
+        answer = answers[str(host)]
+        if isinstance(answer, Exception) and not isinstance(answer, kasa.KasaError):
+            raise answer
+        ok = not isinstance(answer, Exception)
+        probes.answered(f"kasa:{host}", ok)
+        found = {i["id"]: i for i in answer} if ok else {}
         for device in group:
             info = found.get(str(device.external_id))
             online = info is not None

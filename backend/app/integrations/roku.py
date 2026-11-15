@@ -47,8 +47,8 @@ INPUTS = {
     "hdmi2": "InputHDMI2",
     "hdmi3": "InputHDMI3",
     "hdmi4": "InputHDMI4",
-    "usb": "InputAV1",
 }
+MEDIA_PLAYER = "2213"  # Roku Media Player: a Roku's "USB" (it has no USB input)
 SIMPLE = {
     "turn_on": "PowerOn",
     "turn_off": "PowerOff",
@@ -158,7 +158,13 @@ def command(host: str, name: str, payload: dict[str, object]) -> None:
     elif name == "press_key":
         keypress(host, KEYS[str(payload["key"])])
     elif name == "set_input":
-        keypress(host, INPUTS[str(payload["source"])])
+        source = str(payload["source"])
+        if source == "usb":
+            launch(host, MEDIA_PLAYER)
+        elif source in INPUTS:
+            keypress(host, INPUTS[source])
+        else:
+            raise RokuUnsupported("a Roku has no such input")
     elif name == "launch_app":
         launch(host, APP_IDS[str(payload["app"])])
     elif name == "open_app":

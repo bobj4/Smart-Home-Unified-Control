@@ -2,11 +2,13 @@
 commands and the state refresh."""
 
 import json
+from functools import partial
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import probes
 from app.features import integration_enabled
 from app.integrations import ratgdo
 from app.models import Device, utcnow
@@ -77,13 +79,20 @@ def refresh(db: Session, home_id: str) -> int:
     """Read each opener's door; returns how many changed."""
     if not integration_enabled(db, home_id, INTEGRATION):
         return 0
+    doors = [
+        d for d in list_doors(db, home_id) if probes.due(f"ratgdo:{d.external_id}")
+    ]
+    answers = probes.gather(
+        {d.id: partial(ratgdo.door, str(d.external_id)) for d in doors}
+    )
     changed = 0
-    for device in list_doors(db, home_id):
-        try:
-            found: dict[str, Any] | None = ratgdo.door(str(device.external_id))
-        except ratgdo.RatgdoError:
-            found = None
+    for device in doors:
+        answer = answers[device.id]
+        if isinstance(answer, Exception) and not isinstance(answer, ratgdo.RatgdoError):
+            raise answer
+        found: dict[str, Any] | None = None if isinstance(answer, Exception) else answer
         online = found is not None
+        probes.answered(f"ratgdo:{device.external_id}", online)
         state = json.loads(device.state or "{}")
         new = {**state, **found} if found else state
         if new != state or device.online != online:

@@ -108,7 +108,7 @@ def sync_devices(
     """Find the account's water heaters and refresh their state."""
     require_role(db, user.id, home_id, Role.OPERATOR)
     try:
-        result = sync(db, home_id)
+        result = sync(db, home_id, keep_when_empty=False)  # Sync: deletes removed ones
     except RheemUnavailable as error:
         record_event(
             db,

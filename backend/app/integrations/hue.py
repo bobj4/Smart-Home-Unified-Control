@@ -29,7 +29,10 @@ def _call(method: str, url: str, body: Any = None) -> Any:
         ) from None
     if response.status_code >= 400:
         raise HueError(f"the Hue Bridge answered {response.status_code}")
-    data = response.json()
+    try:
+        data = response.json()
+    except ValueError:
+        raise HueError("that address answered, but not as a Hue Bridge") from None
     # The v1 API answers errors as [{"error": {...}}] with status 200.
     if (
         isinstance(data, list)

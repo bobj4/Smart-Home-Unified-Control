@@ -3,12 +3,13 @@ the on/off refresh. The TV's key is stored encrypted. Network calls go
 through app.integrations.lg (and Wake-on-LAN, for turning on)."""
 
 import json
+from functools import partial
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import credentials, tv_pending
+from app import credentials, probes, tv_pending, tv_power
 from app.features import integration_enabled
 from app.integrations import lg, samsung
 from app.models import Device, utcnow
@@ -107,6 +108,14 @@ def _key(db: Session, device: Device) -> str:
     return str(saved["key"])
 
 
+def _saved_key(db: Session, device: Device) -> str | None:
+    try:
+        saved = credentials.load(db, device.home_id, _key_name(device))
+    except VaultError:
+        return None
+    return str(saved["key"]) if saved and saved.get("key") else None
+
+
 def tv_apps(db: Session, device: Device) -> list[dict[str, str]]:
     key = _key(db, device)
     try:
@@ -124,8 +133,8 @@ def send_tv_command(
     if command == "turn_on":
         if not caps.get("mac"):
             raise LgUnavailable(422, "add the TV's MAC address to turn it on")
-        try:
-            samsung.wake(str(caps["mac"]))  # plain Wake-on-LAN, any brand
+        try:  # Wake-on-LAN, any brand: everywhere the TV may hear it
+            tv_power.wake(str(caps["mac"]), str(device.external_id))
         except samsung.TvError as error:
             raise LgUnavailable(502, str(error)) from None
         return
@@ -144,16 +153,29 @@ def refresh(db: Session, home_id: str) -> int:
     """Update each paired TV's on/off; returns how many changed."""
     if not integration_enabled(db, home_id, INTEGRATION):
         return 0
+    tvs = [
+        t
+        for t in list_tvs(db, home_id)
+        if json.loads(t.capabilities or "{}").get("paired")
+        and probes.due(f"lg:{t.external_id}")
+    ]
+    keys = {t.id: _saved_key(db, t) for t in tvs}
+    answers = probes.gather(
+        {t.id: partial(lg.power_state, str(t.external_id), keys[t.id]) for t in tvs}
+    )
     changed = 0
-    for tv in list_tvs(db, home_id):
-        if not json.loads(tv.capabilities or "{}").get("paired"):
-            continue
-        # An LG TV only answers while on: off, the page greys it out.
-        on = lg.is_on(str(tv.external_id))
+    for tv in tvs:
+        # Off and not answering: the page greys it out. Off but answering
+        # (Quick Start+ standby) is off, not offline.
+        found = answers[tv.id]
+        if isinstance(found, Exception):
+            raise found
+        on, reachable = found == "on", found is not None
+        probes.answered(f"lg:{tv.external_id}", reachable)
         tv_pending.seen(tv.id, on)
         state = json.loads(tv.state or "{}")
-        if state.get("on") != on or state.get("reachable") != on:
-            tv.state = json.dumps({**state, "on": on, "reachable": on})
+        if state.get("on") != on or state.get("reachable") != reachable:
+            tv.state = json.dumps({**state, "on": on, "reachable": reachable})
             tv.last_updated = utcnow()
             changed += 1
     db.commit()

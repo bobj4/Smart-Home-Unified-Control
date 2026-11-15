@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import credentials
+from app import credentials, integration_status
 from app.features import integration_enabled
 from app.integrations import hue
 from app.models import Device, utcnow
@@ -141,7 +141,20 @@ def refresh(db: Session, home_id: str) -> int:
     if credentials.label(db, home_id, INTEGRATION) is None:
         return 0
     host, key = _bridge(db, home_id)
-    found = {i["id"]: i for i in _guard(lambda: hue.lights(host, key))}
+    try:
+        found = {i["id"]: i for i in _guard(lambda: hue.lights(host, key))}
+    except HueUnavailable as error:
+        # The bridge does not answer: its lights cannot be reached either.
+        integration_status.failed(home_id, INTEGRATION, error.reason)
+        gone = 0
+        for device in list_lights(db, home_id):
+            if device.online:
+                device.online = False
+                device.last_updated = utcnow()
+                gone += 1
+        db.commit()
+        return gone
+    integration_status.worked(home_id, INTEGRATION)
     changed = 0
     for device in list_lights(db, home_id):
         info = found.get(str(device.external_id))
