@@ -805,6 +805,20 @@ class AlertSeen(Base):
     seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class AlertDismissed(Base):
+    """An alert a person dismissed from their bell (an X on a computer, a
+    swipe on a phone): gone from their list, not from anyone else's."""
+
+    __tablename__ = "alert_dismissed"
+
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    item_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("alert_items.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
 class ServerKey(Base):
     """This server's own keys (the push notification key), encrypted."""
 

@@ -53,7 +53,8 @@ through the backend's permission checks and device safety limits.
   when it has). Each device's bell in Settings › Devices sets what it alerts
   about (grey: on, red and struck through: off, a plus: more settings);
   camera labels are set in the Frigate settings. Each person picks what
-  they get. Notifications need
+  they get, and can dismiss an alert from their bell (its × on a computer,
+  a swipe on a phone) or all of them (Dismiss All). Notifications need
   HTTPS and SECRETS_KEY; on an iPhone, add the app to the Home Screen.
   A bell at the top right counts the alerts you have not seen yet.
 - Energy: power now and use today from Kasa plugs that measure it, and

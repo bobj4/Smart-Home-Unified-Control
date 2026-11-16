@@ -37,6 +37,7 @@ from app.features import integration_enabled
 from app.login_policy import settings as system_settings
 from app.models import (
     GUEST_ROLE,
+    AlertDismissed,
     AlertItem,
     AlertPrefs,
     AlertSeen,
@@ -222,6 +223,7 @@ def remember(db: Session, home_id: str, kind: str, title: str, body: str) -> Non
         .offset(KEEP_ALERTS)
     ).all()
     if old:
+        db.execute(delete(AlertDismissed).where(AlertDismissed.item_id.in_(old)))
         db.execute(delete(AlertItem).where(AlertItem.id.in_(old)))
     db.commit()
 
@@ -234,13 +236,12 @@ def feed(db: Session, user_id: str, home_id: str, limit: int = 30) -> dict[str, 
     """The bell: the newest alerts, and how many came since last opened."""
     seen = db.get(AlertSeen, (user_id, home_id))
     since = _aware(seen.seen_at) if seen else None
+    dismissed = select(AlertDismissed.item_id).where(AlertDismissed.user_id == user_id)
+    mine = (AlertItem.home_id == home_id) & AlertItem.id.not_in(dismissed)
     items = db.scalars(
-        select(AlertItem)
-        .where(AlertItem.home_id == home_id)
-        .order_by(AlertItem.id.desc())
-        .limit(limit)
+        select(AlertItem).where(mine).order_by(AlertItem.id.desc()).limit(limit)
     ).all()
-    unseen = select(func.count(AlertItem.id)).where(AlertItem.home_id == home_id)
+    unseen = select(func.count(AlertItem.id)).where(mine)
     if since is not None:
         unseen = unseen.where(AlertItem.created_at > since)
     return {
@@ -257,6 +258,32 @@ def feed(db: Session, user_id: str, home_id: str, limit: int = 30) -> dict[str, 
             for i in items
         ],
     }
+
+
+def dismiss(db: Session, user_id: str, home_id: str, item_id: int) -> bool:
+    """Take an alert off this person's bell; False if the home has no such
+    alert (already gone)."""
+    item = db.get(AlertItem, item_id)
+    if item is None or item.home_id != home_id:
+        return False
+    if db.get(AlertDismissed, (user_id, item_id)) is None:
+        db.add(AlertDismissed(user_id=user_id, item_id=item_id))
+        db.commit()
+    return True
+
+
+def dismiss_all(db: Session, user_id: str, home_id: str) -> int:
+    """Take every alert the home has now off this person's bell; returns how
+    many. Later alerts still show."""
+    dismissed = select(AlertDismissed.item_id).where(AlertDismissed.user_id == user_id)
+    ids = db.scalars(
+        select(AlertItem.id).where(
+            AlertItem.home_id == home_id, AlertItem.id.not_in(dismissed)
+        )
+    ).all()
+    db.add_all(AlertDismissed(user_id=user_id, item_id=i) for i in ids)
+    db.commit()
+    return len(ids)
 
 
 def mark_seen(db: Session, user_id: str, home_id: str) -> None:
