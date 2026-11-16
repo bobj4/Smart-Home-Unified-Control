@@ -40,6 +40,12 @@ function typeLabel(type) {
   return String(type || '').split('_').filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
+/** What a device is, as shown: a Cync wall switch is a "Light Switch"
+ * (its type, light or plug, is what it does). */
+function deviceKindLabel(device) {
+  return device.switch ? 'Light Switch' : typeLabel(device.type);
+}
+
 /** The brand as people write it ("cync" -> "GE Cync"). */
 const BRAND_NAMES = {
   simulated: 'Demo', cync: 'GE Cync', hue: 'Philips Hue', kasa: 'TP-Link Kasa', samsung_tv: 'Samsung',

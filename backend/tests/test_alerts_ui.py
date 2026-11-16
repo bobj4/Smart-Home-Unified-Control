@@ -140,3 +140,23 @@ def test_ui_camera_alert_labels_in_frigate_settings(open_page, db, owner):
     expect(page.get_by_test_id("status")).to_contain_text("Camera alerts saved")
     db.expire_all()
     assert db.get(AlertSettings, owner.home_id).frigate_labels == "person,car"
+
+
+def test_ui_bell_menu_stays_on_a_phone_screen(open_page, db, owner):
+    from app import alerts
+
+    alerts.remember(
+        db,
+        owner.home_id,
+        "camera",
+        "Person at cam202",
+        "The cam202 camera sees a person.",
+    )
+    page = open_page()
+    page.set_viewport_size({"width": 412, "height": 900})
+    _ui.ui_login(page, owner)
+    page.get_by_test_id("alert-bell").click()
+    menu = page.get_by_test_id("alert-bell-menu")
+    expect(page.get_by_test_id("alert-bell-item")).to_have_count(1)
+    box = menu.bounding_box()
+    assert box["x"] >= 8 and box["x"] + box["width"] <= 412 - 8, box

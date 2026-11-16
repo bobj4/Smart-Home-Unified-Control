@@ -145,7 +145,7 @@ class DevicesView {
         icon(device.type),
         el('div', {}, [
           el('h3', { text: device.name }),
-          el('p', { className: 'muted', text: `${typeLabel(device.type)}${offline ? ' · offline' : ''}` }),
+          el('p', { className: 'muted', text: `${deviceKindLabel(device)}${offline ? ' · offline' : ''}` }),
         ]),
       ]),
     ]);

@@ -4,7 +4,7 @@
  * the top and the bottom for every changed row; Delete per device.
  */
 
-const DEVICE_TYPE_LABELS = { light: 'Lights', plug: 'Plugs', tv: 'TVs', thermostat: 'Thermostats', water_heater: 'Water Heaters', camera: 'Cameras', sensor: 'Sensors', garage_door: 'Garage Doors' };
+const DEVICE_TYPE_LABELS = { light: 'Lights', plug: 'Plugs', tv: 'TVs', thermostat: 'Thermostats', water_heater: 'Water Heaters', camera: 'Cameras', sensor: 'Sensors', garage_door: 'Garage Doors', switch: 'Light Switches' };
 
 class DeviceSettings {
   constructor(app) {
@@ -27,19 +27,20 @@ class DeviceSettings {
     const roomList = el('datalist', { id: 'room-options' }, rooms.map((r) => el('option', { value: r })));
     const memberOf = new Map(groups.flatMap((g) => g.device_ids.map((id) => [id, g.id])));
     const rows = el('div', { className: 'device-rows' }, devices.map((d) => this.deviceRow(d, admin, groups, memberOf.get(d.id) || '')));
-    const types = [...new Set(devices.map((d) => d.type))];
+    const kindOf = (d) => (d.switch ? 'switch' : d.type);
+    const types = [...new Set(devices.map(kindOf))];
     const filter = el('select', { testid: 'device-filter', 'aria-label': 'Show device type' }, [
       el('option', { value: '', text: 'All types' }),
       ...types.map((t) => el('option', { value: t, text: DEVICE_TYPE_LABELS[t] || t })),
     ]);
     // Search by name, room, brand, type or network address (IP or MAC).
     const search = el('input', { type: 'search', testid: 'device-search', placeholder: 'Name, room, brand, IP or MAC', 'aria-label': 'Search devices' });
-    const haystack = new Map(devices.map((d) => [d.id, [d.name, d.room, d.integration, DEVICE_TYPE_LABELS[d.type] || d.type, d.network && d.network.ip, d.network && d.network.mac].filter(Boolean).join(' ').toLowerCase()]));
+    const haystack = new Map(devices.map((d) => [d.id, [d.name, d.room, d.integration, brandName(d.integration), deviceKindLabel(d), d.network && d.network.ip, d.network && d.network.mac].filter(Boolean).join(' ').toLowerCase()]));
     const apply = () => {
       const words = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
       rows.querySelectorAll('[data-testid="device-row"]').forEach((row) => {
         const text = haystack.get(row.dataset.deviceId) || '';
-        row.hidden = (Boolean(filter.value) && row.dataset.deviceType !== filter.value) || !words.every((w) => text.includes(w));
+        row.hidden = (Boolean(filter.value) && row.dataset.deviceKind !== filter.value) || !words.every((w) => text.includes(w));
       });
     };
     filter.addEventListener('change', apply);
@@ -87,11 +88,11 @@ class DeviceSettings {
       group.dataset.initial = groupId;
       fields.push(field('Group', group));
     }
-    const row = el('form', { className: 'device-row', testid: 'device-row', 'data-device-id': device.id, 'data-device-type': device.type }, [
+    const row = el('form', { className: 'device-row', testid: 'device-row', 'data-device-id': device.id, 'data-device-type': device.type, 'data-device-kind': device.switch ? 'switch' : device.type }, [
       el('div', { className: 'grid-fields' }, fields),
       deviceInfoButton(device),
       el('span', { className: 'device-kind' }, [
-        el('span', { className: 'muted', text: typeLabel(device.type) }),
+        el('span', { className: 'muted', text: deviceKindLabel(device) }),
         this.alerts[device.id] ? deviceAlertBell(this.app, device, this.alerts[device.id], admin) : '',
       ]),
     ]);

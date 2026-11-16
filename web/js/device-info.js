@@ -21,7 +21,7 @@ class DeviceInfoPanel {
       el('dl', {}, [
         line('IP address', net.ip, noAddress[device.integration]),
         line('MAC address', net.mac),
-        line('Type', typeLabel(device.type)),
+        line('Type', deviceKindLabel(device)),
         line('Brand', brandName(device.integration)),
       ]),
     ]));
