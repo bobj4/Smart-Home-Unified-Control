@@ -10,7 +10,10 @@ through the backend's permission checks and device safety limits.
 
 - **GE Cync**
   - Smart lights (power, brightness, color temperature, color)
-  - Smart plugs and switches (a dimmer switch works like a light)
+  - Smart plugs and switches (shown as "Light Switch"; a dimmer switch
+    works like a light)
+  - Live: changes and reachability (a bulb whose wall switch is turned
+    off or on again) show within seconds
   - Thermostats (mode, set points, fan, hold, weekly schedules, sensor
     schedules, and the thermostat's own settings such as Early On)
   - Temperature sensors

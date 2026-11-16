@@ -127,6 +127,9 @@ def _device_out(device: Device) -> dict[str, Any]:
         "quick_apps": (caps.get("quick_apps") or [])
         if device.integration == "samsung_tv"
         else None,
+        # A wall switch (Cync): a light or plug by what it does, but shown
+        # as a "Light Switch".
+        "switch": bool(caps.get("switch")),
     }
 
 

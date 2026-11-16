@@ -70,12 +70,15 @@ class AlertBell {
         el('strong', { text: a.title }),
         el('p', { className: 'muted', text: a.body }),
         el('p', { className: 'muted bell-time', text: formatTime(a.at) }),
-      ])) : [el('p', { className: 'muted', testid: 'alert-bell-empty', text: 'No alerts yet. Choose what this home watches in Settings > Admin > Alerts.' })]),
+      ])) : [el('p', { className: 'muted', testid: 'alert-bell-empty', text: 'No alerts yet. Choose yours in My account > Alerts; the bell beside each device in Settings > Devices sets what it alerts about.' })]),
     );
     const box = this.button.getBoundingClientRect();
     this.menu.style.top = `${box.bottom + 6}px`;
-    this.menu.style.right = `${Math.max(8, window.innerWidth - box.right)}px`;
     this.menu.hidden = false;
+    // Under the bell, but kept on screen (on a phone it is wider than the
+    // room left of the bell).
+    const room = document.documentElement.clientWidth;
+    this.menu.style.right = `${Math.max(8, Math.min(room - box.right, room - this.menu.offsetWidth - 8))}px`;
     if (this.feed && this.feed.unseen) {
       try {
         this.show(await this.app.api.markAlertsSeen(home).then(() => ({ ...this.feed, unseen: 0 })));

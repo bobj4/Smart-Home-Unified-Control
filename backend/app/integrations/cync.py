@@ -65,6 +65,7 @@ class CyncDeviceInfo:
     color: bool
     mac: str | None = None
     cloud_id: int | None = None  # the thermostat's id in Cync's cloud
+    switch: bool = False  # a wall switch or dimmer ("Light Switch")
 
 
 def _tokens(user: Any) -> dict[str, Any]:
@@ -124,6 +125,7 @@ def _info(device: Any) -> CyncDeviceInfo:
         white=isinstance(device, CyncLight) and CyncCapability.CCT_COLOR in caps,
         color=isinstance(device, CyncLight) and CyncCapability.RGB_COLOR in caps,
         mac=_mac(getattr(device, "mac", None)),
+        switch=is_switch(device),
     )
 
 
@@ -173,6 +175,8 @@ def _state(device: Any) -> dict[str, Any] | None:
     or None if it has not reported yet."""
     try:
         state: dict[str, Any] = {"on": bool(device.is_on)}
+        if isinstance(getattr(device, "is_online", None), bool):
+            state["online"] = device.is_online  # e.g. power back at the switch
         if not isinstance(device, CyncLight):
             return state
         caps = device.capabilities
@@ -470,15 +474,28 @@ def send(
     return dict(_run(_send(tokens, device_id, action, value)))
 
 
+def _reachable(devices: Any) -> dict[str, dict[str, Any]]:
+    """{device id: {"online": bool}} for lights, plugs and switches (a
+    thermostat says so itself)."""
+    found = {}
+    for device in devices:
+        online = getattr(device, "is_online", None)
+        if isinstance(online, bool) and not is_thermostat(device):
+            found[str(device.unique_id)] = {"online": online}
+    return found
+
+
 async def listen(
     tokens: dict[str, Any],
     on_states: Callable[[dict[str, dict[str, Any]]], Coroutine[Any, Any, None]],
-    poll_seconds: float = 30,
+    poll_seconds: float = 15,
     on_open: Callable[[Any], None] | None = None,
 ) -> None:
     """Stay connected and pass on state reports as they come (Cync pushes a
     report when a device changes, also from the Cync app or a wall switch).
-    Asks for a full report every `poll_seconds`. Runs until cancelled."""
+    Asks for a full report every `poll_seconds`, which also says which
+    devices are reachable (a bulb whose wall switch was turned off is not;
+    on again, it is): passed on as {"online": ...}. Runs until cancelled."""
     async with aiohttp.ClientSession() as web:
         auth = Auth(web, user=_user(tokens))
         api = await asyncio.wait_for(Cync.create(auth), TIMEOUT_SECONDS)
@@ -520,6 +537,10 @@ async def listen(
                 with contextlib.suppress(Exception):  # thermostats report on a probe
                     await asyncio.wait_for(link.probe_all(), TIMEOUT_SECONDS)
                 await asyncio.sleep(poll_seconds)
+                # The full report has answered meanwhile: who is reachable.
+                reachable = _reachable(api.get_devices())
+                if reachable:
+                    await on_states(reachable)
         finally:
             cync_thermostat.detach(api)
             with contextlib.suppress(Exception):
