@@ -1,7 +1,7 @@
 /**
  * Names and logins: an admin's Edit button on each member (Settings >
  * Members), the admin setting that lets people change their own, and the
- * "Your details" form in My account when it is allowed.
+ * "Your details" form in My Account when it is allowed.
  */
 
 /** The Edit button on a member row: name and login, in place. */
@@ -57,14 +57,14 @@ class SelfEditPanel {
     container.append(el('div', { className: 'integration-row', testid: 'self-edit-settings' }, [
       el('div', {}, [
         el('strong', { text: 'People can change their own details' }),
-        el('p', { className: 'muted', text: 'Name and email, in My account. Changing an email needs their password.' }),
+        el('p', { className: 'muted', text: 'Name and email, in My Account. Changing an email needs their password.' }),
       ]),
       toggle,
     ]));
   }
 }
 
-/** My account > Your details (only when an admin allows it). */
+/** My Account > Your details (only when an admin allows it). */
 function ownInfoBox(app) {
   const account = app.account;
   if (!account.can_edit_info) return null;

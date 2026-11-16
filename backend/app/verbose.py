@@ -1,4 +1,4 @@
-"""Verbose logging (Settings > Activity log, admins; off by default).
+"""Verbose logging (Settings > Activity Log, admins; off by default).
 
 While it is on, the activity log also records integration detail, all as
 event types starting with "verbose_":

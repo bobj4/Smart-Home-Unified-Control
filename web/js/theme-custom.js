@@ -1,7 +1,7 @@
 /**
  * Color themes. A named theme is a data-theme attribute styled in app.css;
  * "custom" builds the whole palette from one chosen color (the color
- * wheel in Settings > My account) on a dark or light base.
+ * wheel in Settings > My Account) on a dark or light base.
  */
 
 const THEMES = ['light', 'dark', 'red', 'violet'];
@@ -113,7 +113,7 @@ function colorPicker(testid, label, value, onInput) {
   return { input, element: el('label', { className: 'swatch-field' }, [el('span', { text: label }), el('span', { className: 'swatch-row' }, [input, code])]) };
 }
 
-/** My account > Appearance. Custom: an accent (secondary) color and a
+/** My Account > Appearance. Custom: an accent (secondary) color and a
  * background (primary): dark, light, or a color of one's own. */
 function appearanceBox(app) {
   const account = app.account;

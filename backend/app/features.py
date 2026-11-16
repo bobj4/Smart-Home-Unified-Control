@@ -25,7 +25,7 @@ class Integration:
 INTEGRATIONS: tuple[Integration, ...] = (
     Integration(
         "simulated",
-        "Demo devices",
+        "Demo Devices",
         "Simulated devices for trying the app without hardware.",
         True,
         True,
@@ -77,14 +77,14 @@ INTEGRATIONS: tuple[Integration, ...] = (
     ),
     Integration(
         "ratgdo",
-        "ratgdo garage doors",
+        "ratgdo Garage Doors",
         "Garage door openers with a ratgdo (ESPHome firmware) on your network.",
         False,
         True,
     ),
     Integration(
         "frigate",
-        "Frigate cameras",
+        "Frigate Cameras",
         "Camera feeds and events from your Frigate server.",
         False,
         True,

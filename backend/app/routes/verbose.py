@@ -1,4 +1,4 @@
-"""Verbose logging switch (Settings > Activity log, admins). Installation-
+"""Verbose logging switch (Settings > Activity Log, admins). Installation-
 wide, like the login rules; off by default. See app/verbose.py."""
 
 from fastapi import APIRouter, Depends, Request

@@ -26,7 +26,7 @@ through the backend's permission checks and device safety limits.
   through SmartThings (optional).
 - **ratgdo** garage door openers (open, close, stop)
 - **Frigate** cameras and events
-- **Demo devices** to try the app without hardware
+- **Demo Devices** to try the app without hardware
 
 ## Features
 
@@ -149,7 +149,7 @@ Details, and moving a git-checkout install over, are in
 
 4. Open `http://<this computer's IP>:8000`. On first start, log in with
    username `admin` and password `admin`, then change the password in
-   **Settings > My account** straight away.
+   **Settings > My Account** straight away.
 
 5. Add your integrations in **Settings > Integrations** and set safety
    limits in **Settings > Admin** before controlling devices.

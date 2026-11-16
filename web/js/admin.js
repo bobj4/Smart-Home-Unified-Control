@@ -186,7 +186,7 @@ class AdminSection {
     }));
     return el('div', { className: 'subpanel', testid: 'admin-two-factor' }, [
       el('h3', { text: '2 Factor Login' }),
-      settingRow('Require two-factor login', 'Members without it can only open My account until they set it up.', toggle),
+      settingRow('Require two-factor login', 'Members without it can only open My Account until they set it up.', toggle),
     ]);
   }
 

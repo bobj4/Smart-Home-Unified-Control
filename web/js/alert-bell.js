@@ -128,7 +128,7 @@ class AlertBell {
   }
 
   empty() {
-    return el('p', { className: 'muted', testid: 'alert-bell-empty', text: 'No alerts yet. Choose yours in My account > Alerts; the bell beside each device in Settings > Devices sets what it alerts about.' });
+    return el('p', { className: 'muted', testid: 'alert-bell-empty', text: 'No alerts yet. Choose yours in My Account > Alerts; the bell beside each device in Settings > Devices sets what it alerts about.' });
   }
 
   item(a) {

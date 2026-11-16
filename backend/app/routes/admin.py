@@ -204,7 +204,7 @@ def create_user(
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
     """Create an account directly, with a password the owner passes on.
-    Two-factor login starts off; the person can turn it on in My account."""
+    Two-factor login starts off; the person can turn it on in My Account."""
     require_role(db, user.id, home_id, Role.ADMIN)
     login = normalize_login(db, body.login)
     if db.scalars(select(User).where(func.lower(User.email) == login)).first():
@@ -261,7 +261,7 @@ def create_reset_code(
         )
     if user_id == user.id:
         raise HTTPException(
-            status.HTTP_409_CONFLICT, "Use My account to change your own password"
+            status.HTTP_409_CONFLICT, "Use My Account to change your own password"
         )
     membership = db.scalars(
         select(HomeMembership).where(
@@ -331,7 +331,7 @@ def set_member_password(
     require_role(db, user.id, home_id, Role.ADMIN)
     if user_id == user.id:
         raise HTTPException(
-            status.HTTP_409_CONFLICT, "Use My account to change your own password"
+            status.HTTP_409_CONFLICT, "Use My Account to change your own password"
         )
     membership = db.scalars(
         select(HomeMembership).where(
@@ -373,7 +373,7 @@ def recover(
     body: Recover, request: Request, db: Session = Depends(get_db)
 ) -> dict[str, str]:
     """Set a new password with a reset code. Two-factor login is turned off
-    (it can be set up again in My account) and every session ends."""
+    (it can be set up again in My Account) and every session ends."""
     if not settings(db).allow_recovery:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
     ip = client_ip(request)

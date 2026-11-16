@@ -1,4 +1,4 @@
-"""Demo devices: added when a home turns the Demo devices integration on,
+"""Demo Devices: added when a home turns the Demo Devices integration on,
 deleted when it turns it off."""
 
 import json

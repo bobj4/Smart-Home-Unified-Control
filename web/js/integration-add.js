@@ -67,7 +67,7 @@ function demoSwitch(view, row) {
   toggle.addEventListener('change', () => view.app.run(async () => {
     try {
       const saved = await view.app.api.setIntegration(view.app.home.id, row.id, toggle.checked);
-      view.app.status.success(saved.enabled ? 'Demo devices on: added to the Devices page.' : 'Demo devices off: removed from the Devices page.');
+      view.app.status.success(saved.enabled ? 'Demo Devices on: added to the Devices page.' : 'Demo Devices off: removed from the Devices page.');
     } catch (error) {
       toggle.checked = !toggle.checked;
       throw error;

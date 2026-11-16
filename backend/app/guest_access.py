@@ -15,7 +15,7 @@ What each permission allows:
   thermostat_installer  and the installer settings there (system type,
                   wires, thresholds, calibration...)
   water_heater    control of the water heaters, within the safety limits
-  cameras         the Cameras page (Frigate cameras and events); with
+  cameras         the Cameras page (Frigate Cameras and events); with
   camera_names    only those cameras (empty: every camera)
   scenes          run the home's scenes (Schedules and Scenes), whatever
                   their devices; not make or change them
@@ -78,7 +78,7 @@ def require_guest(db: Session, user: User, home_id: str) -> GuestAccess:
     if home is not None and home.require_two_factor and not user.is_totp_enabled:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
-            "This home requires two-factor login. Turn it on in My account.",
+            "This home requires two-factor login. Turn it on in My Account.",
         )
     return access_for(db, home_id, user.id)
 

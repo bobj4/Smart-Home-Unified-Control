@@ -581,7 +581,7 @@ def test_ui_settings_menu_shows_one_category_at_a_time(open_page, owner):
     )
     assert page.url.endswith("#/settings/admin")
     labels = menu.locator("a").all_inner_texts()
-    assert labels[:2] == ["My account", "Admin"]
+    assert labels[:2] == ["My Account", "Admin"]
     page.reload()
     expect(page.get_by_test_id("settings-members")).to_be_visible()
 

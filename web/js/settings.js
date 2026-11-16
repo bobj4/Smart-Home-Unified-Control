@@ -5,12 +5,12 @@
  */
 
 const SETTINGS_SECTIONS = [
-  { id: 'account', label: 'My account', intro: 'Password, appearance, 2 Factor Login, logged-in devices and alerts.' },
+  { id: 'account', label: 'My Account', intro: 'Password, appearance, 2 Factor Login, logged-in devices and alerts.' },
   { id: 'admin', label: 'Admin', intro: 'Users, home name, login rules, schedules, email server and HTTPS.', role: 'admin' },
   { id: 'devices', label: 'Devices', intro: 'Rename devices, choose their room, and what each alerts about (its bell).', role: 'operator' },
   { id: 'integrations', label: 'Integrations', intro: 'Device brands this home uses. A brand that is off accepts no commands and no new devices.', role: 'operator' },
   { id: 'safety', label: 'Safety Settings', intro: 'Thermostats and water heaters only accept targets inside these limits (new devices start at the default target), and who may change thermostat installer settings.', role: 'operator' },
-  { id: 'activity', label: 'Activity log', intro: 'Logins, setting changes and device commands, newest first.', role: 'admin' },
+  { id: 'activity', label: 'Activity Log', intro: 'Logins, setting changes and device commands, newest first.', role: 'admin' },
 ];
 
 // Fields whose typing is kept until it is saved: not switches, ticks or
