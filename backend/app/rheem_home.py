@@ -96,6 +96,9 @@ def sync(db: Session, home_id: str, keep_when_empty: bool = True) -> dict[str, i
         else:
             updated += 1
         device.state = json.dumps(heater.state())
+        if heater.mac:  # the IP is then found from it (routes/devices._network)
+            caps = json.loads(device.capabilities or "{}")
+            device.capabilities = json.dumps({**caps, "mac": heater.mac})
         device.online = heater.connected
         device.last_updated = utcnow()
     for device in existing.values():

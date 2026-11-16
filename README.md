@@ -10,7 +10,7 @@ through the backend's permission checks and device safety limits.
 
 - **GE Cync**
   - Smart lights (power, brightness, color temperature, color)
-  - Smart plugs and switches (shown as "Light Switch"; a dimmer switch
+  - Smart plugs and switches (shown as "Switch"; a dimmer switch
     works like a light)
   - Live: changes and reachability (a bulb whose wall switch is turned
     off or on again) show within seconds
@@ -60,7 +60,8 @@ through the backend's permission checks and device safety limits.
 - Energy: power now and use today from Kasa plugs that measure it, and
   water heaters' use today (the ⚡ button on the Devices page).
 - Network details (the ⓘ beside each device): IP and MAC address, type
-  and brand. Cync's cloud reports only the MAC, so the IP is found from
+  and brand. Cync's and Rheem's clouds report only the MAC (Rheem: its
+  Wi-Fi module's), so the IP is found from
   this server's neighbour table: only when the server sees the home
   network (installed directly, or Docker with `network_mode: host`).
 - Philips Hue: lights take their Hue app rooms, Hue scenes can be steps in

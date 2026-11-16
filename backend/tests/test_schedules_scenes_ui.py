@@ -3,6 +3,7 @@ making and running a scene, a sunset schedule waiting for the home's
 location, the admin settings, and guests allowed to run scenes."""
 
 import json
+import re
 import time
 
 from playwright.sync_api import expect
@@ -72,6 +73,30 @@ def test_ui_scene_schedule_and_settings(open_page, db, owner, make_device):
     expect(page.get_by_test_id("schedule-settings-note")).to_contain_text("latitude")
     page.get_by_test_id("nav-schedules").click()
     expect(page.get_by_test_id("schedule-next")).to_contain_text("Next:")
+
+
+def test_ui_schedules_above_scenes_and_saving_keeps_the_fold(open_page, db, owner):
+    page = open_page()
+    _ui.ui_login(page, owner)
+    page.get_by_test_id("nav-schedules").click()
+    schedules, scenes = page.get_by_test_id("schedules"), page.get_by_test_id("scenes")
+    expect(scenes).to_be_visible()
+    assert schedules.bounding_box()["y"] < scenes.bounding_box()["y"]
+    panel = _ui.go_settings(page, "admin")
+    section = panel.get_by_test_id("schedule-settings")
+    section.get_by_test_id("schedule-paused").check()
+    section.get_by_test_id("schedule-settings-save").click()
+    expect(page.get_by_test_id("status")).to_contain_text("saved")
+    expect(section.get_by_test_id("schedule-paused")).to_be_checked()  # drawn again
+    heading = section.locator(":scope > h3")
+    expect(heading).to_have_class("section-toggle")
+    heading.click()  # still folds
+    expect(section).to_have_class(re.compile("collapsed"))
+    heading.click()
+    section.get_by_test_id("schedule-paused").uncheck()
+    section.get_by_test_id("schedule-settings-save").click()  # the new fields save
+    expect(page.get_by_test_id("status")).to_contain_text("saved")
+    expect(section.get_by_test_id("schedule-paused")).not_to_be_checked()
 
 
 def test_ui_phone_width_keeps_the_tab_legible(open_page, owner):

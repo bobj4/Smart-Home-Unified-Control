@@ -39,6 +39,7 @@ def test_ip_addresses_by_brand(
     arp.write_text(ARP_TEXT)
     monkeypatch.setattr(neighbors, "ARP", arp)
     monkeypatch.setattr(neighbors, "_read_at", -1e9)  # read it afresh
+    monkeypatch.setattr(neighbors, "_cache", {})
     swept = []
     monkeypatch.setattr(neighbors, "_sweep_soon", lambda now: swept.append(now))
     ids = {
@@ -85,6 +86,8 @@ def test_no_sweep_in_tests_or_without_a_table(monkeypatch, tmp_path):
     monkeypatch.setattr(neighbors, "_swept_at", -1e9)
     neighbors._sweep_soon(0.0)  # REFRESH_SECONDS is 0 in tests
     monkeypatch.setattr(neighbors, "ARP", tmp_path / "none")
+    monkeypatch.setattr(neighbors, "_read_at", -1e9)
+    monkeypatch.setattr(neighbors, "_cache", {})
     assert neighbors.ip_for("34:13:43:92:94:8D") is None
     assert sent == []
 
@@ -101,4 +104,4 @@ def test_ui_type_and_brand_as_written(open_page, db, owner, make_device):
     info = page.get_by_test_id("device-info-panel")
     expect(info).to_contain_text("Water Heater")
     expect(info).to_contain_text("Rheem EcoNet")
-    expect(info).to_contain_text("EcoNet cloud")
+    expect(info).to_contain_text("not reported")  # until EcoNet names its MAC

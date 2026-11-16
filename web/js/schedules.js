@@ -1,7 +1,7 @@
 /**
- * Schedules and Scenes (the tab after Thermostats): scenes to run with one
- * press, and schedules this server runs at a time, or at sunrise or
- * sunset. Devices' own schedules (thermostats, water heaters) stay on
+ * Schedules and Scenes (the tab after Thermostats): schedules this server
+ * runs at a time, or at sunrise or sunset, then scenes to run with one
+ * press. Devices' own schedules (thermostats, water heaters) stay on
  * their own cards. Guests allowed to run scenes see only the scenes.
  */
 
@@ -52,8 +52,8 @@ class SchedulesView {
     this.root.replaceChildren(
       el('p', { className: 'muted', text: 'Run here, by this server. Thermostat and water heater schedules stay on their own cards.' }),
       data.settings.paused ? el('p', { className: 'notice', testid: 'schedules-paused', text: 'All schedules are paused (Settings > Admin > Schedules and Scenes).' }) : '',
-      this.scenesPanel(data.scenes, data.can_edit),
       this.schedulesPanel(data.schedules, data.can_edit),
+      this.scenesPanel(data.scenes, data.can_edit),
     );
   }
 

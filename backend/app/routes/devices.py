@@ -128,7 +128,7 @@ def _device_out(device: Device) -> dict[str, Any]:
         if device.integration == "samsung_tv"
         else None,
         # A wall switch (Cync): a light or plug by what it does, but shown
-        # as a "Light Switch".
+        # as a "Switch".
         "switch": bool(caps.get("switch")),
     }
 
