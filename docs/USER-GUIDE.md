@@ -2,85 +2,140 @@
 
 ## Logging in
 
-Go to the login page. Enter your email or username (as set by your owner) and password, then click **Log in**.
+Open the app and enter your email (or username, if the home allows it) and
+password, then click **Log in**.
 
-- **Two-factor login**: If your owner requires it, enter the code from your authenticator app.
-- **Forgot password?**: Click **Forgot your password?** to get a recovery code from your owner, then follow the link to set a new password.
-- **Enrollment code?**: If you have one, click **Have an enrollment code?** to join the household.
+- **Two-factor login**: if you have it on (or the home requires it), enter
+  the code from your authenticator app, or one of your recovery codes.
+- **Remember this device**: tick it to skip the code on this device; it
+  then shows, with a name you choose, in **My Account › Approved devices**.
+- **Keep me logged in**: stay logged in on this device for as long as an
+  admin allows.
+- **Forgot your password?**: ask an admin for a reset code, then follow
+  the link to set a new password.
+- **Have an enrollment code?**: join a home with the code an admin gave you.
+
+## Roles
+
+- **Admin**: everything, including people, home settings and HTTPS.
+- **Operator**: devices, rooms, groups, integrations and safety limits.
+- **Member**: uses the devices.
+- **Guest**: only what an admin ticks for them (lights, light settings, all
+  or some cameras, the water heater, chosen thermostats, scenes).
+
+## The top bar
+
+- **Bell**: your alerts, with a red count of the ones you have not seen.
+  Dismiss one with its **×** (on a computer) or by swiping it left or
+  right (on a phone); **Dismiss All** at the bottom clears your list. Only
+  your list: everyone else still sees them.
+- **Home**: switch between homes (when you have more than one).
 
 ## Devices
 
-The Devices page shows all lights, plugs, water heaters and TVs, grouped by room.
+Every device, grouped by room. Rooms fold shut, can be arranged (**Edit
+layout**, separately for phones and wide screens) and filtered by type or
+"on only". The page updates by itself.
 
-### Lights window
+- **Lights**: power, and **Light settings** for brightness, white
+  temperature and color.
+- **Plugs and switches**: power. A Cync wall switch shows as **Switch**; a
+  dimmer switch has a brightness slider.
+- **Groups**: lights and plugs switched together; the group's **⋯**
+  reaches each device in it.
+- **Thermostats and water heaters**: on a page of their own. Targets stay
+  within the home's safety limits.
+- **Garage doors** (ratgdo): open, close and stop on the Doors page, with
+  the opener light, remote lockout, obstruction warning and, on a ratgdo32
+  disco, the parking-assist laser.
+- **TVs**: **Remote** for power, volume, channels, the d-pad, media keys,
+  apps and the input. Operators and admins have the TV's **⋯** menu:
+  - **Name inputs**: say what is on each input (HDMI 2: PlayStation). The
+    remote's Input list then shows "PlayStation (HDMI 2)", and choosing it
+    switches the TV by remote key on the home network.
+  - **Quick apps** (2016+ Samsung TVs): up to six of the TV's apps for the
+    remote's buttons.
+- **ⓘ** beside a device (Settings › Devices): its IP and MAC address,
+  type and brand.
+- **⚡ Energy**: power now and use today, from Kasa plugs that measure it
+  and water heaters.
 
-Each light has a power toggle and sliders for brightness, white temperature and color. Click the light card to open the full controls.
+## Schedules and Scenes
 
-### Plugs
+- **Schedules** run on the server at a time of day, or at sunrise or sunset
+  (minutes before or after), on the days you choose.
+- **Scenes** switch devices, groups (and Hue scenes) together with one press.
 
-Each plug has a power toggle. Click to turn it on or off.
-
-### Water heater
-
-The water heater has a dial with up/down buttons to set the temperature. The range is 110-120°F; the default is 120°F.
-
-### TV remote
-
-Each Samsung TV has a power toggle and buttons for volume up/down, mute, input and power. Volume is simulated-only on real TVs.
+Admins choose who may make and change them, the home's time zone and
+location (typed in, or **Use the home's address**), and can pause every
+schedule (Settings › Admin › Schedules and Scenes). Thermostat and water
+heater schedules stay on their own cards.
 
 ## Cameras
 
-The Cameras page shows recent Frigate events with thumbnails. Click a thumbnail to play the clip. Media passes through this app.
+Frigate cameras and their recent events with thumbnails; click one to play
+the clip.
 
-## Settings > My account
+## Settings › My Account
 
-Open Settings, then click **My account**.
+- **Password**, **2 Factor Login** (authenticator app and recovery codes).
+- **Appearance**: light, dark or the device's theme, colors, a background
+  picture.
+- **Approved devices** and **Logged-in devices**.
+- **Alerts**: which of the home's alerts you get, by email and as
+  notifications on this phone or computer. On an iPhone, add the app to the
+  Home Screen first.
 
-- **Password**: Click **Change password** to set a new one.
-- **Two-factor login**: Click **Two-factor login** to turn it on or off. Turning it off requires your password and a current code.
-- **Appearance**: Choose light or dark mode.
-- **Logged-in devices**: See your active sessions.
+## Settings › Admin
 
-## Settings > Users
+Admins only: people (add, edit, roles, enrollment and reset codes), homes
+(name, address, icon, Add a Home), login rules and password requirements,
+two-factor for everyone, the message of the day, Schedules and Scenes,
+the email server and HTTPS.
 
-Open Settings, then click **Users**. Owners can add and edit members.
+## Settings › Devices
 
-- Click **Add a member** to invite someone with an enrollment code.
-- Click a member to edit their role (member, admin, owner) and password.
+Rename devices, choose their room and group, create rooms and groups, and
+delete devices. The **bell** beside each device sets what it alerts about:
+light grey when on, red and struck through when off. A plain bell turns
+alerts on and off; a bell with a plus (garage doors, water heaters,
+thermostats) opens its alert settings, such as "open longer than" or "too
+hot".
 
-## Settings > Integrations
+## Settings › Integrations
 
-Open Settings, then click **Integrations**.
+Each brand is turned on here (one that is off takes no commands and adds no
+devices):
 
-### Rheem
+- **GE Cync**: your Cync account; lights, plugs, switches, thermostats and
+  sensors.
+- **Philips Hue**: press the bridge's button to pair.
+- **TP-Link Kasa**: each device added by its IP address (newer firmware
+  also needs your TP-Link login).
+- **Rheem EcoNet**: your EcoNet email and password; **Sync** finds the
+  water heaters.
+- **Samsung, LG and Roku TVs**: **Find TVs on my network** (leave the
+  network blank to search the one you or the server are on), then pair.
+  Turn on the TV's **Power On with Mobile** (or "IP Remote") so it can be
+  turned on over the network.
+- **SmartThings** (optional): Samsung TV inputs by name and turning a TV on
+  through Samsung's cloud. SmartThings now needs a paid SmartThings API
+  plan for a lasting connection; without it, a personal token works for 24
+  hours. Named inputs (above) need no SmartThings.
+- **ratgdo garage doors**: added by address.
+- **Frigate cameras**: the Frigate server's address and login, and which
+  detections send a camera alert.
+- **Demo Devices**: simulated devices for trying the app.
 
-Owner saves the EcoNet email and password. Click **Find water heaters** to discover devices after sync.
+## Settings › Safety Settings
 
-### Samsung TV
+The range thermostats and water heaters accept, the target new devices
+start at, and who may change thermostat installer settings.
 
-Admin or owner adds a TV. Choose 2016+ (samsungtvws) or 2010-2013 (legacy) protocol. 2014-2015 TVs (H and J series) are not supported. Volume is simulated-only.
+## Settings › Activity Log
 
-### Frigate
+Admins only. Logins, setting changes and device commands, newest first.
 
-Owner saves the Frigate address, username and password. Click **Check its HTTPS certificate** (untick for Frigate's own self-signed certificate).
+## Not supported
 
-## Settings > Admin
-
-Owners only.
-
-- **Home name**: Set the home's display name.
-- **Require two-factor login**: Turn on to require it for all members. Members without it can only open **My account** until they set it up.
-- **Login rules**: Choose whether to require email or allow email/username.
-- **Password requirements**: Set password rules (length, numbers, symbols).
-- **HTTPS**: Toggle HTTPS on or off. The server must be restarted after changing HTTPS.
-
-## Settings > Activity log
-
-Owners only. Shows logins, setting changes and device commands, newest first.
-
-## Not built yet
-
-- GE Cync integration (lights and plugs)
 - Samsung 2014-2015 TVs (H and J series, encrypted protocol)
-- Live state refresh for devices
-- Deployment with HTTPS

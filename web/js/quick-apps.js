@@ -1,7 +1,7 @@
 /**
- * A TV tile's ⋯ menu (operators and admins, 2016+ Samsung TVs): choose up to
- * six of the apps installed on the TV for the remote's quick buttons. None
- * chosen = the usual six (Netflix, YouTube, ...).
+ * Quick apps (a TV tile's ⋯ menu, tv-input-names.js; 2016+ Samsung TVs):
+ * choose up to six of the apps installed on the TV for the remote's quick
+ * buttons. None chosen = the usual six (Netflix, YouTube, ...).
  */
 
 const MAX_QUICK_APPS = 6;
@@ -14,15 +14,6 @@ class QuickAppsPanel {
     this.overlay.addEventListener('click', (e) => { if (e.target === this.overlay) this.close(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && this.device) this.close(); });
     document.body.append(this.overlay);
-  }
-
-  /** The ⋯ button for a TV tile's head, or null when it does not apply. */
-  menuButton(device) {
-    if (device.integration !== 'samsung_tv' || device.protocol !== 'tizen' || !this.app.can('operator')) return null;
-    return el('button', {
-      type: 'button', className: 'icon-button group-menu', testid: 'tv-quick-menu', text: '⋯',
-      'aria-label': `${device.name}: quick apps`, title: 'Quick apps', onclick: () => this.open(device),
-    });
   }
 
   async open(device) {

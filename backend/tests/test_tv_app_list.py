@@ -120,6 +120,7 @@ def test_ui_common_apps_say_so(open_page, db, owner, make_device, monkeypatch):
     page = open_page()
     _ui.ui_login(page, owner)
     _ui.card(page, "Den TV").get_by_test_id("tv-quick-menu").click()
+    page.get_by_test_id("tv-menu-quick-apps").click()
     panel = page.get_by_test_id("quick-apps-panel")
     expect(panel.get_by_test_id("quick-apps-unconfirmed")).to_contain_text(
         "won't say which apps it has"

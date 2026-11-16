@@ -507,3 +507,7 @@ svg.home-icon { padding: 3px; background: var(--surface-2); }
 .device-bell-icon .plus { stroke-width: 1.6; }
 .device-bell:disabled { opacity: 0.6; cursor: default; }
 .dimmed { opacity: 0.5; }
+/* A TV tile's ⋯ menu: Name inputs, Quick apps (tv-input-names.js). */
+.tv-menu { display: grid; gap: 10px; }
+.tv-menu .input-names { display: grid; gap: 8px; }
+.tv-menu .input-names .grid-fields { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
