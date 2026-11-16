@@ -95,8 +95,10 @@ def test_ui_settings_update_live(open_page, client, owner, login, csrf):
         "/api/v1/admin/motd", json={"text": "Changed elsewhere"}, headers=csrf(client)
     )
     assert r.status_code == 200
+    # Every third refresh redraws the whole Admin page (about half a second
+    # here, several on a slower computer): give it time.
     expect(page.get_by_test_id("motd-input")).to_have_value(
-        "Changed elsewhere", timeout=15000
+        "Changed elsewhere", timeout=40000
     )
     # Not while someone is typing.
     page.get_by_test_id("motd-input").fill("my draft")
@@ -133,7 +135,7 @@ def test_ui_live_after_choices_and_saves(open_page, client, owner, login, csrf):
         0
     )
     names = page.get_by_test_id("device-name")
-    expect(names).to_have_count(1, timeout=15000)
+    expect(names).to_have_count(1, timeout=40000)
     expect(names.first).to_have_value("New lamp")
     # Typing a new name, not saved: the page waits.
     names.first.fill("Typed lamp")

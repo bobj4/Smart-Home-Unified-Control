@@ -52,7 +52,7 @@ function tvScanPanel(view) {
   if (app.tvScanFound && app.tvScanFound.home === app.home.id) show(app.tvScanFound);
   return el('div', { className: 'subpanel', testid: 'tv-scan-panel' }, [
     el('h3', { text: 'Find TVs on my network' }),
-    el('p', { className: 'muted', text: 'Looks for Samsung, LG and Roku TVs. Leave the network blank to search the one this device is on.' }),
+    el('p', { className: 'muted', text: 'Looks for Samsung, LG and Roku TVs. Leave the network blank to search the one this device is on (from outside it: the one the server is on).' }),
     el('div', { className: 'row' }, [network, search]),
     note,
     results,

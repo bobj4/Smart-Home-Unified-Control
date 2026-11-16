@@ -11,14 +11,46 @@ from app.routes import tv_scan as scan_route
 from tests import test_ui as _ui
 
 
-def test_network_rules():
+def test_network_rules(monkeypatch):
     assert str(tv_scan.network_for("192.168.1.0/24", None)) == "192.168.1.0/24"
     assert str(tv_scan.network_for(None, "10.0.5.23")) == "10.0.5.0/24"
     for bad in ("8.8.8.0/24", "10.0.0.0/8", "nonsense", "127.0.0.0/24"):
         with pytest.raises(tv_scan.ScanError):
             tv_scan.network_for(bad, None)
+    # Reached through a VPN or a proxy: the server's own network, if it is on
+    # the home network.
+    monkeypatch.setattr(tv_scan, "server_network", lambda: None)
     with pytest.raises(tv_scan.ScanError):
         tv_scan.network_for(None, None)
+    here = ipaddress.ip_network("192.168.1.0/24")
+    monkeypatch.setattr(tv_scan, "server_network", lambda: here)
+    assert tv_scan.network_for(None, None) == here
+    assert (
+        str(tv_scan.network_for(None, "10.0.5.23")) == "10.0.5.0/24"
+    )  # the browser's first
+
+
+def test_the_servers_network(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        tv_scan.neighbors, "own_network", lambda: ipaddress.ip_network("172.18.0.0/24")
+    )
+    real_path = tv_scan.Path
+
+    def path(name):
+        return tmp_path / "dockerenv" if name == "/.dockerenv" else real_path(name)
+
+    monkeypatch.setattr(tv_scan, "Path", path)
+    assert tv_scan.server_network() == ipaddress.ip_network(
+        "172.18.0.0/24"
+    )  # not Docker
+    (tmp_path / "dockerenv").write_text("")
+    assert tv_scan.server_network() is None  # Docker's own network: no TVs there
+    monkeypatch.setattr(
+        tv_scan.neighbors, "own_network", lambda: ipaddress.ip_network("192.168.1.0/24")
+    )
+    assert str(tv_scan.server_network()) == "192.168.1.0/24"  # host networking
+    monkeypatch.setattr(tv_scan.neighbors, "own_network", lambda: None)
+    assert tv_scan.server_network() is None
 
 
 def test_identify(monkeypatch):
@@ -81,6 +113,19 @@ def test_api(client, owner, make_user, new_client, login, csrf, monkeypatch):
         ).status_code
         == 422
     )
+    # Blank, from a browser off the home network (the test client is not an
+    # address): the server's own network.
+    searched = []
+    monkeypatch.setattr(scan_route, "scan", lambda net: searched.append(str(net)) or [])
+    monkeypatch.setattr(
+        tv_scan, "server_network", lambda: ipaddress.ip_network("192.168.7.0/24")
+    )
+    r = client.post(url, json={"network": ""}, headers=csrf(client))
+    assert r.status_code == 200, r.text
+    assert searched == ["192.168.7.0/24"]
+    monkeypatch.setattr(tv_scan, "server_network", lambda: None)
+    r = client.post(url, json={"network": ""}, headers=csrf(client))
+    assert r.status_code == 422 and "give the network" in r.text
     member = make_user(owner.home_id, role="member")
     m = new_client()
     assert login(m, member).status_code == 200
