@@ -10,6 +10,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -54,6 +55,24 @@ class Home(Base):
     require_two_factor: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa_false()
     )
+    # Settings > Safety Settings: the lowest role that may change a
+    # thermostat's installer settings (system type, wires, thresholds...).
+    thermostat_installer_role: Mapped[str] = mapped_column(
+        String(10), default="admin", server_default="admin"
+    )
+    # Shown at the top right: a built-in icon's name (app/home_icons.py), or
+    # a small picture of one's own (a data: URL, PNG/JPEG/WebP) that wins.
+    icon: Mapped[str | None] = mapped_column(String(20))
+    icon_image: Mapped[str | None] = mapped_column(Text)
+    # A home whose devices are at another site, run by that site's own
+    # server (app/federation.py): its home there, the SHA-256 of the token it
+    # connects with (None: not linked, the devices are here), its name, and
+    # a pairing code waiting to be used (SHA-256, and until when).
+    site_home_id: Mapped[str | None] = mapped_column(String(36))
+    site_token_hash: Mapped[str | None] = mapped_column(String(64))
+    site_name: Mapped[str | None] = mapped_column(String(100))
+    site_pairing_hash: Mapped[str | None] = mapped_column(String(64))
+    site_pairing_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow
     )
@@ -76,7 +95,12 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True)
     hashed_password: Mapped[str] = mapped_column(String(512))  # Argon2id
     name: Mapped[str | None] = mapped_column(String(100))
+    # The home last viewed: opened first next time (none: the top home).
+    last_home_id: Mapped[str | None] = mapped_column(String(36))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Failed logins in a row, and a lockout's end (app/login_failures.py).
+    failed_logins: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
     totp_secret: Mapped[str | None] = mapped_column(String(128))  # base32
     is_totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -84,10 +108,21 @@ class User(Base):
     totp_last_step: Mapped[int | None] = mapped_column(Integer)
     # New secret during an authenticator reset, until a code from it is confirmed.
     pending_totp_secret: Mapped[str | None] = mapped_column(String(128))
-    # Colour scheme for the web app: "system", "light", "dark", "red" (black
+    # Color scheme for the web app: "system", "light", "dark", "red" (black
     # and red) or "violet" (purple and black).
     theme: Mapped[str] = mapped_column(
         String(10), default="system", server_default="system"
+    )
+    # theme "custom": "#rrggbb dark" or "#rrggbb light".
+    theme_custom: Mapped[str | None] = mapped_column(String(16))
+    # A picture behind the dashboard (loaded only when asked for: deferred).
+    background_image: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    background_type: Mapped[str | None] = mapped_column(String(20))
+    motd_dismissed: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Settings sections this person folded shut: JSON list of "page/section".
+    settings_collapsed: Mapped[str | None] = mapped_column(Text)
+    background_on: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
     )
     # JSON list of Argon2id hashes; a used code is replaced by null.
     recovery_codes: Mapped[str | None] = mapped_column(Text)
@@ -117,6 +152,9 @@ class HomeMembership(Base):
         String(36), ForeignKey("homes.id", ondelete="CASCADE"), index=True
     )
     role: Mapped[str] = mapped_column(String(20))  # a Role value
+    # Where this home sits in the person's list of homes (lowest first): the
+    # top one opens first on a first login.
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     user: Mapped[User] = relationship(back_populates="memberships")
     home: Mapped[Home] = relationship(back_populates="memberships")
@@ -240,6 +278,9 @@ class Enrollment(Base):
     name: Mapped[str | None] = mapped_column(String(100))
     role: Mapped[str] = mapped_column(String(20))
     code_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    # The code encrypted, to show the admin while it is active (dropped once
+    # used; see app/member_codes.py).
+    code_secret: Mapped[str | None] = mapped_column(Text)
     # TOTP secret offered by /enroll/start, confirmed by /enroll/finish.
     pending_totp_secret: Mapped[str | None] = mapped_column(String(128))
     created_by: Mapped[str | None] = mapped_column(
@@ -341,19 +382,44 @@ class SystemSettings(Base):
     smtp_password: Mapped[str | None] = mapped_column(Text)
     smtp_from: Mapped[str | None] = mapped_column(String(255))
     # How long the login page's choices last (Settings > Admin > Login times).
-    # "Keep me logged in": days a kept session lasts.
-    keep_logged_in_days: Mapped[int] = mapped_column(
-        Integer, default=30, server_default="30"
+    # Each: days; 0 = never expires; None = turned off (its checkbox hidden).
+    # "Keep me logged in": how long a kept session lasts.
+    keep_logged_in_days: Mapped[int | None] = mapped_column(
+        Integer, default=30, server_default="30", nullable=True
     )
-    # "Remember me": days the login name stays filled in.
-    remember_me_days: Mapped[int] = mapped_column(
-        Integer, default=365, server_default="365"
+    # "Remember me": how long the login name stays filled in.
+    remember_me_days: Mapped[int | None] = mapped_column(
+        Integer, default=365, server_default="365", nullable=True
     )
-    # "Remember this device" (skip the two-factor code): days, 0 = forever.
-    remember_device_days: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0"
+    # "Remember this device": how long an approved device skips the code.
+    remember_device_days: Mapped[int | None] = mapped_column(
+        Integer, default=0, server_default="0", nullable=True
     )
-    # Settings > Activity log: also record integration detail (app/verbose.py).
+    # After repeated failed logins in a row (app/login_failures.py); each a
+    # number, None (blank) = that rule is off. Lockout: blocked for
+    # login_lockout_minutes (0 = until the password is reset). Lockdown:
+    # account turned off until an admin turns it on again.
+    login_lockout_after: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    login_lockout_minutes: Mapped[int | None] = mapped_column(
+        Integer, default=15, server_default="15", nullable=True
+    )
+    login_lockdown_after: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Message of the day: shown after login until each person dismisses it
+    # for good; a new text (new version) shows again to everyone.
+    motd_text: Mapped[str | None] = mapped_column(Text)
+    motd_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # The HTTPS certificate taken from this server's web server (Apache,
+    # nginx, Caddy or certbot) by `smarthome cert-import`, when on.
+    cert_auto_import: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
+    cert_import_source: Mapped[str | None] = mapped_column(String(300))
+    cert_imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # People may change their own name and email (My Account).
+    users_edit_own_info: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
+    # Settings > Activity Log: also record integration detail (app/verbose.py).
     verbose_logging: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa_false()
     )
@@ -373,6 +439,8 @@ class PasswordReset(Base):
         String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     code_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    # An admin's code encrypted, to show while it is active (dropped once used).
+    code_secret: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL")
     )
@@ -447,12 +515,15 @@ class TrustedDevice(Base):
 
 class RoomLayout(Base):
     """One user's order of the rooms on a home's Devices page (a JSON list
-    of room names; THERMOSTATS_ROOM stands for the thermostats' own room).
+    of room names; THERMOSTATS_ROOM stands for the thermostats' own room),
+    per screen type ("phone" or "wide"), and the rooms they folded shut.
     Rooms not in the list follow in name order."""
 
     __tablename__ = "room_layouts"
     __table_args__ = (
-        UniqueConstraint("user_id", "home_id", name="uq_room_layout_user_home"),
+        UniqueConstraint(
+            "user_id", "home_id", "screen", name="uq_room_layout_user_home_screen"
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -463,6 +534,21 @@ class RoomLayout(Base):
         String(36), ForeignKey("homes.id", ondelete="CASCADE"), index=True
     )
     room_order: Mapped[str] = mapped_column(Text, default="[]")
+    screen: Mapped[str] = mapped_column(
+        String(10), default="wide", server_default="wide"
+    )
+    collapsed: Mapped[str | None] = mapped_column(Text)  # JSON list of room names
+    filters: Mapped[str | None] = mapped_column(Text)  # JSON {"text", "type", "on"}
+    # Rooms side by side: JSON {"columns": 1-4, "sizes": {room: columns wide}}.
+    grid: Mapped[str | None] = mapped_column(Text)
+    # Thermostats only on their own page (#/devices/thermostats), not with the rest.
+    thermostats_apart: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
+    # Remote doors (garage doors) only on their own page (#/devices/doors).
+    doors_apart: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
@@ -504,7 +590,261 @@ class GuestAccess(Base):
     show_blocked: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa_false()
     )
+    # Their thermostats' Settings window (Early On, screen unit, daylight
+    # saving), and the installer settings there (system, wires, thresholds...).
+    thermostat_settings: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
+    thermostat_installer: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
     thermostat_ids: Mapped[str] = mapped_column(Text, default="[]")  # JSON list
+    # With cameras: only these Frigate Cameras (JSON list; empty: every one).
+    camera_names: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
+    # Run the home's scenes (Schedules and Scenes), whatever their devices.
+    scenes: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
+
+
+class Scene(Base):
+    """A set of device and group commands run together, on demand or by a
+    schedule. steps: JSON [{"kind": "device"|"group", "id", "command",
+    "payload"}] (see app/automation.py)."""
+
+    __tablename__ = "scenes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    home_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("homes.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(100))
+    steps: Mapped[str] = mapped_column(Text, default="[]")
+    created_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class Schedule(Base):
+    """Run by this server (not the device's own schedule): at a time of
+    day, or at sunrise or sunset (with an offset), on chosen weekdays; runs
+    a scene and/or its own steps. trigger: JSON {"kind": "time", "at":
+    "HH:MM"} or {"kind": "sunrise"|"sunset", "offset": minutes}; days: JSON
+    weekdays, Monday 0."""
+
+    __tablename__ = "schedules"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    home_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("homes.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(100))
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=sa_true()
+    )
+    trigger: Mapped[str] = mapped_column(Text)
+    days: Mapped[str] = mapped_column(Text, default="[0, 1, 2, 3, 4, 5, 6]")
+    scene_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("scenes.id", ondelete="SET NULL")
+    )
+    steps: Mapped[str] = mapped_column(Text, default="[]")
+    next_run_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_result: Mapped[str | None] = mapped_column(String(500))
+    created_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class ScheduleSettings(Base):
+    """A home's settings for its schedules (Admin > Schedules and Scenes):
+    its time zone and location (for sunrise and sunset), who may make and
+    change scenes and schedules, and a switch pausing every schedule."""
+
+    __tablename__ = "schedule_settings"
+
+    home_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("homes.id", ondelete="CASCADE"), primary_key=True
+    )
+    time_zone: Mapped[str] = mapped_column(String(64), default="UTC")
+    latitude: Mapped[float | None] = mapped_column(Float)
+    longitude: Mapped[float | None] = mapped_column(Float)
+    editors: Mapped[str] = mapped_column(
+        String(10), default="admin"
+    )  # or operator, member
+    # Where latitude and longitude came from: "address" (the home's address,
+    # looked up; follows it when it changes) or "manual" (typed in).
+    location_source: Mapped[str] = mapped_column(
+        String(10), default="manual", server_default="manual"
+    )
+    paused: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class AlertSettings(Base):
+    """A home's camera alerts: the Frigate labels that alert (comma-separated,
+    "" = none; Integrations > Frigate). What each device watches for is set
+    per device (DeviceAlert, Settings > Devices)."""
+
+    __tablename__ = "alert_settings"
+
+    home_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("homes.id", ondelete="CASCADE"), primary_key=True
+    )
+    frigate_labels: Mapped[str] = mapped_column(String(200), default="person")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class DeviceAlert(Base):
+    """What one device alerts about (the bell in Settings > Devices): on or
+    off, and its own settings (JSON; see app/device_alerts.py)."""
+
+    __tablename__ = "device_alerts"
+
+    device_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("devices.id", ondelete="CASCADE"), primary_key=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    settings: Mapped[str] = mapped_column(Text, default="{}")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class AlertPrefs(Base):
+    """What one person wants from a home's alerts (My Account > Alerts):
+    kinds is a JSON list (see app/alerts.py KINDS); nothing until chosen."""
+
+    __tablename__ = "alert_prefs"
+
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    home_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("homes.id", ondelete="CASCADE"), primary_key=True
+    )
+    email: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
+    push: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
+    kinds: Mapped[str] = mapped_column(Text, default="[]")
+
+
+class PushSubscription(Base):
+    """A browser (phone or computer) that takes this person's notifications."""
+
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    endpoint: Mapped[str] = mapped_column(String(1000), unique=True)
+    p256dh: Mapped[str] = mapped_column(String(200))
+    auth: Mapped[str] = mapped_column(String(100))
+    label: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+
+
+class AlertItem(Base):
+    """An alert that went out, for the bell at the top of the page (the
+    newest KEEP_ALERTS per home are kept; app/alerts.py)."""
+
+    __tablename__ = "alert_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    home_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("homes.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(20))
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+
+
+class AlertSeen(Base):
+    """When a person last opened the bell for a home: newer alerts count."""
+
+    __tablename__ = "alert_seen"
+
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    home_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("homes.id", ondelete="CASCADE"), primary_key=True
+    )
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AlertDismissed(Base):
+    """An alert a person dismissed from their bell (an X on a computer, a
+    swipe on a phone): gone from their list, not from anyone else's."""
+
+    __tablename__ = "alert_dismissed"
+
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    item_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("alert_items.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
+class ServerKey(Base):
+    """This server's own keys (the push notification key), encrypted."""
+
+    __tablename__ = "server_keys"
+
+    name: Mapped[str] = mapped_column(String(50), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+
+
+class ThermostatReading(Base):
+    """A thermostat's reading, kept for its History window: every few
+    minutes, and whenever it starts or stops heating or cooling. Readings
+    older than thermostat_history.KEEP_DAYS are deleted."""
+
+    __tablename__ = "thermostat_readings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    device_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("devices.id", ondelete="CASCADE"), index=True
+    )
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    temperature: Mapped[float | None] = mapped_column(Float)  # F
+    heat_setpoint: Mapped[float | None] = mapped_column(Float)
+    cool_setpoint: Mapped[float | None] = mapped_column(Float)
+    humidity: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str | None] = mapped_column(
+        String(10)
+    )  # heating, cooling, idle, off
+    mode: Mapped[str | None] = mapped_column(String(12))

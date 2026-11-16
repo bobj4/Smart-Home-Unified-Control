@@ -4,50 +4,6 @@
  * inside the home's safety limits (the backend enforces them too).
  */
 
-const TEMPERATURE_TYPES = new Set(['thermostat', 'water_heater']);
-const POWER_TYPES = new Set(['light', 'plug', 'tv']);
-const TYPE_LABEL = {
-  light: 'Light', plug: 'Plug', tv: 'TV', thermostat: 'Thermostat', water_heater: 'Water heater',
-  sensor: 'Sensor', camera: 'Camera',
-};
-// Simple line icons, 24x24.
-const ICON_PATHS = {
-  light: 'M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0 0 12 3z',
-  plug: 'M9 3v5M15 3v5M6 8h12v4a6 6 0 0 1-12 0zM12 18v3',
-  tv: 'M3 6h18v11H3zM8 21h8M12 17v4',
-  thermostat: 'M12 3a2 2 0 0 0-2 2v9.3a4 4 0 1 0 4 0V5a2 2 0 0 0-2-2zM12 9v7',
-  water_heater: 'M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z',
-  sensor: 'M5 12a7 7 0 0 1 14 0M8 12a4 4 0 0 1 8 0M12 12v.01',
-  camera: 'M3 7h4l2-3h6l2 3h4v12H3zM12 10a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
-};
-
-function icon(type) {
-  return svg('svg', { viewBox: '0 0 24 24', className: 'icon', 'aria-hidden': 'true' }, [
-    svg('path', { d: ICON_PATHS[type] || ICON_PATHS.sensor }),
-  ]);
-}
-
-/** A 270-degree arc; the filled part shows where the target sits between the limits. */
-function gauge(fraction, type) {
-  const arc = 'M 26.1 93.9 A 48 48 0 1 1 93.9 93.9';
-  const filled = Math.max(0, Math.min(1, fraction)) * 100;
-  return svg('svg', { viewBox: '0 0 120 110', className: `gauge ${type}`, testid: 'temp-gauge', role: 'img', 'aria-label': 'Target temperature dial' }, [
-    svg('path', { d: arc, className: 'gauge-track', pathLength: '100' }),
-    svg('path', { d: arc, className: 'gauge-fill', pathLength: '100', 'stroke-dasharray': `${filled} 100` }),
-  ]);
-}
-
-/** The colour a light shows: its RGB colour, or its colour temperature as a tint. */
-function lightColor(state) {
-  if (state.color_mode === 'rgb' && state.color) return state.color;
-  const kelvin = state.color_temp || 2700;
-  const warm = [255, 166, 77];
-  const cool = [214, 230, 255];
-  const t = Math.max(0, Math.min(1, (kelvin - 2000) / 4500));
-  const mix = warm.map((w, i) => Math.round(w + (cool[i] - w) * t));
-  return `rgb(${mix.join(', ')})`;
-}
-
 class DevicesView {
   constructor(app, root) {
     this.app = app;
@@ -55,12 +11,15 @@ class DevicesView {
     this.limits = {};
     this.integrationsOn = new Set();
     this.remote = new TvRemote(app);
+    this.quickApps = new QuickAppsPanel(app);
+    this.tvMenu = new TvMenu(app, this.quickApps);
     this.lightPanel = new LightPanel(app);
     this.groups = new GroupsUI(app);
     this.lastDevices = [];
   }
 
-  async load() {
+  /** live: a background refresh, which leaves the page alone if nothing changed. */
+  async load({ live = false } = {}) {
     const homeId = this.app.home.id;
     const [devices, limits, integrations, groups, display] = this.app.isGuest() ? await guestDevicesData(this.app, homeId) : await Promise.all([
       this.app.api.getDevices(homeId),
@@ -70,34 +29,42 @@ class DevicesView {
       this.app.api.getDisplay(homeId),
     ]);
     this.display = display;
-    if (this.layoutHome !== homeId) { // each user's room order, read once per home
-      try {
-        this.roomOrder = (await this.app.api.getLayout(homeId)).room_order;
-      } catch (error) {
-        this.roomOrder = null; // the default order
-      }
-      this.layoutHome = homeId;
-    }
+    await loadLayout(this, homeId);
     this.limits = Object.fromEntries(limits.map((l) => [l.device_type, l]));
     this.integrationsOn = new Set(integrations.filter((i) => i.enabled).map((i) => i.id));
     for (const device of devices) {
       device.integrationOn = this.integrationsOn.has(device.integration);
-      device.controllable = Boolean(device.online) && device.integrationOn && !device.blocked;
+      // A TV that does not answer is greyed out like an offline device; one
+      // with a MAC address can still be turned on (Wake-on-LAN).
+      device.reachable = !(device.type === 'tv' && device.state && device.state.reachable === false);
+      const usable = Boolean(device.online) && device.integrationOn && !device.blocked;
+      device.controllable = usable && device.reachable;
+      device.canPower = device.controllable || (usable && Boolean(device.wakeable));
     }
     this.remote.refresh(devices);
     this.lastDevices = devices;
     this.groupList = groups;
     this.lightPanel.refresh([...devices, ...groups.map((g) => this.groupDevice(g))]);
-    this.render(devices);
+    // Redrawn only when something changed: a live refresh of the same
+    // devices leaves the page exactly as it is.
+    const signature = JSON.stringify([devices, groups, display, limits, integrations, this.roomOrder, this.grid, this.thermostatsApart, this.doorsApart, [...(this.collapsed || [])], window.location.hash]);
+    if (!live || signature !== this.drawnSignature || !this.root.firstChild) this.render(devices);
+    this.drawnSignature = signature;
     this.groups.refresh(groups, devices);
   }
 
-  render(devices) {
-    if (devices.length === 0) {
+  render(everything) {
+    if (drawThermostatsPage(this, everything)) return;
+    const devices = devicesPageDevices(this, everything);
+    if (everything.length === 0) {
       this.root.replaceChildren(el('p', { className: 'empty', testid: 'devices-empty', text: 'No devices yet. An admin can add them.' }));
       return;
     }
-    const groupList = this.groupList || [];
+    const allGroups = this.groupList || [];
+    if (!this.filters) this.filters = new DeviceFilters(this);
+    this.filters.setTypes([...devices.map((d) => d.type), ...allGroups.map((g) => this.groupDevice(g).type)]);
+    const shown = (item) => this.filters.matches(item);
+    const groupList = allGroups.filter((g) => shown(this.groupDevice(g)));
     const apart = Boolean(this.display && this.display.show_grouped_devices);
     // Default: a group is one tile in its room, and its devices are not
     // listed there (open them with the group's ⋯ button).
@@ -108,7 +75,7 @@ class DevicesView {
       rooms.get(room).push(tile);
     };
     if (!apart) groupList.forEach((g) => add(g.room || '', this.groupTile(g)));
-    devices.filter((d) => !grouped.has(d.id)).forEach((d) => add(displayRoom(d), this.card(d)));
+    devices.filter((d) => !grouped.has(d.id) && shown(d)).forEach((d) => add(displayRoom(d), this.card(d)));
     const names = orderRooms([...rooms.keys()], this.roomOrder);
     const top = apart ? this.groups.section(groupList) : this.groups.hint(groupList);
     const layout = el('button', {
@@ -118,10 +85,20 @@ class DevicesView {
         this.layoutEditor.open(names);
       },
     });
-    this.root.replaceChildren(el('div', { className: 'devices-top' }, [top, layout].filter(Boolean)), ...names.map((room) => el('section', { className: 'room', testid: 'room', 'data-room': room }, [
-      el('h2', { text: room || 'No room' }),
-      el('div', { className: 'device-grid' }, rooms.get(room)),
-    ])));
+    const none = names.length === 0 && this.filters.active ? el('p', { className: 'empty', testid: 'filter-empty' }, [
+      'No devices match. ', el('button', { type: 'button', className: 'link', testid: 'filter-clear', text: 'Clear filters', onclick: () => this.filters.clear() }),
+    ]) : null;
+    // The filter bar stays put (keeping focus while typing); the rest is
+    // redrawn, keeping the page's height and where it is scrolled to.
+    const bar = this.filters.element;
+    const { scrollX, scrollY } = window;
+    this.root.style.minHeight = `${this.root.offsetHeight}px`;
+    if (bar.parentNode !== this.root) this.root.replaceChildren(bar);
+    while (this.root.lastChild !== bar) this.root.lastChild.remove();
+    this.root.append(...[el('div', { className: 'devices-top' }, [top, energyButton(this, devices), layout].filter(Boolean)), none, roomsGrid(this, names.map((room) => roomSection(this, room, rooms.get(room))))].filter(Boolean));
+    if (window.scrollY !== scrollY) window.scrollTo(scrollX, scrollY);
+    // Let go of the height once the rooms have their sizes.
+    requestAnimationFrame(() => requestAnimationFrame(() => { this.root.style.minHeight = ''; }));
   }
 
   /** A group as a device for the card and the light settings window. */
@@ -141,21 +118,25 @@ class DevicesView {
     card.classList.add('group-card');
     const count = group.device_ids.length;
     card.querySelector('.card-head .muted').textContent = `Group · ${count} device${count === 1 ? '' : 's'}${group.online ? '' : ' · offline'}`;
-    card.querySelector('.card-head').append(el('button', {
-      type: 'button', className: 'icon-button group-menu', testid: 'group-menu', text: '⋯',
-      'aria-label': `${group.name}: each device`, title: 'Each device', onclick: () => this.groups.open(group),
-    }));
+    // Each device on its own is only worth a menu with two or more.
+    if (count >= 2) {
+      card.querySelector('.card-head').append(el('button', {
+        type: 'button', className: 'icon-button group-menu', testid: 'group-menu', text: '⋯',
+        'aria-label': `${group.name}: each device`, title: 'Each device', onclick: () => this.groups.open(group),
+      }));
+    }
     return card;
   }
 
   card(device) {
     if (device.blocked) return blockedCard(device);
-    // A disconnected device is drawn off (and dimmed by .offline) until it is
-    // back online; then its real state shows again on the next refresh.
-    const state = device.online ? (device.state || {}) : { ...(device.state || {}), on: false, status: 'off' };
+    // A disconnected device (or a TV that does not answer) is drawn off and
+    // dimmed by .offline; its real state shows again on the next refresh.
+    const offline = !device.online || device.reachable === false;
+    const state = offline ? { ...(device.state || {}), on: false, status: 'off' } : (device.state || {});
     const on = Boolean(state.on);
     const card = el('article', {
-      className: `device-card${on ? ' on' : ''}${device.online ? '' : ' offline'}`,
+      className: `device-card${on ? ' on' : ''}${offline ? ' offline' : ''}`,
       testid: 'device-card',
       'data-device-id': device.id,
       'data-device-type': device.type,
@@ -165,7 +146,7 @@ class DevicesView {
         icon(device.type),
         el('div', {}, [
           el('h3', { text: device.name }),
-          el('p', { className: 'muted', text: `${TYPE_LABEL[device.type] || device.type}${device.online ? '' : ' · offline'}` }),
+          el('p', { className: 'muted', text: `${deviceKindLabel(device)}${offline ? ' · offline' : ''}` }),
         ]),
       ]),
     ]);
@@ -181,6 +162,8 @@ class DevicesView {
     }
     if (device.type === 'light' && on) card.style.setProperty('--light', lightColor(state));
     if (device.type === 'tv') {
+      const menu = this.tvMenu.menuButton(device);
+      if (menu) card.querySelector('.card-head').append(menu);
       card.append(el('button', {
         type: 'button', className: 'secondary', testid: 'tv-remote-open', text: 'Remote',
         disabled: !device.controllable, onclick: () => this.remote.open(device),
@@ -190,20 +173,23 @@ class DevicesView {
     const ownDial = device.type === 'thermostat' && Boolean(state.mode);
     if (TEMPERATURE_TYPES.has(device.type) && !ownDial) card.append(this.dial(device, state));
     if (device.type === 'water_heater') card.append(...heaterExtras(this, device, state));
+    if (device.type === 'garage_door') card.append(...garageExtras(this, device, state).filter(Boolean));
     if (device.type === 'thermostat') card.append(...thermostatExtras(this, device, state));
     if (device.type === 'sensor') card.append(this.readings(state));
     return card;
   }
 
   powerToggle(device, on) {
+    // A TV shows "Turning on…" until it says it is on (device.pending).
+    const pending = device.pending;
     return el('button', {
       type: 'button',
-      className: `toggle${on ? ' on' : ''}`,
+      className: `toggle${on ? ' on' : ''}${pending ? ' pending' : ''}`,
       testid: 'power-toggle',
       'aria-pressed': String(on),
       'aria-label': `${device.name} power`,
-      disabled: !device.controllable,
-      text: on ? 'On' : 'Off',
+      disabled: Boolean(pending) || !(device.canPower ?? device.controllable),
+      text: pending ? `Turning ${pending}…` : (on ? 'On' : 'Off'),
       onclick: () => this.command(device, on ? 'turn_off' : 'turn_on'),
     });
   }

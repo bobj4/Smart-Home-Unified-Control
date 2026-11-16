@@ -8,9 +8,19 @@ from sqlalchemy.orm import Session
 
 from app.cync_home import CyncUnavailable
 from app.cync_home import send_command as send_cync_command
+from app.hue_home import HueUnavailable
+from app.hue_home import send_command as send_hue_command
+from app.kasa_home import KasaUnavailable
+from app.kasa_home import send_command as send_kasa_command
+from app.lg_home import LgUnavailable
+from app.lg_home import send_tv_command as send_lg_command
 from app.models import Device
+from app.ratgdo_home import RatgdoUnavailable
+from app.ratgdo_home import send_command as send_ratgdo_command
 from app.rheem_home import RheemUnavailable
 from app.rheem_home import send_command as send_rheem_command
+from app.roku_home import RokuUnavailable
+from app.roku_home import send_tv_command as send_roku_command
 from app.samsung_home import SamsungUnavailable, send_tv_command
 from app.verbose import ms_since, note_apart
 
@@ -30,7 +40,16 @@ def send_to_device(
 ) -> None:
     """Raise DeviceUnavailable if the device refused or could not be reached;
     the caller then leaves the stored state unchanged."""
-    if device.integration not in ("rheem_econet", "samsung_tv", "cync"):
+    if device.integration not in (
+        "rheem_econet",
+        "samsung_tv",
+        "roku_tv",
+        "lg_tv",
+        "hue",
+        "kasa",
+        "ratgdo",
+        "cync",
+    ):
         return  # simulated: nothing to send
     start = time.monotonic()
     result: dict[str, Any] = {"result": "ok"}
@@ -69,6 +88,31 @@ def _send(
         try:
             send_rheem_command(db, device, command, payload, state)
         except RheemUnavailable as error:
+            raise DeviceUnavailable(error.status_code, error.reason) from None
+    elif device.integration == "kasa":
+        try:
+            send_kasa_command(db, device, command, state)
+        except KasaUnavailable as error:
+            raise DeviceUnavailable(error.status_code, error.reason) from None
+    elif device.integration == "hue":
+        try:
+            send_hue_command(db, device, command, state)
+        except HueUnavailable as error:
+            raise DeviceUnavailable(error.status_code, error.reason) from None
+    elif device.integration == "lg_tv":
+        try:
+            send_lg_command(db, device, command, payload)
+        except LgUnavailable as error:
+            raise DeviceUnavailable(error.status_code, error.reason) from None
+    elif device.integration == "ratgdo":
+        try:
+            send_ratgdo_command(device, command, payload)
+        except RatgdoUnavailable as error:
+            raise DeviceUnavailable(error.status_code, error.reason) from None
+    elif device.integration == "roku_tv":
+        try:
+            send_roku_command(device, command, payload)
+        except RokuUnavailable as error:
             raise DeviceUnavailable(error.status_code, error.reason) from None
     elif device.integration == "samsung_tv":
         try:

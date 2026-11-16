@@ -1,0 +1,233 @@
+"""A home's SmartThings link, for Samsung TV inputs by name and for turning a
+TV on that Wake-on-LAN cannot reach. Optional: without it the remote keeps
+its fixed inputs (TV, HDMI 1-4, USB) sent as keys."""
+
+import json
+import logging
+import re
+import time
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from app import credentials, smartthings_oauth
+from app.integrations import smartthings
+from app.models import Device
+from app.vault import VaultError
+
+log = logging.getLogger(__name__)
+CREDENTIAL = "samsung_tv:smartthings"
+
+
+class SourcesUnavailable(Exception):
+    def __init__(self, status_code: int, reason: str) -> None:
+        self.status_code = status_code
+        self.reason = reason
+
+
+def _guard(action: Any) -> Any:
+    try:
+        return action()
+    except smartthings.SmartThingsDenied as error:
+        ours = (smartthings_oauth.RECONNECT, smartthings_oauth.PAT_LAPSED)
+        raise SourcesUnavailable(
+            409,
+            str(error)
+            if str(error) in ours
+            else "SmartThings refused the sign-in: connect it again in Settings > Integrations",
+        ) from None
+    except smartthings.SmartThingsBusy as error:
+        raise SourcesUnavailable(429, str(error)) from None
+    except smartthings.SmartThingsError as error:
+        raise SourcesUnavailable(502, str(error)) from None
+
+
+def _token(db: Session, home_id: str) -> str:
+    try:
+        saved = credentials.load(db, home_id, CREDENTIAL)
+    except VaultError as error:
+        raise SourcesUnavailable(409, str(error)) from None
+    if not saved or not (saved.get("token") or saved.get("oauth")):
+        raise SourcesUnavailable(
+            409, "connect SmartThings first (Settings > Integrations)"
+        )
+    # A sign-in (OAuth) is renewed here first when it is about to end.
+    return str(_guard(lambda: smartthings_oauth.access_token(db, home_id, saved)))
+
+
+def connected(db: Session, home_id: str) -> bool:
+    return credentials.label(db, home_id, CREDENTIAL) is not None
+
+
+def connect(db: Session, home_id: str, token: str) -> list[dict[str, str]]:
+    """Check the token by listing the TVs, then save it. Returns the TVs."""
+    found = _guard(lambda: smartthings.tvs(token))
+    try:
+        credentials.save(
+            db, home_id, CREDENTIAL, "SmartThings", smartthings_oauth.token_login(token)
+        )
+    except VaultError as error:
+        raise SourcesUnavailable(409, str(error)) from None
+    return list(found)
+
+
+def disconnect(db: Session, home_id: str) -> None:
+    credentials.remove(db, home_id, CREDENTIAL)
+    _listed.pop(home_id, None)
+
+
+def _call(db: Session, home_id: str, action: Any) -> Any:
+    """action(token), once more with a renewed sign-in if SmartThings
+    refuses it; a lapsed personal token is noted (smartthings_oauth.rejected)
+    and says what to do."""
+    token = _token(db, home_id)
+    try:
+        return action(token)
+    except smartthings.SmartThingsDenied:
+        try:
+            token = smartthings_oauth.rejected(db, home_id, token)
+        except smartthings.SmartThingsDenied as why:
+            raise SourcesUnavailable(409, str(why)) from None
+        except smartthings.SmartThingsBusy as error:
+            raise SourcesUnavailable(429, str(error)) from None
+        except smartthings.SmartThingsError as error:
+            raise SourcesUnavailable(502, str(error)) from None
+        return _guard(lambda: action(token))
+    except smartthings.SmartThingsBusy as error:
+        raise SourcesUnavailable(429, str(error)) from None
+    except smartthings.SmartThingsError as error:
+        raise SourcesUnavailable(502, str(error)) from None
+
+
+LIST_SECONDS = 60  # the account's TV list, reused this long (pages redraw often)
+# home id -> (when listed, with which token, the TVs)
+_listed: dict[str, tuple[float, str, list[dict[str, str]]]] = {}
+
+
+def smartthings_tvs(db: Session, home_id: str) -> list[dict[str, str]]:
+    """The account's TVs. Reused for LIST_SECONDS with the same token: Settings
+    redraws every few seconds, and SmartThings limits how often it is asked."""
+
+    def tvs(token: str) -> list[dict[str, str]]:
+        seen = _listed.get(home_id)
+        if seen and seen[1] == token and time.monotonic() - seen[0] < LIST_SECONDS:
+            return list(seen[2])
+        found = list(smartthings.tvs(token))
+        _listed[home_id] = (time.monotonic(), token, found)
+        return found
+
+    return list(_call(db, home_id, tvs))
+
+
+def linked_id(device: Device) -> str | None:
+    value = json.loads(device.capabilities or "{}").get("smartthings_id")
+    return str(value) if value else None
+
+
+def link(db: Session, device: Device, smartthings_id: str | None) -> None:
+    """Which SmartThings device this TV is (None = not linked)."""
+    data = json.loads(device.capabilities or "{}")
+    data["smartthings_id"] = smartthings_id
+    device.capabilities = json.dumps(data)
+    db.commit()
+
+
+def tv_sources(db: Session, device: Device) -> dict[str, Any]:
+    st_id = linked_id(device)
+    if not st_id:
+        raise SourcesUnavailable(409, "link this TV to SmartThings first")
+    return dict(
+        _call(db, device.home_id, lambda token: smartthings.sources(token, st_id))
+    )
+
+
+def set_tv_source(db: Session, device: Device, source: str) -> None:
+    st_id = linked_id(device)
+    if not st_id:
+        raise SourcesUnavailable(409, "link this TV to SmartThings first")
+    _call(
+        db, device.home_id, lambda token: smartthings.set_source(token, st_id, source)
+    )
+
+
+def _plain(name: str) -> str:
+    """A TV's name without "[TV]" or "TV" ("[TV] Den" and "Den TV" match)."""
+    return " ".join(re.sub(r"\[tv\]|\btv\b", " ", name.casefold()).split())
+
+
+def _power_link(db: Session, device: Device, token: str) -> str | None:
+    """The SmartThings TV to turn on: the linked one, else (linked now) the
+    one of the same name, else the account's only TV."""
+    st_id = linked_id(device)
+    if st_id:
+        return st_id
+    found = smartthings.tvs(token)
+    name = _plain(device.name)
+    same = [tv for tv in found if name and _plain(tv["name"]) == name]
+    pick = same if len(same) == 1 else found if len(found) == 1 else []
+    if not pick:
+        return None
+    link(db, device, pick[0]["id"])
+    return pick[0]["id"]
+
+
+def turn_on(db: Session, device: Device) -> bool:
+    """Ask SmartThings to turn the TV on. False when it cannot (not
+    connected, no TV to link to, or SmartThings refused): the caller still
+    has Wake-on-LAN or the power key."""
+    if not connected(db, device.home_id):
+        return False
+
+    def power(token: str) -> str | None:
+        st_id = _power_link(db, device, token)
+        if st_id is not None:
+            smartthings.switch_on(token, st_id)
+        return st_id
+
+    try:
+        if _call(db, device.home_id, power) is None:
+            log.info(
+                "%s: no SmartThings TV to turn on (link it in Settings)", device.name
+            )
+            return False
+    except (SourcesUnavailable, smartthings.SmartThingsError) as error:
+        log.info(
+            "%s: SmartThings could not turn it on: %s",
+            device.name,
+            getattr(error, "reason", error),
+        )
+        return False
+    return True
+
+
+CLOUD_SECONDS = 120  # ask SmartThings at most this often per TV
+# device id -> (when asked, online)
+_cloud_seen: dict[str, tuple[float, bool]] = {}
+
+
+def cloud_online(db: Session, device: Device, now: float | None = None) -> bool:
+    """Whether SmartThings can still reach a TV that does not answer on the
+    network (so it can be turned on, and is not offline). False when not
+    connected, not linked to a SmartThings TV, or SmartThings cannot say."""
+    now = time.monotonic() if now is None else now
+    seen = _cloud_seen.get(device.id)
+    if seen is not None and now - seen[0] < CLOUD_SECONDS:
+        return seen[1]
+    found = False
+    if connected(db, device.home_id):
+        try:
+            token = _token(db, device.home_id)
+            st_id = _power_link(db, device, token)
+            found = st_id is not None and smartthings.online(token, st_id)
+        except (SourcesUnavailable, smartthings.SmartThingsError):
+            found = False
+    _cloud_seen[device.id] = (now, found)
+    return found
+
+
+def saved_login(db: Session, home_id: str) -> dict[str, Any] | None:
+    """The saved SmartThings login (None if none or unreadable)."""
+    try:
+        return credentials.load(db, home_id, CREDENTIAL)
+    except VaultError:
+        return None

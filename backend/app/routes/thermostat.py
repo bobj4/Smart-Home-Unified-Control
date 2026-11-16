@@ -1,5 +1,6 @@
 """Thermostat schedules: GET .../devices/{id}/schedule reads them, PUT
-.../schedule/{kind} writes one schedule for chosen days.
+.../schedule/{kind} writes one schedule for chosen days. Its own settings:
+GET .../devices/{id}/settings, PUT to change the yes/no ones.
 
 SEC-11: the caller must be a member of the home in the path.
 SEC-40 to SEC-42: scheduled set points stay within the safety limits, and
@@ -9,7 +10,7 @@ writing is refused until limits are configured; every write is audited.
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -20,7 +21,11 @@ from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
 from app.models import Device, User
 from app.routes.devices import CommandRejected, _device_bounds, _limits
+from app.routes.thermostat_access import may_change_installer
+from app.thermostat_history import history
+from app.thermostat_runs import cloud_runs
 from app.thermostat_schedule import read_schedule, write_schedule
+from app.thermostat_settings import INSTALLER, read_settings, write_settings
 
 Day = Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
@@ -40,6 +45,39 @@ class ScheduleDays(BaseModel):
 
     days: list[Day] = Field(min_length=1, max_length=7)
     periods: list[Period] = Field(max_length=10)
+
+
+class SettingChanges(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    early_on: StrictBool | None = None
+    celsius: StrictBool | None = None
+    auto_dst: StrictBool | None = None
+    dehumidify: StrictBool | None = None
+    heat_pump_changeover: StrictBool | None = None
+    # Ranges are checked in thermostat_settings (LIMITS).
+    dehumidify_to: StrictInt | None = None
+    min_fan_runtime: StrictInt | None = None
+    temperature_offset: StrictFloat | StrictInt | None = None
+    humidity_offset: StrictFloat | StrictInt | None = None
+    auto_deadband: StrictFloat | StrictInt | None = None
+    furnace_type: StrictInt | None = None
+    system_type: StrictInt | None = None
+    power_wires: StrictInt | None = None
+    # Stage thresholds, degrees (thermostat_settings.STAGE_OFFSETS)
+    heat_stage1_begin: StrictFloat | StrictInt | None = None
+    heat_stage2_begin: StrictFloat | StrictInt | None = None
+    heat_stage2_end: StrictFloat | StrictInt | None = None
+    heat_stage3_begin: StrictFloat | StrictInt | None = None
+    heat_stage3_end: StrictFloat | StrictInt | None = None
+    heat_stage4_begin: StrictFloat | StrictInt | None = None
+    heat_stage4_end: StrictFloat | StrictInt | None = None
+    emergency_stage3_begin: StrictFloat | StrictInt | None = None
+    emergency_stage4_begin: StrictFloat | StrictInt | None = None
+    emergency_stage4_end: StrictFloat | StrictInt | None = None
+    cool_stage1_begin: StrictFloat | StrictInt | None = None
+    cool_stage2_begin: StrictFloat | StrictInt | None = None
+    cool_stage2_end: StrictFloat | StrictInt | None = None
 
 
 router = APIRouter(prefix="/api/v1/homes/{home_id}/devices", tags=["thermostat"])
@@ -114,3 +152,86 @@ def save_thermostat_schedule(
         details={**details, "periods": len(periods)},
     )
     return result
+
+
+@router.get("/{device_id}/settings")
+def thermostat_settings(
+    home_id: str,
+    device_id: str,
+    refresh: bool = Query(False),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    require_role(db, user.id, home_id)
+    device = _thermostat(db, home_id, device_id)
+    try:
+        result = read_settings(db, device, refresh)
+    except CyncUnavailable as error:
+        raise HTTPException(error.status_code, error.reason) from None
+    return {**result, "installer_allowed": may_change_installer(db, user, home_id)}
+
+
+@router.put("/{device_id}/settings", dependencies=[Depends(require_csrf)])
+def save_thermostat_settings(
+    home_id: str,
+    device_id: str,
+    body: SettingChanges,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Change the thermostat's own settings. The thermostat reads them back
+    before this succeeds."""
+    require_role(db, user.id, home_id)
+    device = _thermostat(db, home_id, device_id)
+    changes = body.model_dump(exclude_none=True)
+    if not changes:
+        raise HTTPException(422, "Send a setting to change")
+    # How the equipment is set up: the role chosen in Safety Settings.
+    if INSTALLER.intersection(changes) and not may_change_installer(db, user, home_id):
+        raise HTTPException(
+            403, "Only people allowed in Settings > Safety Settings can change this"
+        )
+    details = {"device_id": device.id, "changes": changes}
+    try:
+        result = write_settings(db, device, changes)
+    except CyncUnavailable as error:
+        record_event(
+            db,
+            "thermostat_settings_failed",
+            user_id=user.id,
+            home_id=home_id,
+            ip_address=client_ip(request),
+            details={**details, "reason": error.reason},
+        )
+        raise HTTPException(error.status_code, error.reason) from None
+    record_event(
+        db,
+        "thermostat_settings_saved",
+        user_id=user.id,
+        home_id=home_id,
+        ip_address=client_ip(request),
+        details=details,
+    )
+    return {**result, "installer_allowed": may_change_installer(db, user, home_id)}
+
+
+@router.get("/{device_id}/history")
+def thermostat_history(
+    home_id: str,
+    device_id: str,
+    days: int = Query(1),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """The readings the app kept for its History window (members and up),
+    and run time from the thermostat's own reports when Cync gives them."""
+    require_role(db, user.id, home_id)
+    if days not in (1, 7, 30):
+        raise HTTPException(422, "days must be 1, 7 or 30")
+    device = db.scalars(
+        select(Device).where(Device.id == device_id, Device.home_id == home_id)
+    ).first()
+    if device is None or device.type != "thermostat":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    return history(db, device, days, cloud_runs(db, device, days))

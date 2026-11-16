@@ -14,13 +14,17 @@ from app.dependencies import client_ip, current_user, require_csrf
 from app.models import Device, Role, User
 from app.samsung_home import (
     INTEGRATION,
+    MAX_QUICK_APPS,
     SamsungUnavailable,
     add_tv,
     finish_pin_pairing,
     list_tvs,
     pair_tv,
     remove_tv,
+    set_quick_apps,
+    tv_apps,
     tv_out,
+    update_tv,
 )
 
 router = APIRouter(
@@ -107,6 +111,79 @@ def create_tv(
         protocol=body.protocol,
     )
     return tv_out(device)
+
+
+@router.put("/tvs/{device_id}", dependencies=[Depends(require_csrf)])
+def edit_tv(
+    home_id: str,
+    device_id: str,
+    body: TvIn,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Name, room, address, MAC and protocol. A new address or protocol means
+    pairing again (the answer says so)."""
+    require_role(db, user.id, home_id, Role.OPERATOR)
+    device = _tv(db, home_id, device_id)
+    mac = body.mac.upper().replace("-", ":") if body.mac else None
+    try:
+        room = body.room if "room" in body.model_fields_set else device.room
+        repair = update_tv(
+            db, device, body.name.strip(), body.host, body.protocol, mac, room
+        )
+    except SamsungUnavailable as error:
+        raise HTTPException(error.status_code, error.reason) from None
+    _audit(db, request, user, home_id, "tv_changed", device_id=device.id, repair=repair)
+    return {**tv_out(device), "pair_again": repair}
+
+
+class QuickApp(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(pattern=r"^[A-Za-z0-9._-]{1,100}$")
+    name: str = Field(min_length=1, max_length=60)
+
+
+class QuickAppsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    apps: list[QuickApp] = Field(max_length=MAX_QUICK_APPS)
+
+
+@router.get("/tvs/{device_id}/apps")
+def get_tv_apps(
+    home_id: str,
+    device_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """The apps installed on the TV (the TV must be on); "unconfirmed" ones
+    are the common apps, for a TV that will not say which it has."""
+    require_role(db, user.id, home_id, Role.OPERATOR)
+    device = _tv(db, home_id, device_id)
+    try:
+        return tv_apps(db, device)
+    except SamsungUnavailable as error:
+        raise HTTPException(error.status_code, error.reason) from None
+
+
+@router.put("/tvs/{device_id}/quick-apps", dependencies=[Depends(require_csrf)])
+def put_quick_apps(
+    home_id: str,
+    device_id: str,
+    body: QuickAppsIn,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """The remote's quick-app buttons: up to six, in order. [] = the usual six."""
+    require_role(db, user.id, home_id, Role.OPERATOR)
+    device = _tv(db, home_id, device_id)
+    apps = [app.model_dump() for app in body.apps]
+    if len({app["id"] for app in apps}) != len(apps):
+        raise HTTPException(422, "each app can be chosen once")
+    set_quick_apps(db, device, apps)
+    _audit(db, request, user, home_id, "tv_quick_apps_changed", device_id=device.id)
+    return {**tv_out(device), "quick_apps": apps[:MAX_QUICK_APPS]}
 
 
 @router.post("/tvs/{device_id}/pair", dependencies=[Depends(require_csrf)])

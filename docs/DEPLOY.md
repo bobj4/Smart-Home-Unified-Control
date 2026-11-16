@@ -1,4 +1,4 @@
-# Running the smart home server in Docker
+# Running Smart Home Unified Control in Docker
 
 Docker Desktop (Windows) or Docker Engine (Linux). All commands run from the
 project folder (the checkout). On a Linux server, `deploy/linux/smarthome`

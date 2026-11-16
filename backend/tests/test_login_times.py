@@ -195,10 +195,11 @@ def test_login_times_defaults_and_changes(client, db, owner, login, csrf):
     r = client.put(TIMES, json=new, headers=csrf(client))
     assert r.status_code == 200 and r.json() == new
     for bad in (
-        {**new, "keep_logged_in_days": 0},
-        {**new, "keep_logged_in_days": 400},
+        {**new, "keep_logged_in_days": -1},
         {**new, "remember_device_days": -1},
         {**new, "remember_me_days": "90"},
+        {**new, "remember_me_days": 1.5},
+        {"keep_logged_in_days": 7, "remember_me_days": 90},  # all three needed
     ):
         assert client.put(TIMES, json=bad, headers=csrf(client)).status_code == 422
     assert db.query(AuditEvent).filter_by(event_type="login_times_changed").count() == 1

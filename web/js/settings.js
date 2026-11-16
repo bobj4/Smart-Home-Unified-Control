@@ -5,13 +5,25 @@
  */
 
 const SETTINGS_SECTIONS = [
-  { id: 'account', label: 'My account', intro: 'Password, recovery codes, authenticator app and logged-in devices.' },
-  { id: 'admin', label: 'Admin', intro: 'Users, home name, login rules, email server and HTTPS.', role: 'admin' },
-  { id: 'devices', label: 'Devices', intro: 'Rename devices and choose their room.', role: 'operator' },
+  { id: 'account', label: 'My Account', intro: 'Password, appearance, 2 Factor Login, logged-in devices and alerts.' },
+  { id: 'admin', label: 'Admin', intro: 'Users, home name, login rules, schedules, email server and HTTPS.', role: 'admin' },
+  { id: 'devices', label: 'Devices', intro: 'Rename devices, choose their room, and what each alerts about (its bell).', role: 'operator' },
   { id: 'integrations', label: 'Integrations', intro: 'Device brands this home uses. A brand that is off accepts no commands and no new devices.', role: 'operator' },
-  { id: 'safety', label: 'Safety limits', intro: 'Thermostats and water heaters only accept targets inside these limits. New devices start at the default target.', role: 'operator' },
-  { id: 'activity', label: 'Activity log', intro: 'Logins, setting changes and device commands, newest first.', role: 'admin' },
+  { id: 'safety', label: 'Safety Settings', intro: 'Thermostats and water heaters only accept targets inside these limits (new devices start at the default target), and who may change thermostat installer settings.', role: 'operator' },
+  { id: 'activity', label: 'Activity Log', intro: 'Logins, setting changes and device commands, newest first.', role: 'admin' },
 ];
+
+// Fields whose typing is kept until it is saved: not switches, ticks or
+// files (those save at once), and not list choices (a device row marks its
+// own unsaved choices with data-changed).
+const TYPED_FIELDS = 'textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="file"])';
+
+/** What a page shows: its text and the values of its fields. */
+function pageSignature(panel) {
+  if (!panel) return '';
+  const values = [...panel.querySelectorAll('input, select, textarea')].map((f) => (f.type === 'checkbox' ? String(f.checked) : f.value));
+  return `${panel.textContent}\u0000${values.join('\u0001')}`;
+}
 
 class SettingsView {
   constructor(app, root) {
@@ -46,9 +58,10 @@ class SettingsView {
         text: s.label,
       })));
     const panel = section(`settings-${current.id}`, current.label, current.intro);
-    // Live refresh redraws Integrations only while nothing has been typed.
+    // Live refresh redraws the page only while nothing typed is unsaved
+    // (app.run clears this when an action has finished).
     this.dirty = false;
-    panel.addEventListener('input', () => { this.dirty = true; });
+    panel.addEventListener('input', (event) => { if (event.target.matches(TYPED_FIELDS)) this.dirty = true; });
     const page = [menu, el('div', { className: 'settings-content' }, [panel])];
     const redraw = key === this.drawn;
     this.drawn = key;
@@ -56,10 +69,16 @@ class SettingsView {
     this.drawToken = token;
     if (redraw && live) {
       // Built off screen and swapped in whole: no blank page, no jump. Not
-      // swapped if someone typed meanwhile or a newer draw started.
+      // swapped if someone typed meanwhile or a newer draw started, nor
+      // when nothing changed (the page stays exactly as it is).
+      const before = this.panel;
       await this.renderSection(current.id, panel);
-      if (token !== this.drawToken || this.dirty) {
-        if (token === this.drawToken) this.shown = null; // try again next tick
+      if (token !== this.drawToken || this.dirty || pageSignature(before) === pageSignature(panel)) {
+        if (before && before.isConnected) {
+          this.panel = before;
+          this.formsAtDraw = before.querySelectorAll('form').length;
+        }
+        if (token === this.drawToken) this.shown = key; // still showing this page
         return;
       }
       const { scrollX, scrollY } = window; // where it is now, not when loading began
@@ -80,15 +99,40 @@ class SettingsView {
 
   /** Admin: Users first, then the home and login settings. */
   async renderAdmin(panel) {
+    const steps = await setupStepsPanel(this.app);
+    if (steps) panel.append(steps);
     const users = el('div', { className: 'subpanel', testid: 'settings-members' }, [el('h3', { text: 'Users' })]);
     panel.append(users);
     await this.members.render(users);
+    await new SelfEditPanel(this.app).render(users);
     await new AdminSection(this.app).render(panel);
   }
 
-  renderSection(id, panel) {
+  /** Draw a page; pages with several sections get foldable headings. */
+  async renderSection(id, panel) {
+    await this.renderSectionBody(id, panel);
+    makeCollapsible(this.app, id, panel);
+    this.panel = panel;
+    this.formsAtDraw = panel.querySelectorAll('form').length;
+  }
+
+  /** Every page updates by itself (every third refresh, the Integrations
+   * page every refresh), but never while someone is typing, editing in
+   * place, has a popup open or is looking at a code shown once. */
+  liveDue() {
+    this.ticks = (this.ticks || 0) + 1;
+    const panel = this.panel;
+    if (!panel || !panel.isConnected || this.dirty) return false;
+    if (panel.querySelector('[data-changed="true"]')) return false; // unsaved device rows
+    if (!panel.dataset.testid.endsWith('integrations') && this.ticks % 3 !== 0) return false;
+    if (panel.querySelector('.secret:not([hidden]), .codes, img.qr, [data-testid$="-confirm"]')) return false;
+    if (panel.querySelectorAll('form').length !== this.formsAtDraw) return false;
+    return !document.querySelector('.overlay:not([hidden])');
+  }
+
+  renderSectionBody(id, panel) {
     switch (id) {
-      case 'account': return this.account.render(panel);
+      case 'account': return this.account.render(panel).then(() => new AlertsPanel(this.app).render(panel));
       case 'devices': return this.home.renderDevices(panel);
       case 'integrations': return this.home.renderIntegrations(panel);
       case 'safety': return this.home.renderSafety(panel);

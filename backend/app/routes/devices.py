@@ -14,13 +14,15 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import credentials
+from app import credentials, neighbors, tv_pending
 from app.audit import record_event
 from app.authorization import require_role
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
 from app.device_io import DeviceUnavailable, send_to_device
 from app.features import BY_ID, integration_enabled
+from app.garage import GarageError, garage_state
+from app.groups import follow_device
 from app.lights import LightError, light_state
 from app.models import Device, DeviceSafetyLimits, Role, User, utcnow
 from app.safety import LIMITED_TYPES, initial_state
@@ -36,7 +38,14 @@ from app.water_heater import WATER_HEATER_COMMANDS, WaterHeaterError, water_heat
 router = APIRouter(prefix="/api/v1/homes/{home_id}/devices", tags=["devices"])
 
 DeviceType = Literal[
-    "light", "plug", "thermostat", "tv", "water_heater", "camera", "sensor"
+    "light",
+    "plug",
+    "thermostat",
+    "tv",
+    "water_heater",
+    "camera",
+    "sensor",
+    "garage_door",
 ]
 
 
@@ -69,13 +78,21 @@ class CommandRejected(Exception):
         self.reason = reason
 
 
+# Added by their IP address (it is their external_id).
+BY_ADDRESS = ("samsung_tv", "lg_tv", "roku_tv", "ratgdo")
+
+
 def _network(device: Device) -> dict[str, str | None]:
-    """The device's address on the home network, when its brand reports it."""
+    """The device's address on the home network: as added (TVs, ratgdo,
+    Kasa), or found from its MAC address (neighbors.py: Cync)."""
     caps = json.loads(device.capabilities or "{}")
-    ip = caps.get("ip")
-    if device.integration == "samsung_tv":
-        ip = device.external_id  # TVs are added by their IP address
-    return {"ip": ip, "mac": caps.get("mac")}
+    ip = caps.get("ip") or caps.get("host")
+    if device.integration in BY_ADDRESS:
+        ip = device.external_id
+    mac = caps.get("mac")
+    if not ip and isinstance(mac, str):
+        ip = neighbors.ip_for(mac)
+    return {"ip": ip, "mac": mac}
 
 
 def _device_out(device: Device) -> dict[str, Any]:
@@ -95,9 +112,27 @@ def _device_out(device: Device) -> dict[str, Any]:
         }
         if device.type in LIMITED_TYPES
         else None,
+        # A TV that is offline can still be turned on with its MAC address.
+        "wakeable": device.type == "tv" and bool(caps.get("mac")),
+        # "on"/"off" while waiting for a TV to confirm a power command.
+        "pending": tv_pending.pending(device.id),
         # TVs: which remote features this TV has (2016+ "tizen" launches apps).
         "protocol": caps.get("protocol")
         if device.integration == "samsung_tv"
+        else None,
+        # Inputs by name (through SmartThings) when the TV is linked there.
+        "smartthings": bool(caps.get("smartthings_id"))
+        if device.integration == "samsung_tv"
+        else None,
+        "quick_apps": (caps.get("quick_apps") or [])
+        if device.integration == "samsung_tv"
+        else None,
+        # A wall switch (Cync): a light or plug by what it does, but shown
+        # as a "Switch".
+        "switch": bool(caps.get("switch")),
+        # TVs: names people gave the inputs ({"hdmi2": "PlayStation"}).
+        "input_names": dict(caps.get("input_names") or {})
+        if device.type == "tv"
         else None,
     }
 
@@ -192,6 +227,15 @@ def _new_state(db: Session, device: Device, cmd: DeviceCommand) -> dict[str, Any
             return tv_state(state, cmd.command, cmd.payload)
         except RemoteError as error:
             raise CommandRejected(error.status_code, error.reason) from None
+    if device.type == "garage_door":
+        try:
+            new = garage_state(state, cmd.command, cmd.payload)
+        except GarageError as error:
+            raise CommandRejected(error.status_code, error.reason) from None
+        if device.integration == "simulated":  # a demo door gets there at once
+            settled = {"opening": "open", "closing": "closed"}
+            new["door"] = settled.get(new["door"], new["door"])
+        return new
     if device.type in ("light", "plug"):
         try:
             return light_state(device.type, state, cmd.command, cmd.payload)
@@ -205,9 +249,12 @@ def list_devices(
     home_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> list[dict[str, Any]]:
     require_role(db, user.id, home_id)
-    devices = db.scalars(
-        select(Device).where(Device.home_id == home_id).order_by(Device.name)
+    devices = list(
+        db.scalars(
+            select(Device).where(Device.home_id == home_id).order_by(Device.name)
+        )
     )
+    tv_pending.check(db, devices)
     return [_device_out(d) for d in devices]
 
 
@@ -219,7 +266,9 @@ def get_device(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     require_role(db, user.id, home_id)
-    return _device_out(_get_device(db, home_id, device_id))
+    device = _get_device(db, home_id, device_id)
+    tv_pending.check(db, [device])
+    return _device_out(device)
 
 
 @router.post(
@@ -268,6 +317,8 @@ def update_device(
         raise HTTPException(422, "nothing to change")
     for field, value in changes.items():
         setattr(device, field, value)
+    # A group whose devices are now all in this room moves with them.
+    moved = follow_device(db, device) if "room" in changes else 0
     db.commit()
     record_event(
         db,
@@ -275,7 +326,11 @@ def update_device(
         user_id=user.id,
         home_id=home_id,
         ip_address=client_ip(request),
-        details={"device_id": device_id, **changes},
+        details={
+            "device_id": device_id,
+            **changes,
+            **({"groups_moved": moved} if moved else {}),
+        },
     )
     return _device_out(device)
 
@@ -305,6 +360,53 @@ def delete_device(
     return {"detail": "Deleted"}
 
 
+INPUT_NAMED = ("hdmi1", "hdmi2", "hdmi3", "hdmi4", "usb")  # TV inputs people name
+
+
+class InputNamesIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    names: dict[str, str] = Field(max_length=len(INPUT_NAMED))
+
+
+@router.put("/{device_id}/input-names", dependencies=[Depends(require_csrf)])
+def set_input_names(
+    home_id: str,
+    device_id: str,
+    body: InputNamesIn,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Name a TV's inputs (HDMI 2 = "PlayStation"): shown in its remote when
+    SmartThings does not name them. A blank name removes it."""
+    require_role(db, user.id, home_id, Role.OPERATOR)
+    device = _get_device(db, home_id, device_id)
+    if device.type != "tv":
+        raise HTTPException(422, "only TVs have inputs to name")
+    names = {}
+    for key, raw in body.names.items():
+        if key not in INPUT_NAMED:
+            raise HTTPException(422, f"no input called {key}")
+        name = " ".join(str(raw).split())
+        if len(name) > 30:
+            raise HTTPException(422, "an input name is 30 characters at most")
+        if name:
+            names[key] = name
+    caps = json.loads(device.capabilities or "{}")
+    caps["input_names"] = names
+    device.capabilities = json.dumps(caps)
+    db.commit()
+    record_event(
+        db,
+        "tv_input_names_changed",
+        user_id=user.id,
+        home_id=home_id,
+        ip_address=client_ip(request),
+        details={"device_id": device.id, "inputs": sorted(names)},
+    )
+    return _device_out(device)
+
+
 @router.post("/{device_id}/command", dependencies=[Depends(require_csrf)])
 def send_command(
     home_id: str,
@@ -325,7 +427,10 @@ def send_command(
         state = apply_command(db, device, body, audit)
     except CommandRejected as rejected:
         raise HTTPException(rejected.status_code, rejected.reason) from None
-    return {"device_id": device.id, "state": state}
+    out: dict[str, Any] = {"device_id": device.id, "state": state}
+    if tv_pending.pending(device.id):
+        out["pending"] = tv_pending.pending(device.id)
+    return out
 
 
 def apply_command(
@@ -351,6 +456,7 @@ def apply_command(
     device.state = json.dumps(state)
     device.last_updated = utcnow()
     db.commit()
+    tv_pending.start(device, body.command)
     record_event(db, "device_command", **audit, details=details)
     return state
 

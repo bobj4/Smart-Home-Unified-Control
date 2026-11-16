@@ -3,28 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Home</title>
+    <title>Smart Home Unified Control</title>
     <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Smart Home">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="stylesheet" href="/css/app.css">
     <meta name="theme-color" content="#1f6feb">
 </head>
 <body>
     <div id="login-page" class="auth-page" data-testid="login-page" hidden>
         <div class="auth-card">
-            <h1>Smart Home</h1>
+            <img class="auth-logo" src="/icons/icon-192.png" alt="" width="72" height="72">
+            <h1>Smart Home Unified Control</h1>
             <form id="login-form" data-testid="login-form">
-                <label for="email" id="login-name-label">Email</label>
-                <input type="text" id="email" data-testid="login-email" inputmode="email" autocomplete="username" required>
-                <label for="password">Password</label>
-                <input type="password" id="password" data-testid="login-password" autocomplete="current-password">
-                <label for="totp">Authenticator code or recovery code (leave empty if two-factor is off)</label>
-                <input type="text" id="totp" data-testid="login-code" inputmode="numeric" autocomplete="one-time-code"
-                       pattern="[0-9]{6}|[0-9]{8}" maxlength="8">
-                <p class="muted" data-testid="login-device-known" hidden>This device is remembered: leave the code empty.</p>
-                <label class="check"><input type="checkbox" id="login-remember" data-testid="login-remember"> Remember me</label>
-                <label class="check"><input type="checkbox" id="login-keep" data-testid="login-keep"> <span data-testid="login-keep-label">Keep me logged in for 30 days</span></label>
-                <label class="check"><input type="checkbox" id="login-remember-device" data-testid="login-remember-device"> Remember this device (no code needed here next time)</label>
-                <button type="submit" data-testid="login-submit">Log in</button>
+                <div id="login-step1" class="login-step" data-testid="login-step1">
+                    <label for="email" id="login-name-label">Email</label>
+                    <input type="text" id="email" data-testid="login-email" inputmode="email" autocomplete="username" required>
+                    <label for="password">Password</label>
+                    <input type="password" id="password" data-testid="login-password" autocomplete="current-password">
+                    <p class="muted" data-testid="login-device-known" hidden>This device is remembered: no code needed here.</p>
+                    <label class="check"><input type="checkbox" id="login-remember" data-testid="login-remember"> Remember me</label>
+                    <label class="check"><input type="checkbox" id="login-keep" data-testid="login-keep"> <span data-testid="login-keep-label">Keep me logged in for 30 days</span></label>
+                    <button type="submit" data-testid="login-submit">Log in</button>
+                </div>
+                <div id="login-step2" class="login-step" data-testid="login-step2" hidden>
+                    <p class="note">Enter the code from your authenticator app, or one of your recovery codes.</p>
+                    <label for="totp">Code</label>
+                    <input type="text" id="totp" data-testid="login-code" inputmode="numeric" autocomplete="one-time-code"
+                           pattern="[0-9]{6}|[0-9]{8}" maxlength="8">
+                    <label class="check"><input type="checkbox" id="login-remember-device" data-testid="login-remember-device"> Remember this device (no code needed here next time)</label>
+                    <button type="submit" data-testid="login-code-submit">Log in</button>
+                    <button type="button" class="ghost" data-testid="login-back">Back</button>
+                </div>
                 <p id="login-error" class="error" data-testid="login-error" role="alert"></p>
             </form>
             <a href="#/enroll" class="link" data-testid="enroll-link">Have an enrollment code?</a>
@@ -95,7 +109,7 @@
                 <p class="muted" data-testid="recover-rules"></p>
                 <button type="submit" data-testid="recover-submit">Set new password</button>
             </form>
-            <p class="note" data-testid="recover-done" hidden>Password changed. Two-factor login is off until you set it up again in My account.</p>
+            <p class="note" data-testid="recover-done" hidden>Password changed. Two-factor login is off until you set it up again in My Account.</p>
             <p class="error" data-testid="recover-error" role="alert"></p>
             <a href="#/" class="link">Back to login</a>
         </div>
@@ -108,27 +122,45 @@
     <div id="app-shell" data-testid="app-shell" hidden>
         <header class="topbar">
             <div class="brand">
+                <img class="brand-logo" src="/icons/icon-192.png" alt="" width="32" height="32">
                 <h1 data-testid="home-name">Smart Home</h1>
                 <select data-testid="home-select" aria-label="Home" hidden></select>
             </div>
             <nav class="nav">
                 <a href="#/devices" class="nav-link" data-testid="nav-devices">Devices</a>
+                <a href="#/devices/thermostats" class="nav-link" data-testid="nav-thermostats" hidden>Thermostats</a>
+                <a href="#/schedules" class="nav-link nav-stacked" data-testid="nav-schedules" aria-label="Schedules and Scenes" hidden><span>Schedules</span><span>&amp; Scenes</span></a>
+                <a href="#/devices/doors" class="nav-link" data-testid="nav-doors" hidden>Doors</a>
                 <a href="#/cameras" class="nav-link" data-testid="nav-cameras">Cameras</a>
                 <a href="#/settings" class="nav-link" data-testid="nav-settings">Settings</a>
                 <button type="button" class="ghost" data-testid="logout">Log out</button>
             </nav>
+            <div class="alert-bell-slot" data-testid="alert-bell-slot" hidden></div>
+            <div class="home-badge-slot" data-testid="home-badge-slot"></div>
         </header>
         <p class="status" data-testid="status" data-kind="info" role="status"></p>
         <main>
             <section data-testid="view-devices" hidden></section>
+            <section data-testid="view-schedules" hidden></section>
             <section data-testid="view-cameras" hidden></section>
             <section data-testid="view-settings" class="settings" hidden></section>
         </main>
     </div>
 
     <script src="/js/api.js"></script>
+    <script src="/js/api-more.js"></script>
     <script src="/js/ui.js"></script>
+    <script src="/js/nav-access.js"></script>
+    <script src="/js/pwa.js"></script>
+    <script src="/js/theme-custom.js"></script>
+    <script src="/js/background.js"></script>
+    <script src="/js/motd.js"></script>
+    <script src="/js/member-info.js"></script>
+    <script src="/js/setup-steps.js"></script>
+    <script src="/js/settings-sections.js"></script>
+    <script src="/js/tv-input-names.js"></script>
     <script src="/js/remote.js"></script>
+    <script src="/js/quick-apps.js"></script>
     <script src="/js/light-panel.js"></script>
     <script src="/js/device-info.js"></script>
     <script src="/js/groups.js"></script>
@@ -136,20 +168,49 @@
     <script src="/js/device-settings.js"></script>
     <script src="/js/heater-usage.js"></script>
     <script src="/js/heater.js"></script>
+    <script src="/js/device-parts.js"></script>
     <script src="/js/thermostat.js"></script>
     <script src="/js/thermostat-schedule-edit.js"></script>
     <script src="/js/thermostat-schedule.js"></script>
+    <script src="/js/thermostat-settings.js"></script>
+    <script src="/js/thermostat-history.js"></script>
+    <script src="/js/thermostat-access.js"></script>
     <script src="/js/room-layout.js"></script>
+    <script src="/js/device-filters.js"></script>
+    <script src="/js/thermostats-page.js"></script>
+    <script src="/js/garage.js"></script>
     <script src="/js/guest-view.js"></script>
     <script src="/js/devices.js"></script>
+    <script src="/js/command-popup.js"></script>
     <script src="/js/rheem.js"></script>
     <script src="/js/cync.js"></script>
     <script src="/js/samsung.js"></script>
+    <script src="/js/smartthings.js"></script>
+    <script src="/js/roku.js"></script>
+    <script src="/js/hue.js"></script>
+    <script src="/js/kasa.js"></script>
+    <script src="/js/lg.js"></script>
+    <script src="/js/ratgdo.js"></script>
+    <script src="/js/integration-add.js"></script>
+    <script src="/js/tv-scan.js"></script>
     <script src="/js/frigate.js"></script>
     <script src="/js/cameras.js"></script>
+    <script src="/js/schedule-steps.js"></script>
+    <script src="/js/schedule-editor.js"></script>
+    <script src="/js/schedules.js"></script>
+    <script src="/js/schedule-settings.js"></script>
+    <script src="/js/alerts-panel.js"></script>
+    <script src="/js/alert-bell.js"></script>
+    <script src="/js/device-alert-bell.js"></script>
+    <script src="/js/energy.js"></script>
     <script src="/js/activity-log.js"></script>
     <script src="/js/home-settings.js"></script>
+    <script src="/js/home-icons.js"></script>
+    <script src="/js/home-switcher.js"></script>
+    <script src="/js/site-link.js"></script>
+    <script src="/js/homes-panel.js"></script>
     <script src="/js/trusted-devices.js"></script>
+    <script src="/js/admin-sessions.js"></script>
     <script src="/js/account.js"></script>
     <script src="/js/guest-access.js"></script>
     <script src="/js/members.js"></script>
@@ -158,7 +219,12 @@
     <script src="/js/recover.js"></script>
     <script src="/js/two-factor-gate.js"></script>
     <script src="/js/login-times.js"></script>
+    <script src="/js/login-failures.js"></script>
+    <script src="/js/cert-auto.js"></script>
+    <script src="/js/https-restart.js"></script>
     <script src="/js/admin.js"></script>
     <script src="/js/app.js"></script>
+    <script src="/js/login-form.js"></script>
+    <script src="/js/device-name.js"></script>
 </body>
 </html>

@@ -6,7 +6,7 @@
   color-scheme: light dark;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
-/* Dark colours: from the device setting, unless the person chose Light or Dark. */
+/* Dark colors: from the device setting, unless the person chose Light or Dark. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #111317; --surface: #1a1d23; --surface-2: #23272f; --text: #e8eaed; --muted: #9aa1ad;
@@ -20,6 +20,9 @@
   --shadow: none; color-scheme: dark;
 }
 :root[data-theme="light"] { color-scheme: light; }
+/* Custom: every color is set by theme-custom.js from the chosen one. */
+:root[data-theme="custom-light"] { color-scheme: light; }
+:root[data-theme="custom-dark"] { color-scheme: dark; }
 /* Red: black with red */
 :root[data-theme="red"] {
   --bg: #0b0b0c; --surface: #161617; --surface-2: #212124; --text: #f2f2f3; --muted: #a6a6ad;
@@ -35,6 +38,11 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--text); line-height: 1.45; }
+/* My account > Appearance > Background picture, softened so text stays readable. */
+body.has-background {
+  background-image: linear-gradient(color-mix(in srgb, var(--bg) 55%, transparent), color-mix(in srgb, var(--bg) 55%, transparent)), var(--bg-image);
+  background-size: cover; background-position: center; background-attachment: fixed;
+}
 h1, h2, h3 { margin: 0; line-height: 1.2; }
 h1 { font-size: 1.35rem; }
 h2 { font-size: 1.1rem; }
@@ -49,6 +57,7 @@ button.ghost { background: transparent; }
 button.danger { background: var(--danger); color: #fff; }
 a { color: var(--accent-fg); }
 .link { color: var(--accent-fg); }
+button.link { background: none; border: 0; padding: 0; font-weight: inherit; text-decoration: underline; cursor: pointer; }
 .muted { color: var(--muted); font-size: 0.9rem; }
 .note { background: var(--surface-2); border-radius: 8px; padding: 8px 10px; font-size: 0.92rem; }
 .error { color: var(--danger); min-height: 1.2em; }
@@ -66,10 +75,19 @@ a { color: var(--accent-fg); }
 /* Shell */
 .topbar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--border); }
 .brand { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.brand-logo { border-radius: 8px; flex: 0 0 auto; }
+.auth-logo { display: block; margin: 0 auto 12px; border-radius: 16px; }
 .brand h1 { overflow-wrap: anywhere; }
-.nav { display: flex; gap: 4px; align-items: center; }
+/* The links scroll sideways when they do not fit (phones), instead of
+   making the whole page wider. */
+.nav { display: flex; gap: 4px; align-items: center; min-width: 0; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+.nav::-webkit-scrollbar { display: none; }
+.nav > * { flex: 0 0 auto; white-space: nowrap; }
 .nav-link { color: var(--text); text-decoration: none; padding: 8px 12px; border-radius: 8px; font-weight: 600; }
 .nav-link.active { background: var(--surface-2); color: var(--accent-fg); }
+/* Schedules and Scenes: two short lines, so the tab stays narrow. */
+.nav-link.nav-stacked { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; padding-top: 4px; padding-bottom: 4px; font-size: 0.82rem; text-align: center; }
+.nav-link.nav-stacked[hidden] { display: none; }
 main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 .status { max-width: 1100px; margin: 8px auto 0; padding: 0 16px; min-height: 1.4em; font-size: 0.92rem; }
 .status[data-kind="error"] { color: var(--danger); }
@@ -78,10 +96,45 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 .form-note[data-kind="error"] { color: var(--danger); }
 
 /* Devices */
+.device-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.device-filters input[type="search"] { flex: 1 1 200px; }
+.motd-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Color buttons show their color (My account > Appearance). */
+input[type="color"].swatch { width: 44px; height: 44px; padding: 0; border: 2px solid var(--border); border-radius: 50%; background: none; cursor: pointer; }
+input[type="color"].swatch::-webkit-color-swatch-wrapper { padding: 0; }
+input[type="color"].swatch::-webkit-color-swatch { border: none; border-radius: 50%; }
+input[type="color"].swatch::-moz-color-swatch { border: none; border-radius: 50%; }
+.swatch-field { display: grid; gap: 4px; }
+.swatch-row { display: flex; align-items: center; gap: 8px; }
+.swatch-code { font-family: ui-monospace, monospace; font-size: 0.85rem; }
+.theme-chip { width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--border); align-self: end; background: linear-gradient(135deg, var(--chip-bg) 50%, var(--chip-accent) 50%); }
+.setup-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.setup-list li { display: flex; gap: 8px; align-items: baseline; }
+.setup-list li.done { color: var(--muted); }
+.setup-mark { width: 1.2em; text-align: center; color: var(--accent-fg); }
+.garage-state { font-weight: 600; }
+.garage-state.open, .garage-state.opening { color: var(--warm); }
+.rooms-grid { display: grid; grid-template-columns: repeat(var(--room-columns, 1), minmax(0, 1fr)); column-gap: 24px; align-items: start; }
+/* Side by side: bricks (room-layout.js sets each room's row span). */
+.rooms-grid:not([data-columns="1"]) { grid-auto-rows: 4px; grid-auto-flow: row dense; }
+@media (max-width: 700px) {
+  .rooms-grid { grid-template-columns: 1fr; grid-auto-rows: auto !important; }
+  .rooms-grid > .room { grid-column: auto !important; grid-row-end: auto !important; }
+}
+.layout-row select { max-width: 9rem; }
 .room { margin-top: 20px; }
+.room-toggle { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 0; background: none; border: 0; color: var(--text); text-align: left; font-weight: inherit; }
+.room-toggle h2 { flex: 0 1 auto; }
+.room-caret { display: inline-block; transition: transform 0.15s; color: var(--muted); }
+.room.collapsed .room-caret { transform: rotate(-90deg); }
+.room-count { font-size: 0.85rem; }
 .devices-top { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
 .devices-top > :first-child { flex: 1 1 auto; min-width: 0; }
-.layout-open { margin-left: auto; }
+/* Edit layout: always at the bottom right of the Devices page. */
+.layout-open { position: fixed; right: 16px; bottom: 16px; z-index: 1; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3); }
+/* Only over the dashboard: below every popup, and hidden while one is open. */
+body:has(.overlay:not([hidden])) .layout-open { display: none; }
+[data-testid="view-devices"] { padding-bottom: 72px; }
 .layout-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .layout-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; padding: 6px 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.06); overflow-wrap: anywhere; }
 .room > h2 { margin-bottom: 10px; color: var(--muted); font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.06em; }
@@ -103,6 +156,8 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 .light-controls[data-mode="temp"] .temp-slider, .light-controls[data-mode="rgb"] input[type="color"] { outline: 2px solid var(--accent); outline-offset: 2px; }
 .toggle { width: 100%; padding: 10px; background: var(--surface-2); color: var(--text); border-color: var(--border); }
 .toggle.on { background: var(--on); color: var(--on-text); border-color: transparent; }
+/* A TV waiting to confirm On or Off (devices.js, remote.js). */
+.toggle.pending, .remote .power.pending { opacity: 0.75; font-style: italic; cursor: progress; }
 .dial { display: grid; gap: 8px; justify-items: center; text-align: center; }
 .gauge-wrap { position: relative; width: 160px; max-width: 100%; }
 .gauge { display: block; width: 100%; height: auto; }
@@ -125,10 +180,24 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 .chip { border-radius: 999px; padding: 6px 12px; font-weight: 500; font-size: 0.9rem; }
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; display: grid; gap: 12px; box-shadow: var(--shadow); scroll-margin-top: 80px; min-width: 0; }
 .subpanel { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+/* Foldable sections (settings-sections.js). */
+.section-toggle { cursor: pointer; display: flex; align-items: center; gap: 8px; }
+.section-toggle::before { content: '▾'; color: var(--muted); transition: transform 0.15s; }
+.subsection { display: grid; gap: 8px; padding-top: 8px; }
+.subsection > h3 { font-size: 0.95rem; margin: 4px 0 0; color: var(--muted); }
+.subpanel.collapsed > .section-toggle::before { transform: rotate(-90deg); }
+.subpanel.collapsed > :not(.section-toggle) { display: none !important; }
+.section-jump { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
 .field { display: grid; gap: 4px; font-size: 0.9rem; color: var(--muted); min-width: 0; }
 .field input, .field select { color: var(--text); width: 100%; }
 .grid-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 8px; }
 .check { display: flex; gap: 8px; align-items: center; }
+.stack { display: grid; gap: 6px; }
+/* A number with its Save button inside a setting row (thermostat settings). */
+.integration-row form.row { flex-wrap: nowrap; }
+.integration-row form.row input[type="number"] { width: 5.5em; }
+/* The box keeps its size however long the label is. */
+.check input[type="checkbox"] { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; }
 .limits { display: grid; gap: 12px; }
 .limits-row, .device-row { display: grid; gap: 8px; padding: 12px; border-radius: 10px; background: var(--surface-2); }
 .limits-row input, .limits-row select, .device-row input { background: var(--surface); }
@@ -186,7 +255,43 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 /* TV remote */
 .overlay { position: fixed; inset: 0; z-index: 10; background: rgba(0, 0, 0, 0.55); display: grid; place-items: center; padding: 12px; }
 .remote { width: 100%; max-width: 360px; max-height: calc(100vh - 24px); overflow-y: auto; background: #1d2027; color: #e8eaed; border-radius: 28px; padding: 18px; display: grid; gap: 14px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4); }
+/* A popup that leaves the page usable (https-restart.js). */
+.restart-popup { position: fixed; right: 16px; bottom: 16px; z-index: 11; width: calc(100% - 32px); }
+.restart-popup[hidden] { display: none; }
 .remote .field { color: #9aa1ad; }
+/* Setting rows inside a popup (thermostat settings): the popup is dark in every theme. */
+.remote .integration-row { background: #2a2e37; color: #e8eaed; }
+.remote .switch:not(:checked) { background: #4a505c; }
+/* Folded sub menus of installer settings (thermostat-settings.js). */
+.settings-group { display: grid; gap: 6px; border: 1px solid #3a3f4a; border-radius: 12px; padding: 8px 10px; }
+.settings-group > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+/* Thermostat History (thermostat-history.js): temperature solid, set points dashed. */
+.history-chart { width: 100%; height: auto; background: #23262e; border-radius: 10px; touch-action: pan-y; }
+.history-chart path { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.history-temp { stroke: #e8eaed; }
+.history-dot { fill: #e8eaed; }
+.history-dot.heat { fill: #ff8a3d; }
+.history-dot.cool { fill: #4c8dff; }
+.history-label { fill: #9aa1ad; font-size: 9px; }
+.history-heat { stroke: #ff8a3d; stroke-dasharray: 4 3; }
+.history-cool { stroke: #4c8dff; stroke-dasharray: 4 3; }
+.history-band.heating { fill: rgba(255, 138, 61, 0.18); }
+.history-band.cooling { fill: rgba(76, 141, 255, 0.18); }
+.history-key { display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.85rem; }
+.history-key span::before { content: ''; display: inline-block; width: 14px; height: 0; border-top: 2px solid; margin-right: 4px; vertical-align: middle; }
+.history-key .key-temp::before { border-color: #e8eaed; }
+.history-key .key-heat::before { border-top-style: dashed; border-color: #ff8a3d; }
+.history-key .key-cool::before { border-top-style: dashed; border-color: #4c8dff; }
+.history-key .key-run::before { border-top-width: 8px; border-color: rgba(255, 138, 61, 0.35); }
+/* A long list choice goes under its name, not beside it. */
+.integration-row.stacked { flex-direction: column; align-items: stretch; }
+.choice-row { flex-wrap: nowrap; }
+.choice-row select { flex: 1 1 auto; min-width: 0; width: 100%; }
+/* Long choices never widen a popup past the screen. */
+.remote > *, .remote .stack > *, .settings-group > * { min-width: 0; }
+.settings-group:not([open]) { padding-bottom: 8px; }
+.remote .integration-row .muted, .remote .muted { color: #9aa1ad; }
+.remote input[type="number"] { background: #1d2027; color: #e8eaed; border-color: #3a3f4a; }
 .remote input, .remote select { background: #2a2e37; border-color: #3a3f4a; color: #e8eaed; }
 .remote-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .remote-head h2 { overflow-wrap: anywhere; }
@@ -200,6 +305,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 .remote .key:not(:disabled):active, .remote .app:not(:disabled):active { background: #3d4350; }
 .remote .power { background: #3a1f22; color: #ff8787; border: 1px solid #5a2a2f; min-height: 44px; }
 .remote .power.on { background: #c92a2a; color: #fff; }
+.remote .power-icon { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; vertical-align: -4px; margin-right: 6px; }
 .remote .app.active { border-color: #4c8dff; color: #8fb8ff; }
 .remote-rockers { display: grid; grid-template-columns: 56px 1fr 56px; gap: 10px; align-items: center; }
 .rocker { display: grid; gap: 6px; justify-items: stretch; text-align: center; font-size: 0.75rem; color: #9aa1ad; }
@@ -211,7 +317,10 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 .dpad .dpad-select { grid-area: select; background: #1f6feb; border-color: #1f6feb; }
 .dpad .dpad-right { grid-area: right; }
 .dpad .dpad-down { grid-area: down; }
-.remote-apps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+/* Three to a row; a short last row shares the width evenly. */
+.remote-apps { display: flex; flex-wrap: wrap; gap: 6px; }
+.remote-apps > button { flex: 1 1 calc((100% - 12px) / 3); min-width: 0; }
+.quick-apps-list { display: grid; gap: 6px; max-height: 50vh; overflow-y: auto; }
 .remote .key:disabled, .remote .app:disabled { opacity: 0.35; }
 
 @media (max-width: 720px) {
@@ -221,6 +330,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 @media (max-width: 560px) {
   .activity li { grid-template-columns: 1fr; gap: 0; }
   .topbar { padding: 10px 12px; }
+  .nav { width: 100%; }
   main { padding: 4px 12px 40px; }
 }
 
@@ -239,7 +349,8 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 .remote .key svg { display: block; margin: auto; }
 
 /* Groups */
-.group-card .card-head { justify-content: space-between; }
+/* The ⋯ button sits at the right; without it the name stays next to the icon. */
+.group-card .card-head .group-menu { margin-left: auto; }
 .group-panel { max-width: 900px; }
 .group-form { display: grid; gap: 8px; padding: 10px 0; border-top: 1px solid var(--border); }
 .group-devices { display: flex; flex-wrap: wrap; gap: 6px 16px; }
@@ -297,3 +408,106 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 
 /* Members: an inactive account */
 .member-row.inactive > div:first-child { opacity: 0.55; }
+
+/* "Changes Saved" and save errors */
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 50; display: flex; gap: 12px; align-items: center; max-width: min(92vw, 520px); padding: 12px 16px; border-radius: var(--radius); background: var(--surface); color: var(--text); border: 1px solid var(--border); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25); font-weight: 600; }
+.toast[data-kind="success"] { border-color: var(--success); }
+.toast[data-kind="error"] { border-color: var(--danger); color: var(--danger); }
+.toast-close { padding: 2px 8px; }
+
+/* A device did not follow a command */
+.command-popup-overlay { z-index: 40; }
+.command-popup { max-width: 440px; border: 2px solid var(--danger); }
+.command-popup h2 { color: #ff8a8a; }
+.command-popup-reasons { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; }
+
+/* Name this device (login) */
+.device-name-popup { max-width: 400px; }
+
+/* Homes: the icon at the top right and its list (home-switcher.js), and
+   Admin > Home (homes-panel.js). A picture of one's own is an <img>. */
+.home-badge-slot { flex: none; order: 3; }
+/* The alerts bell: between Log out and the home's icon (alert-bell.js). */
+.alert-bell-slot { flex: none; order: 2; }
+.alert-bell-slot[hidden] { display: none; }
+.bell { position: relative; padding: 6px; line-height: 0; border: 0; color: var(--text); }
+.bell-icon { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.bell-count { position: absolute; top: 0; right: 0; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #d93025; color: #fff; font-size: 0.72rem; font-weight: 700; line-height: 18px; text-align: center; box-shadow: 0 0 0 2px var(--surface); }
+.bell-count[hidden] { display: none; }
+.bell-menu { width: min(360px, calc(100vw - 16px)); max-height: 70vh; overflow-y: auto; padding: 10px 12px; }
+.bell-menu h3 { margin: 0 0 4px; }
+.bell-item { padding: 8px 0; border-top: 1px solid var(--border); display: grid; gap: 2px; }
+.bell-item p { margin: 0; }
+/* Dismiss: the X on a computer, a swipe on a phone (alert-bell.js). */
+.bell-item { position: relative; padding-right: 32px; touch-action: pan-y; transition: transform 0.18s ease, opacity 0.18s ease; }
+.bell-item.leaving { pointer-events: none; }
+.bell-menu .bell-dismiss { position: absolute; display: block; justify-content: center; background: transparent; top: 4px; right: 0; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; font-size: 1.2rem; line-height: 28px; color: var(--muted, #9aa0a6); }
+.bell-menu .bell-dismiss:hover { color: var(--text); background: var(--surface-2); }
+.bell-footer { display: flex; justify-content: center; padding-top: 10px; border-top: 1px solid var(--border); }
+.bell-hint { display: none; font-size: 0.8rem; margin: 0 0 4px; }
+@media (hover: none) and (pointer: coarse) {
+  .bell-menu .bell-dismiss { display: none; }
+  .bell-item { padding-right: 0; }
+  .bell-hint { display: block; }
+}
+.bell-item.new strong::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: #d93025; vertical-align: middle; }
+.bell-time { font-size: 0.8rem; }
+.topbar .nav { margin-left: auto; } /* the links sit beside the home's icon */
+/* Phones: the icon stays in the top right corner, beside the home's name. */
+@media (max-width: 560px) {
+  .home-badge-slot { position: absolute; top: 10px; right: 12px; }
+  .alert-bell-slot { position: absolute; top: 12px; right: 58px; }
+  .brand { padding-right: 96px; }
+}
+.home-badge { padding: 4px; border-radius: 10px; line-height: 0; }
+.home-icon { width: 28px; height: 28px; flex: none; border-radius: 8px; object-fit: cover; fill: none; stroke: var(--text); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+svg.home-icon { padding: 3px; background: var(--surface-2); }
+.home-menu { position: fixed; z-index: 40; display: grid; gap: 4px; min-width: 200px; max-width: calc(100vw - 16px); padding: 6px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); }
+.home-menu button { display: flex; gap: 10px; align-items: center; justify-content: flex-start; text-align: left; background: transparent; color: var(--text); border-color: transparent; }
+.home-menu button.on { background: var(--surface-2); font-weight: 600; }
+.homes-list { display: grid; gap: 8px; margin-bottom: 12px; }
+.home-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); min-width: 0; }
+.home-row > div:nth-child(2) { flex: 1; min-width: 0; }
+.home-row.current { outline: 2px solid var(--accent, #4c8dff); }
+.icon-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.icon-choice { padding: 4px; line-height: 0; background: transparent; border-color: var(--border); }
+.icon-choice.on { border-color: var(--accent, #4c8dff); background: var(--surface-2); }
+.pairing-code { font-size: 1.4rem; letter-spacing: 0.08em; font-family: ui-monospace, monospace; }
+.steps { margin: 0 0 12px; padding-left: 20px; display: grid; gap: 4px; }
+
+/* Schedules and Scenes */
+.notice { padding: 8px 12px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border); }
+.scene-card h3, .schedule-row h3 { overflow-wrap: anywhere; flex: 1 1 auto; min-width: 0; }
+.automation-editor { max-width: 560px; max-height: calc(100vh - 24px); overflow-y: auto; }
+.step-list { display: grid; gap: 8px; }
+.step-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding-bottom: 8px; border-bottom: 1px solid #3a3f4a; }
+.step-row > select:first-child { flex: 2 1 180px; min-width: 0; }
+.step-row > select:nth-child(2) { flex: 1 1 120px; min-width: 0; }
+.step-value { flex: 1 1 90px; min-width: 0; display: flex; }
+.step-value > * { width: 100%; min-width: 0; }
+.step-value:empty { display: none; }
+.step-row > .ghost, .automation-editor .remote-head .ghost { color: #e8eaed; flex: none; }
+.scenes-actions, [data-testid="scene-new"], [data-testid="schedule-new"] { margin-top: 12px; justify-self: start; }
+.day-choices { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.garage-blocked { margin: 0; color: var(--danger); font-weight: 600; }
+.garage-parking { display: grid; gap: 6px; }
+.parking-target { align-items: center; }
+.parking-target input { width: 6em; }
+
+/* Settings > Devices: each device's alert bell (device-alert-bell.js). */
+.device-kind { display: inline-flex; align-items: center; gap: 6px; }
+.device-bell { padding: 4px; line-height: 0; border: 0; background: transparent; }
+.device-bell-icon { width: 24px; height: 24px; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.device-bell-icon.on { stroke: #b0b4ba; }
+.device-bell-icon.off { stroke: #d93025; }
+.device-bell-icon .slash { stroke-width: 2.2; }
+.device-bell-icon .plus-dot { fill: var(--surface); stroke: currentColor; stroke-width: 1.4; }
+.device-bell-icon.on .plus-dot { stroke: #b0b4ba; }
+.device-bell-icon.off .plus-dot { stroke: #d93025; }
+.device-bell-icon .plus { stroke-width: 1.6; }
+.device-bell:disabled { opacity: 0.6; cursor: default; }
+.dimmed { opacity: 0.5; }
+/* A TV tile's ⋯ menu: Name inputs, Quick apps (tv-input-names.js). */
+.tv-menu { display: grid; gap: 10px; }
+.tv-menu .input-names { display: grid; gap: 8px; }
+.tv-menu .input-names .grid-fields { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }

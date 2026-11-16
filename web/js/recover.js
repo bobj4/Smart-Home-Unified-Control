@@ -33,6 +33,14 @@ class RecoverView {
     byTestId('recover-rules').textContent = passwordRulesText(this.app.loginOptions);
     byTestId('recover-email-send').hidden = !(this.app.loginOptions && this.app.loginOptions.email_recovery);
     byTestId('recover-email-sent').hidden = true;
+    // From an admin's emailed link (#/recover/<code>/<login>): fill them in,
+    // then drop them from the address bar and history.
+    const [, , code, login] = window.location.hash.split('/');
+    if (code) {
+      byTestId('recover-code').value = decodeURIComponent(code);
+      if (login) byTestId('recover-login').value = decodeURIComponent(login);
+      window.history.replaceState(null, '', `${window.location.pathname}#/recover`);
+    }
   }
 
   async submit(event) {

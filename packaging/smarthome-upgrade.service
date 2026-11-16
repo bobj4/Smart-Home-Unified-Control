@@ -1,0 +1,14 @@
+# Started by the package after an upgrade: rebuilds the app's image from the
+# new files and restarts it (backing the database up first).
+[Unit]
+Description=Smart Home Unified Control: finish an upgrade
+Requires=docker.service
+After=docker.service network-online.target
+ConditionPathExists=/opt/smart-home-unified-control/deploy/.env
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/smart-home-unified-control
+Environment=ASSUME_YES=yes
+ExecStart=/opt/smart-home-unified-control/deploy/linux/smarthome update
+TimeoutStartSec=900

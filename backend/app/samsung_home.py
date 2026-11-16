@@ -2,18 +2,23 @@
 Network calls go through app.integrations.samsung (replaced by fakes in tests)."""
 
 import json
+import logging
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import credentials
+from app import credentials, tv_app_catalog, tv_power, tv_sources
 from app.features import integration_enabled
 from app.integrations import samsung
 from app.models import Device
 from app.vault import VaultError
 
+log = logging.getLogger(__name__)
 INTEGRATION = "samsung_tv"
+MAX_QUICK_APPS = 6
 
 
 class SamsungUnavailable(Exception):
@@ -119,7 +124,9 @@ def pair_tv(db: Session, device: Device) -> bool:
         raise SamsungUnavailable(502, str(error)) from None
     if token is not None:
         _save_token(db, device, token)
-    device.capabilities = json.dumps({**settings, "paired": True})
+    device.capabilities = json.dumps(
+        {**json.loads(device.capabilities or "{}"), **settings, "paired": True}
+    )
     device.online = True
     db.commit()
     return False
@@ -139,9 +146,43 @@ def finish_pin_pairing(db: Session, device: Device, pin: str) -> None:
     except samsung.TvError as error:
         raise SamsungUnavailable(502, str(error)) from None
     _save_token(db, device, token)
-    device.capabilities = json.dumps({**settings, "paired": True})
+    device.capabilities = json.dumps(
+        {**json.loads(device.capabilities or "{}"), **settings, "paired": True}
+    )
     device.online = True
     db.commit()
+
+
+def update_tv(
+    db: Session,
+    device: Device,
+    name: str,
+    host: str,
+    protocol: str,
+    mac: str | None,
+    room: str | None,
+) -> bool:
+    """Change a TV's details. A new address or protocol needs pairing again:
+    the saved pairing is removed. Returns whether pairing is needed now."""
+    if host != device.external_id and any(
+        d.external_id == host for d in list_tvs(db, device.home_id) if d.id != device.id
+    ):
+        raise SamsungUnavailable(409, "a TV with that address is already added")
+    settings = config(device)
+    repair = host != device.external_id or protocol != settings["protocol"]
+    if repair:
+        credentials.remove(db, device.home_id, _credential_key(device))
+    device.name, device.room, device.external_id = name, room, host
+    device.capabilities = json.dumps(
+        {
+            **json.loads(device.capabilities or "{}"),  # keeps the quick apps
+            "protocol": protocol,
+            "mac": mac,
+            "paired": settings["paired"] and not repair,
+        }
+    )
+    db.commit()
+    return repair
 
 
 def remove_tv(db: Session, device: Device) -> None:
@@ -154,6 +195,12 @@ def send_tv_command(
     db: Session, device: Device, command: str, payload: dict[str, Any]
 ) -> None:
     """Carry out an already validated TV command on the real TV."""
+    if command == "set_source":  # an input by name: through SmartThings
+        try:
+            tv_sources.set_tv_source(db, device, payload["source"])
+        except tv_sources.SourcesUnavailable as error:
+            raise SamsungUnavailable(error.status_code, error.reason) from None
+        return
     settings = config(device)
     if not settings["paired"]:
         raise SamsungUnavailable(409, "pair the TV first (Settings > Integrations)")
@@ -161,24 +208,29 @@ def send_tv_command(
         raise SamsungUnavailable(
             422, "this TV cannot set an exact volume; use volume up and down"
         )
-    if command == "launch_app" and settings["protocol"] != "tizen":
+    if command in ("launch_app", "open_app") and settings["protocol"] != "tizen":
         raise SamsungUnavailable(422, "only 2016 and newer TVs can launch apps")
-    host, protocol = str(device.external_id), settings["protocol"]
+    host, protocol, token = _connection(db, device)
     try:
-        saved = credentials.load(db, device.home_id, _credential_key(device))
-    except VaultError as error:
-        raise SamsungUnavailable(409, str(error)) from None
-    token = saved.get("token") if saved else None
-    if protocol in ("tizen", "encrypted") and not token:
-        raise SamsungUnavailable(409, "pair the TV again: its saved pairing is missing")
-    try:
-        if command == "turn_on":
-            if settings["mac"]:
-                samsung.wake(settings["mac"])
-            else:
-                samsung.send_keys(host, protocol, token, ["KEY_POWER"])
+        if command in ("turn_on", "turn_off"):  # one key both ways: see tv_power
+            state = tv_power.power_state(host, protocol)
+            step = tv_power.plan(command, state, settings["mac"])
+            # Not answering at all (off, not in network standby): Samsung's
+            # cloud as well, as a wake-up packet often cannot reach the TV.
+            # Never beside the power key, which would turn it straight off.
+            cloud = command == "turn_on" and state is None
+            if cloud and tv_sources.turn_on(db, device) and step == "key":
+                step = "nothing"  # no wake-up packet to send (no MAC address)
+            if step == "wake":
+                tv_power.wake(str(settings["mac"]), host)
+            elif step == "key":
+                _power_key(host, protocol, token, command)
         elif command == "launch_app":
             samsung.launch_app(host, protocol, token, payload["app"])
+        elif command == "open_app":
+            samsung._tizen_call(
+                host, token, lambda tv: samsung._start_app(tv, payload["app_id"])
+            )
         else:
             samsung.send_keys(
                 host, protocol, token, samsung.command_keys(command, payload)
@@ -189,3 +241,88 @@ def send_tv_command(
         raise SamsungUnavailable(409, "the TV refused: pair it again") from None
     except samsung.TvError as error:
         raise SamsungUnavailable(502, str(error)) from None
+
+
+def _power_key(host: str, protocol: str, token: str | None, command: str) -> None:
+    """Press the TV's power key. An older TV often goes off before it
+    answers: for "turn off", a TV that no longer answers afterwards is off,
+    so that is not an error."""
+    try:
+        samsung.send_keys(host, protocol, token, ["KEY_POWER"])
+    except (samsung.TvDenied, samsung.TvUnsupported):
+        raise
+    except samsung.TvError:
+        if command != "turn_off" or samsung.is_on(host, protocol):
+            raise
+        log.info("TV %s went off before it answered the power key", host)
+
+
+def _connection(db: Session, device: Device) -> tuple[str, str, str | None]:
+    """The TV's address, protocol and saved pairing token."""
+    settings = config(device)
+    if not settings["paired"]:
+        raise SamsungUnavailable(409, "pair the TV first (Settings > Integrations)")
+    host, protocol = str(device.external_id), settings["protocol"]
+    try:
+        saved = credentials.load(db, device.home_id, _credential_key(device))
+    except VaultError as error:
+        raise SamsungUnavailable(409, str(error)) from None
+    token = saved.get("token") if saved else None
+    if protocol in ("tizen", "encrypted") and not token:
+        raise SamsungUnavailable(409, "pair the TV again: its saved pairing is missing")
+    return host, protocol, token
+
+
+LIST_SECONDS = 8.0  # a TV that will not list its apps may never answer
+
+
+def _listed(
+    host: str, protocol: str, token: str | None
+) -> tuple[list[dict[str, Any]], str | None]:
+    """The TV's own list of its apps, within LIST_SECONDS: (apps, None), or
+    ([], why not). Many TVs ignore the request; the TV library then raises
+    its own websocket timeout (not a TvError), or waits."""
+    pool = ThreadPoolExecutor(max_workers=1)
+    future = pool.submit(samsung.installed_apps, host, protocol, token)
+    try:
+        return list(future.result(timeout=LIST_SECONDS)), None
+    except samsung.TvDenied:
+        raise
+    except FutureTimeout:
+        return [], "the TV did not answer the app list"
+    except Exception as error:  # noqa: BLE001 - any failure: ask app by app
+        return [], f"{type(error).__name__}: {error}".rstrip(": ")
+    finally:
+        pool.shutdown(wait=False)
+
+
+def tv_apps(db: Session, device: Device) -> list[dict[str, Any]]:
+    """The apps installed on the TV, by name, for choosing quick apps. A TV
+    that is on but will not say which it has gets the common ones, marked
+    "unconfirmed" (one it lacks just does not open)."""
+    if config(device)["protocol"] != "tizen":
+        raise SamsungUnavailable(422, "only 2016 and newer TVs can launch apps")
+    host, protocol, token = _connection(db, device)
+    try:
+        apps, problem = _listed(host, protocol, token)
+    except samsung.TvDenied:
+        raise SamsungUnavailable(409, "the TV refused: pair it again") from None
+    if not apps:
+        # Off, or one of the TVs that will not list its apps (tv_app_catalog).
+        if tv_power.power_state(host, protocol) is None:
+            raise SamsungUnavailable(
+                409, "the TV is off or not answering: turn it on, then try again"
+            )
+        apps = tv_app_catalog.installed(host)
+        if not apps:
+            why = f" ({problem})" if problem else ""
+            log.info("TV %s will not say which apps it has%s", host, why)
+            apps = [{**a, "unconfirmed": True} for a in tv_app_catalog.common()]
+    return sorted(apps, key=lambda app: str(app["name"]).lower())
+
+
+def set_quick_apps(db: Session, device: Device, apps: list[dict[str, str]]) -> None:
+    """Up to six apps for the remote's quick buttons ([] = the usual six)."""
+    data = json.loads(device.capabilities or "{}")
+    device.capabilities = json.dumps({**data, "quick_apps": apps[:MAX_QUICK_APPS]})
+    db.commit()

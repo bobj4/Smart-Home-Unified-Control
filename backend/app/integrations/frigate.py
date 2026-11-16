@@ -7,7 +7,6 @@ cookie in memory, reusing it until Frigate answers 401. Without a username it
 uses the unauthenticated port (usually http://<host>:5000).
 """
 
-import hashlib
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -18,8 +17,8 @@ import requests
 TIMEOUT_SECONDS = 10
 SESSION_SECONDS = 12 * 3600
 CHUNK = 64 * 1024
-# hash of (url, username, password) -> (requests session, time of login)
-_sessions: dict[str, tuple[requests.Session, float]] = {}
+# (url, username, password, verify TLS) -> (requests session, time of login)
+_sessions: dict[tuple[str, str, str, bool], tuple[requests.Session, float]] = {}
 
 
 class FrigateError(Exception):
@@ -74,9 +73,9 @@ class FrigateClient:
 
     # ------------------------------------------------------------ session
 
-    def _key(self) -> str:
-        raw = f"{self._url}\0{self._username or ''}\0{self._password}\0{self._verify}"
-        return hashlib.sha256(raw.encode()).hexdigest()
+    def _key(self) -> tuple[str, str, str, bool]:
+        # Kept in memory only, like the login itself; never stored or logged.
+        return (self._url, self._username or "", self._password, self._verify)
 
     def _session(self, fresh: bool = False) -> requests.Session:
         key = self._key()

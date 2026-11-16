@@ -98,6 +98,10 @@ function thermostatExtras(view, device, state) {
   if (device.integration === 'cync' && !view.app.isGuest()) { // schedules: members and up
     box.append(el('button', { type: 'button', className: 'secondary', testid: 'thermo-schedule-open', text: 'Schedule', onclick: () => thermostatSchedulePanel(view).open(device) }));
   }
+  // Settings: members and up, and guests allowed them in their Access window.
+  if (device.integration === 'cync' && guestMay(view.app, 'thermostat_settings')) {
+    box.append(el('button', { type: 'button', className: 'secondary', testid: 'thermo-settings-open', text: 'Settings', onclick: () => thermostatSettingsPanel(view).open(device) }));
+  }
   if (state.mode === 'eco') box.append(el('p', { className: 'muted', testid: 'thermo-eco', text: 'Eco mode: the thermostat keeps its own energy-saving range. Change the mode to set a temperature.' }));
   parts.push(box);
   const sensors = (state.sensors || []).filter((s) => typeof s.temperature === 'number');
@@ -107,8 +111,30 @@ function thermostatExtras(view, device, state) {
       ...sensors.map((s) => el('p', { className: 'muted', text: `${s.name}: ${sensorText(s)}` })),
     ]));
   }
-  parts.push(el('button', { type: 'button', className: 'secondary', testid: 'thermo-info-open', text: 'Info', onclick: () => thermostatPanel(view).open(device) }));
+  // Cync thermostats: History here, and their Info inside Settings. Others: Info.
+  if (device.integration === 'cync' && !view.app.isGuest()) {
+    parts.push(el('button', { type: 'button', className: 'secondary', testid: 'thermo-history-open', text: 'History', onclick: () => thermostatHistoryPanel(view).open(device) }));
+  } else if (device.integration !== 'cync') {
+    parts.push(el('button', { type: 'button', className: 'secondary', testid: 'thermo-info-open', text: 'Info', onclick: () => thermostatPanel(view).open(device) }));
+  }
   return parts;
+}
+
+/** What the tile does not already show, as [label, value] (only what is reported). */
+function thermostatInfoRows(device) {
+  const s = device.state || {};
+  return [
+    ['System', s.system],
+    ['Filter use', s.filter_hours != null ? `${s.filter_hours} h${s.filter_reset ? ` since ${s.filter_reset}` : ''}` : null],
+    ['Firmware', s.firmware],
+    ['Wi-Fi signal', s.wifi],
+  ].filter(([, value]) => value);
+}
+
+function thermostatInfoList(device) {
+  const rows = thermostatInfoRows(device);
+  const line = (label, value) => el('div', { className: 'info-line' }, [el('dt', { text: label }), el('dd', { text: value })]);
+  return rows.length ? el('dl', { testid: 'thermo-info' }, rows.map(([label, value]) => line(label, value))) : el('p', { className: 'muted', text: 'The thermostat reports nothing more.' });
 }
 
 /** Info window: what the tile does not already show. */
@@ -122,20 +148,12 @@ class ThermostatPanel {
   }
 
   open(device) {
-    const s = device.state || {};
-    const line = (label, value) => el('div', { className: 'info-line' }, [el('dt', { text: label }), el('dd', { text: value })]);
-    const rows = [
-      ['System', s.system],
-      ['Filter use', s.filter_hours != null ? `${s.filter_hours} h${s.filter_reset ? ` since ${s.filter_reset}` : ''}` : null],
-      ['Firmware', s.firmware],
-      ['Wi-Fi signal', s.wifi],
-    ].filter(([, value]) => value); // only what the thermostat reports
     this.overlay.replaceChildren(el('div', { className: 'remote info-panel', testid: 'thermo-panel', role: 'dialog', 'aria-label': `${device.name} info` }, [
       el('div', { className: 'remote-head' }, [
         el('h2', { text: `${device.name} info` }),
         el('button', { type: 'button', className: 'ghost', testid: 'thermo-close', text: '✕', 'aria-label': 'Close', onclick: () => this.close() }),
       ]),
-      rows.length ? el('dl', {}, rows.map(([label, value]) => line(label, value))) : el('p', { className: 'muted', text: 'The thermostat reports nothing more.' }),
+      thermostatInfoList(device),
     ]));
     this.overlay.hidden = false;
   }
@@ -152,3 +170,4 @@ function thermostatPanel(view) {
 }
 
 window.thermostatExtras = thermostatExtras;
+window.thermostatInfoList = thermostatInfoList;

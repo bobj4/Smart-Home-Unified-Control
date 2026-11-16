@@ -28,7 +28,7 @@ fake, secrets_key = _thermostat.fake, _thermostat.secrets_key
 thermostat = _thermostat.thermostat
 card, ui_login = _ui.card, _ui.ui_login
 CLOUD_ID = _thermostat.CLOUD_ID
-PIN = "024944"
+PIN = "135790"
 
 
 def test_encoding_and_read_back_check():

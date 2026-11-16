@@ -15,8 +15,10 @@ function orderRooms(names, order) {
 }
 
 /** The room a device is shown in. */
+/** The room a device is shown in: thermostats and water heaters together
+ * in "Thermostats" (THERMOSTAT_PAGE_TYPES, thermostats-page.js). */
 function displayRoom(device) {
-  return device.type === 'thermostat' ? THERMOSTATS_ROOM : (device.room || '');
+  return THERMOSTAT_PAGE_TYPES.includes(device.type) ? THERMOSTATS_ROOM : (device.room || '');
 }
 
 class RoomLayoutEditor {
@@ -30,6 +32,9 @@ class RoomLayoutEditor {
 
   open(rooms) {
     this.rooms = [...rooms];
+    const grid = this.view.grid || { columns: 1, sizes: {} };
+    this.columns = grid.columns;
+    this.sizes = { ...grid.sizes };
     this.overlay.hidden = false;
     this.draw();
   }
@@ -47,29 +52,80 @@ class RoomLayoutEditor {
     const last = this.rooms.length - 1;
     const rows = this.rooms.map((room, i) => el('li', { className: 'layout-row', testid: 'layout-room', 'data-room': room }, [
       el('span', { text: room || 'No room' }),
+      this.wide() ? this.widthSelect(room) : null,
       el('button', { type: 'button', className: 'ghost', testid: 'layout-up', text: '↑', 'aria-label': `Move ${room || 'No room'} up`, disabled: i === 0, onclick: () => this.move(i, -1) }),
       el('button', { type: 'button', className: 'ghost', testid: 'layout-down', text: '↓', 'aria-label': `Move ${room || 'No room'} down`, disabled: i === last, onclick: () => this.move(i, 1) }),
     ]));
     this.overlay.replaceChildren(el('div', { className: 'remote info-panel', testid: 'layout-panel', role: 'dialog', 'aria-label': 'Room order' }, [
       el('div', { className: 'remote-head' }, [
-        el('h2', { text: 'Room order' }),
+        el('h2', { text: 'Layout' }),
         el('button', { type: 'button', className: 'ghost', testid: 'layout-close', text: '✕', 'aria-label': 'Close', onclick: () => this.close() }),
       ]),
-      el('p', { className: 'muted', text: 'Only your Devices page changes; everyone has their own order.' }),
+      el('p', { className: 'muted', text: `Only your Devices page on ${this.view.layoutScreen === 'phone' ? 'phones' : 'larger screens'} changes; everyone has their own order.` }),
+      this.wide() ? this.columnsChoice() : null,
       el('ol', { className: 'layout-list' }, rows),
+      this.thermostatsChoice(),
       el('div', { className: 'row' }, [
         el('button', { type: 'button', testid: 'layout-save', text: 'Save', onclick: () => this.save(this.rooms) }),
-        el('button', { type: 'button', className: 'secondary', testid: 'layout-reset', text: 'Reset', onclick: () => this.save([THERMOSTATS_ROOM]) }),
+        el('button', { type: 'button', className: 'secondary', testid: 'layout-reset', text: 'Reset', onclick: () => { this.columns = this.wide() ? 2 : 1; this.sizes = {}; this.save([THERMOSTATS_ROOM]); } }),
         el('button', { type: 'button', className: 'secondary', testid: 'layout-cancel', text: 'Cancel', onclick: () => this.close() }),
       ]),
     ]));
   }
 
+  wide() {
+    return this.view.layoutScreen !== 'phone';
+  }
+
+  /** Larger screens: rooms side by side, in this many columns. */
+  columnsChoice() {
+    const select = el('select', { testid: 'layout-columns', 'aria-label': 'Columns' },
+      [1, 2, 3, 4].map((n) => el('option', { value: String(n), text: n === 1 ? '1 (rooms one under another)' : `${n} side by side` })));
+    select.value = String(this.columns);
+    select.addEventListener('change', () => { this.columns = Number(select.value); this.draw(); });
+    return field('Columns', select);
+  }
+
+  /** How many columns a room is wide. */
+  widthSelect(room) {
+    const select = el('select', { testid: 'layout-width', 'aria-label': `Width of ${room || 'No room'}`, disabled: this.columns === 1 },
+      Array.from({ length: this.columns }, (_, i) => el('option', { value: String(i + 1), text: i + 1 === this.columns ? 'Full width' : `${i + 1} column${i ? 's' : ''}` })));
+    select.value = String(Math.min(this.sizes[room] || 1, this.columns));
+    select.addEventListener('change', () => { this.sizes[room] = Number(select.value); });
+    return select;
+  }
+
+  /** Only for homes with thermostats (or doors): keep them on their own page. */
+  thermostatsChoice() {
+    const have = (types) => (this.view.lastDevices || []).some((d) => types.includes(d.type));
+    const choice = (types, testid, now, text) => {
+      if (!have(types)) return null;
+      const box = el('input', { type: 'checkbox', testid, checked: Boolean(now) });
+      return { box, label: el('label', { className: 'check' }, [box, text]) };
+    };
+    const thermostats = choice(THERMOSTAT_PAGE_TYPES, 'layout-thermostats-apart', this.view.thermostatsApart, ' Thermostats and water heaters only on their own page (the Thermostats link)');
+    const doors = choice(DOOR_PAGE_TYPES, 'layout-doors-apart', this.view.doorsApart, ' Doors only on their own page (the Doors link)');
+    this.apart = thermostats && thermostats.box;
+    this.doorsApart = doors && doors.box;
+    const labels = [thermostats, doors].filter(Boolean).map((c) => c.label);
+    return labels.length ? el('div', { className: 'stack' }, labels) : null;
+  }
+
   save(order) {
     const { app } = this.view;
     return app.run(async () => {
-      const saved = await app.api.setLayout(app.home.id, order);
+      const apart = this.apart ? this.apart.checked : this.view.thermostatsApart;
+      const doors = this.doorsApart ? this.doorsApart.checked : this.view.doorsApart;
+      const layout = { room_order: order, screen: this.view.layoutScreen, thermostats_apart: apart, doors_apart: doors };
+      if (this.wide()) {
+        const sizes = Object.fromEntries(Object.entries(this.sizes).filter(([room, span]) => order.includes(room) && span > 1));
+        layout.grid = { columns: this.columns, sizes };
+      }
+      const saved = await app.api.setLayout(app.home.id, layout);
+      this.view.grid = saved.grid;
       this.view.roomOrder = saved.room_order;
+      this.view.thermostatsApart = saved.thermostats_apart;
+      this.view.doorsApart = saved.doors_apart;
       this.close();
       this.view.render(this.view.lastDevices);
       app.status.success('Room order saved.');
@@ -82,6 +138,94 @@ class RoomLayoutEditor {
   }
 }
 
+/** Phones get a layout of their own (order and folded rooms). */
+const PHONE_SCREEN = window.matchMedia('(max-width: 700px)');
+const screenType = () => (PHONE_SCREEN.matches ? 'phone' : 'wide');
+
+/** The user's layout for this home and screen type, read once (again when either changes). */
+async function loadLayout(view, homeId) {
+  if (!view.watchingScreen) {
+    view.watchingScreen = true;
+    PHONE_SCREEN.addEventListener('change', () => { if (view.app.home) view.load().catch((e) => view.app.handleError(e)); });
+  }
+  const screen = screenType();
+  if (view.layoutHome === homeId && view.layoutScreen === screen) return;
+  try {
+    const layout = await view.app.api.getLayout(homeId, screen);
+    view.roomOrder = layout.room_order;
+    view.collapsed = new Set(layout.collapsed || []);
+    view.layoutFilters = layout.filters;
+    view.thermostatsApart = Boolean(layout.thermostats_apart);
+    view.doorsApart = Boolean(layout.doors_apart);
+    view.grid = layout.grid || null;
+  } catch (error) {
+    view.roomOrder = null; // the default order
+    view.collapsed = new Set();
+    view.layoutFilters = null;
+  }
+  if (view.filters) view.filters.use(view.layoutFilters);
+  view.layoutHome = homeId;
+  view.layoutScreen = screen;
+}
+
+/** A room on the Devices page; its heading folds it shut or open (remembered). */
+function roomSection(view, room, tiles) {
+  const shut = view.collapsed ? view.collapsed.has(room) : false;
+  const label = room || 'No room';
+  const grid = el('div', { className: 'device-grid', hidden: shut });
+  grid.append(...tiles);
+  const toggle = el('button', {
+    type: 'button', className: 'room-toggle', testid: 'room-toggle', 'aria-expanded': String(!shut),
+    title: shut ? `Show ${label}` : `Hide ${label}`,
+  }, [el('span', { className: 'room-caret', text: '▾', 'aria-hidden': 'true' }), el('h2', { text: label }), shut ? el('span', { className: 'muted room-count', text: `${tiles.length}` }) : null]);
+  toggle.addEventListener('click', () => {
+    if (!view.collapsed) view.collapsed = new Set();
+    if (view.collapsed.has(room)) view.collapsed.delete(room);
+    else view.collapsed.add(room);
+    view.render(view.lastDevices);
+    view.app.api.setLayout(view.app.home.id, { collapsed: [...view.collapsed], screen: view.layoutScreen })
+      .catch((error) => view.app.handleError(error));
+  });
+  const section = el('section', { className: `room${shut ? ' collapsed' : ''}`, testid: 'room', 'data-room': room }, [toggle, grid]);
+  const span = view.grid && view.grid.sizes ? view.grid.sizes[room] : null;
+  if (span) section.style.gridColumn = `span ${Math.min(span, view.grid.columns)}`;
+  return section;
+}
+
+/** Rooms side by side: the columns chosen in Edit layout (one on phones).
+ * Packed like bricks: each room is as tall as it needs, and the next room
+ * moves up into any space beside a taller one (the grid's rows are a few
+ * pixels each, and each room spans as many as its height). */
+const MASONRY_ROW = 4; // px, matches grid-auto-rows in app.css
+
+function roomsGrid(view, sections) {
+  const columns = (view.grid && view.grid.columns) || 1;
+  const box = el('div', { className: 'rooms-grid', testid: 'rooms-grid', 'data-columns': String(columns) }, sections);
+  box.style.setProperty('--room-columns', String(columns));
+  if (view.roomSizer) view.roomSizer.disconnect();
+  if (columns > 1 && window.ResizeObserver) {
+    // A redraw starts each room at its last height, so the page does not
+    // shrink for a moment (which made the browser jump to the top).
+    view.roomSpans = view.roomSpans || new Map();
+    sections.forEach((section) => {
+      const span = view.roomSpans.get(section.dataset.room);
+      if (span) section.style.gridRowEnd = span;
+    });
+    const fit = (section) => {
+      const inner = section.firstElementChild ? section.scrollHeight : 0;
+      const margin = parseFloat(getComputedStyle(section).marginTop) || 0;
+      section.style.gridRowEnd = `span ${Math.max(1, Math.ceil((inner + margin) / MASONRY_ROW))}`;
+      view.roomSpans.set(section.dataset.room, section.style.gridRowEnd);
+    };
+    view.roomSizer = new ResizeObserver((entries) => entries.forEach((entry) => fit(entry.target)));
+    sections.forEach((section) => view.roomSizer.observe(section));
+  }
+  return box;
+}
+
+window.loadLayout = loadLayout;
+window.roomSection = roomSection;
+window.roomsGrid = roomsGrid;
 window.orderRooms = orderRooms;
 window.displayRoom = displayRoom;
 window.RoomLayoutEditor = RoomLayoutEditor;

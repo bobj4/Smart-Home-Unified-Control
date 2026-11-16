@@ -12,17 +12,21 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app import member_codes
 from app.audit import record_event
 from app.auth import generate_recovery_codes, hash_password
 from app.authorization import require_role
+from app.automation import follow_address
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
+from app.home_icons import ICONS
 from app.login_policy import check_password, normalize_login, settings, settings_out
 from app.login_times import forget_all
 from app.mailer import configured
 from app.models import GUEST_ROLE, Home, HomeMembership, PasswordReset, Role, User
 from app.models import Session as SessionModel
 from app.rate_limiter import check_login_allowed, record_login_failure
+from app.routes.homes import home_out
 from app.sessions import as_utc
 
 public_router = APIRouter(prefix="/api/v1", tags=["admin"])
@@ -118,8 +122,12 @@ def set_policy(
 
 
 class HomeName(BaseModel):
+    """A home's name, address ("" = none) and built-in icon; any of them."""
+
     model_config = ConfigDict(extra="forbid")
-    name: str = Field(min_length=1, max_length=100)
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    address: str | None = Field(default=None, max_length=300)
+    icon: str | None = Field(default=None, max_length=20)
 
 
 @router.patch("/homes/{home_id}", dependencies=[Depends(require_csrf)])
@@ -129,24 +137,47 @@ def rename_home(
     request: Request,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-) -> dict[str, str]:
+) -> dict[str, Any]:
     require_role(db, user.id, home_id, Role.ADMIN)
     home = db.get(Home, home_id)
     if home is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
-    old, home.name = home.name, body.name.strip()
-    if not home.name:
-        raise HTTPException(422, "Enter a name")
+    if body.name is None and body.address is None and body.icon is None:
+        raise HTTPException(422, "nothing to change")
+    if body.icon is not None and body.icon not in ICONS:
+        raise HTTPException(422, "choose one of the icons")
+    old, old_address = home.name, home.address
+    if body.name is not None:
+        home.name = body.name.strip()
+        if not home.name:
+            raise HTTPException(422, "Enter a name")
+    if body.address is not None:
+        home.address = body.address.strip() or None
+    if body.icon is not None:
+        home.icon = body.icon
     db.commit()
-    record_event(
-        db,
-        "home_renamed",
-        user_id=user.id,
-        home_id=home_id,
-        ip_address=client_ip(request),
-        details={"old": old, "new": home.name},
-    )
-    return {"id": home.id, "name": home.name}
+    ip = client_ip(request)
+    if home.name != old:
+        record_event(
+            db,
+            "home_renamed",
+            user_id=user.id,
+            home_id=home_id,
+            ip_address=ip,
+            details={"old": old, "new": home.name},
+        )
+    if home.address and home.address != old_address:  # schedules' location
+        follow_address(db, home_id)
+    if body.address is not None or body.icon is not None:
+        record_event(
+            db,
+            "home_details_changed",
+            user_id=user.id,
+            home_id=home_id,
+            ip_address=ip,
+            details={"address": body.address is not None, "icon": body.icon},
+        )
+    return home_out(home)
 
 
 # ------------------------------------------------------------ users without a code
@@ -173,7 +204,7 @@ def create_user(
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
     """Create an account directly, with a password the owner passes on.
-    Two-factor login starts off; the person can turn it on in My account."""
+    Two-factor login starts off; the person can turn it on in My Account."""
     require_role(db, user.id, home_id, Role.ADMIN)
     login = normalize_login(db, body.login)
     if db.scalars(select(User).where(func.lower(User.email) == login)).first():
@@ -218,8 +249,10 @@ def create_reset_code(
     request: Request,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-) -> dict[str, str]:
-    """A one-time code for a member who forgot their password (24 hours)."""
+) -> dict[str, Any]:
+    """A one-time code for a member who forgot their password (24 hours),
+    shown again on their card while active and emailed with a link when an
+    email server is set up ("emailed": where it went, or None)."""
     require_role(db, user.id, home_id, Role.ADMIN)
     if not settings(db).allow_recovery:
         raise HTTPException(
@@ -228,7 +261,7 @@ def create_reset_code(
         )
     if user_id == user.id:
         raise HTTPException(
-            status.HTTP_409_CONFLICT, "Use My account to change your own password"
+            status.HTTP_409_CONFLICT, "Use My Account to change your own password"
         )
     membership = db.scalars(
         select(HomeMembership).where(
@@ -246,11 +279,21 @@ def create_reset_code(
     reset = PasswordReset(
         user_id=user_id,
         code_hash=_hash(code),
+        code_secret=member_codes.keep(code),
         created_by=user.id,
         expires_at=datetime.now(UTC) + RESET_LIFETIME,
     )
     db.add(reset)
     db.commit()
+    target = db.get(User, user_id)
+    home = db.get(Home, home_id)
+    address = target.email if target else ""
+    subject, text = member_codes.reset_email(
+        home.name if home else "your home",
+        code,
+        member_codes.link(request, "recover", code, address),
+    )
+    emailed = member_codes.send(db, address, subject, text)
     record_event(
         db,
         "reset_code_created",
@@ -259,7 +302,11 @@ def create_reset_code(
         ip_address=client_ip(request),
         details={"member_id": user_id},
     )
-    return {"reset_code": code, "expires_at": as_utc(reset.expires_at).isoformat()}
+    return {
+        "reset_code": code,
+        "expires_at": as_utc(reset.expires_at).isoformat(),
+        "emailed": emailed,
+    }
 
 
 class NewPassword(BaseModel):
@@ -284,7 +331,7 @@ def set_member_password(
     require_role(db, user.id, home_id, Role.ADMIN)
     if user_id == user.id:
         raise HTTPException(
-            status.HTTP_409_CONFLICT, "Use My account to change your own password"
+            status.HTTP_409_CONFLICT, "Use My Account to change your own password"
         )
     membership = db.scalars(
         select(HomeMembership).where(
@@ -326,7 +373,7 @@ def recover(
     body: Recover, request: Request, db: Session = Depends(get_db)
 ) -> dict[str, str]:
     """Set a new password with a reset code. Two-factor login is turned off
-    (it can be set up again in My account) and every session ends."""
+    (it can be set up again in My Account) and every session ends."""
     if not settings(db).allow_recovery:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
     ip = client_ip(request)
@@ -356,6 +403,7 @@ def recover(
     target.pending_totp_secret = None
     target.totp_last_step = None
     reset.used_at = datetime.now(UTC)
+    reset.code_secret = None
     db.execute(delete(SessionModel).where(SessionModel.user_id == target.id))
     forget_all(db, target.id)
     db.commit()

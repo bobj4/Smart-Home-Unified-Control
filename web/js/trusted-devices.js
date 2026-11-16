@@ -1,6 +1,6 @@
 /**
  * Approved devices ("Remember this device" at login: no two-factor code
- * needed there). My account lists your own; Admin lists everyone's in your
+ * needed there). My Account lists your own; Admin lists everyone's in your
  * homes, with whose each one is. Removing one means the code is asked for
  * again on that device.
  */
@@ -18,9 +18,11 @@ class TrustedDevicesList {
     await this.load();
   }
 
-  async load() {
+  /** Redraw the list; not over a name being edited unless `force`. */
+  async load({ force = false } = {}) {
     const api = this.app.api;
     const devices = this.all ? await api.getAllDevices() : await api.getMyDevices();
+    if (!force && this.box.querySelector('[data-testid="trusted-device-rename-form"]')) return;
     if (!devices.length) {
       this.box.replaceChildren(el('p', {
         className: 'muted', testid: 'devices-none',
@@ -40,17 +42,41 @@ class TrustedDevicesList {
         el('strong', { text: `${who}${device.name}${device.current ? ' (this device)' : ''}` }),
         el('p', { className: 'muted', text: `Approved ${formatTime(device.created_at)}${device.ip_address ? ` from ${device.ip_address}` : ''} · ${used} · ${until}` }),
       ]),
+      this.all ? null : el('button', {
+        type: 'button', className: 'secondary', testid: 'trusted-device-rename', text: 'Rename',
+        'aria-label': `Rename ${device.name}`, onclick: (e) => this.rename(device, e.currentTarget.closest('.session-row')),
+      }),
       el('button', {
         type: 'button', className: 'secondary', testid: 'trusted-device-forget', text: 'Remove',
         'aria-label': `Remove ${device.name}`,
         onclick: () => this.app.run(async () => {
           if (this.all) await this.app.api.forgetAnyDevice(device.id);
           else await this.app.api.forgetMyDevice(device.id);
-          await this.load();
+          await this.load({ force: true });
           this.app.status.success('Removed: that device will ask for the code again.');
         }),
       }),
     ]);
+  }
+
+  /** My own device: change its name in place. */
+  rename(device, row) {
+    const name = el('input', { type: 'text', testid: 'trusted-device-name', maxlength: '60', value: device.name, 'aria-label': 'Device name' });
+    const form = el('form', { className: 'row', testid: 'trusted-device-rename-form' }, [
+      name,
+      el('button', { type: 'submit', testid: 'trusted-device-save', text: 'Save' }),
+      el('button', { type: 'button', className: 'secondary', text: 'Cancel', onclick: () => this.load({ force: true }) }),
+    ]);
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      this.app.run(async () => {
+        await this.app.api.renameMyDevice(device.id, name.value.trim());
+        await this.load({ force: true });
+        this.app.status.success('Device renamed.');
+      });
+    });
+    row.replaceChildren(form);
+    name.select();
   }
 }
 

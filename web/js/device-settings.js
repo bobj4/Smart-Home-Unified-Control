@@ -4,7 +4,7 @@
  * the top and the bottom for every changed row; Delete per device.
  */
 
-const DEVICE_TYPE_LABELS = { light: 'Lights', plug: 'Plugs', tv: 'TVs', thermostat: 'Thermostats', water_heater: 'Water heaters', camera: 'Cameras', sensor: 'Sensors' };
+const DEVICE_TYPE_LABELS = { light: 'Lights', plug: 'Plugs', tv: 'TVs', thermostat: 'Thermostats', water_heater: 'Water Heaters', camera: 'Cameras', sensor: 'Sensors', garage_door: 'Garage Doors', switch: 'Switches' };
 
 class DeviceSettings {
   constructor(app) {
@@ -14,9 +14,11 @@ class DeviceSettings {
   async render(container) {
     const admin = this.app.can('operator');
     const homeId = this.app.home.id;
-    const [devices, groups, rooms] = await Promise.all([
+    const [devices, groups, rooms, alerts] = await Promise.all([
       this.app.api.getDevices(homeId), this.app.api.getGroups(homeId), this.app.api.getRooms(homeId),
+      this.app.api.getDeviceAlerts(homeId).catch(() => ({})), // at another site: none
     ]);
+    this.alerts = alerts;
     if (admin) await new GroupSettings(this.app).render(container, { rooms, groups });
     if (devices.length === 0) {
       container.append(el('p', { className: 'muted', text: 'No devices yet.' }));
@@ -25,17 +27,25 @@ class DeviceSettings {
     const roomList = el('datalist', { id: 'room-options' }, rooms.map((r) => el('option', { value: r })));
     const memberOf = new Map(groups.flatMap((g) => g.device_ids.map((id) => [id, g.id])));
     const rows = el('div', { className: 'device-rows' }, devices.map((d) => this.deviceRow(d, admin, groups, memberOf.get(d.id) || '')));
-    const types = [...new Set(devices.map((d) => d.type))];
+    const kindOf = (d) => (d.switch ? 'switch' : d.type);
+    const types = [...new Set(devices.map(kindOf))];
     const filter = el('select', { testid: 'device-filter', 'aria-label': 'Show device type' }, [
       el('option', { value: '', text: 'All types' }),
       ...types.map((t) => el('option', { value: t, text: DEVICE_TYPE_LABELS[t] || t })),
     ]);
-    filter.addEventListener('change', () => {
+    // Search by name, room, brand, type or network address (IP or MAC).
+    const search = el('input', { type: 'search', testid: 'device-search', placeholder: 'Name, room, brand, IP or MAC', 'aria-label': 'Search devices' });
+    const haystack = new Map(devices.map((d) => [d.id, [d.name, d.room, d.integration, brandName(d.integration), deviceKindLabel(d), d.network && d.network.ip, d.network && d.network.mac].filter(Boolean).join(' ').toLowerCase()]));
+    const apply = () => {
+      const words = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
       rows.querySelectorAll('[data-testid="device-row"]').forEach((row) => {
-        row.hidden = Boolean(filter.value) && row.dataset.deviceType !== filter.value;
+        const text = haystack.get(row.dataset.deviceId) || '';
+        row.hidden = (Boolean(filter.value) && row.dataset.deviceKind !== filter.value) || !words.every((w) => text.includes(w));
       });
-    });
-    const tools = [field('Show', filter)];
+    };
+    filter.addEventListener('change', apply);
+    search.addEventListener('input', apply);
+    const tools = [field('Search', search), field('Show', filter)];
     if (!admin) {
       container.append(roomList, el('div', { className: 'actions' }, tools), rows);
       return;
@@ -78,10 +88,13 @@ class DeviceSettings {
       group.dataset.initial = groupId;
       fields.push(field('Group', group));
     }
-    const row = el('form', { className: 'device-row', testid: 'device-row', 'data-device-id': device.id, 'data-device-type': device.type }, [
+    const row = el('form', { className: 'device-row', testid: 'device-row', 'data-device-id': device.id, 'data-device-type': device.type, 'data-device-kind': device.switch ? 'switch' : device.type }, [
       el('div', { className: 'grid-fields' }, fields),
       deviceInfoButton(device),
-      el('span', { className: 'muted', text: device.type.replace('_', ' ') }),
+      el('span', { className: 'device-kind' }, [
+        el('span', { className: 'muted', text: deviceKindLabel(device) }),
+        this.alerts[device.id] ? deviceAlertBell(this.app, device, this.alerts[device.id], admin) : '',
+      ]),
     ]);
     if (admin) {
       row.addEventListener('input', () => { row.dataset.changed = 'true'; });

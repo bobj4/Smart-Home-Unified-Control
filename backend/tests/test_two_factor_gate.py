@@ -150,7 +150,7 @@ def test_ui_required_two_factor_gate(open_page, db, owner, make_user, make_devic
     page.get_by_test_id("login-email").fill(member.email)
     page.get_by_test_id("login-password").fill(member.password)
     page.get_by_test_id("login-submit").click()
-    expect(page.get_by_test_id("login-error")).to_contain_text("Login failed")
+    expect(page.get_by_test_id("login-step2")).to_be_visible()  # asks for the code
 
 
 def test_ui_no_gate_when_not_required(open_page, db, owner, make_user, make_device):

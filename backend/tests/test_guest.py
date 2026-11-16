@@ -38,7 +38,11 @@ NONE = {
     "cameras": False,
     "water_heater": False,
     "show_blocked": False,
+    "thermostat_settings": False,
+    "thermostat_installer": False,
+    "scenes": False,
     "thermostat_ids": [],
+    "camera_names": [],
 }
 
 

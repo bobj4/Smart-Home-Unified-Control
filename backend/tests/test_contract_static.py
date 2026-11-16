@@ -73,7 +73,10 @@ def test_no_placeholder_secrets_or_jwt_leftovers():
     """B4: no fallback secret keys anywhere the app or deployment reads."""
     banned = re.compile(
         r"change-this-in-production|change-in-production|your-secret-key|"
-        r"SECRET_KEY|ALGORITHM|python-jose|from jose",
+        # ALGORITHM as a setting (a JWT leftover), not the word itself: the
+        # Kasa integration imports AES from cryptography's ciphers.algorithms.
+        # Narrowed with the owner's approval (2026-11-06).
+        r"SECRET_KEY|ALGORITHM\s*=|python-jose|from jose",
         re.I,
     )
     files = [path for path, _ in app_sources()]

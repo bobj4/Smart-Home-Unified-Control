@@ -4,9 +4,7 @@
  * (#/enroll).
  */
 
-const VIEWS = ['devices', 'cameras', 'settings'];
-// Chosen colours (My account > Appearance); anything else follows the device.
-const THEMES = ['light', 'dark', 'red', 'violet'];
+const VIEWS = ['devices', 'schedules', 'cameras', 'settings'];
 
 class SmartHomeApp {
   constructor() {
@@ -14,16 +12,26 @@ class SmartHomeApp {
     this.account = null;
     this.home = null;
     this.status = new StatusBar(byTestId('status'));
+    // Every Save button: a "Changes Saved" popup once the server has it.
+    this.toast = new Toast();
+    // A device that did not follow a command: a popup with the reason.
+    this.commandPopup = new CommandPopup(this);
+    this.api.onCommandFailed = (failure) => this.commandPopup.show(failure);
+    document.addEventListener('click', (e) => { this.lastClick = { save: isSaveButton(e.target), at: Date.now() }; }, true);
+    document.addEventListener('submit', (e) => { this.lastClick = { save: isSaveButton(e.submitter), at: Date.now() }; }, true);
     this.devices = new DevicesView(this, byTestId('view-devices'));
     this.settings = new SettingsView(this, byTestId('view-settings'));
     this.cameras = new CamerasView(this, byTestId('view-cameras'));
+    this.schedules = new SchedulesView(this, byTestId('view-schedules'));
     this.enroll = new EnrollView(this);
     this.recover = new RecoverView(this);
     this.twoFactorGate = new TwoFactorGate(this);
     this.loginOptions = null;
     this.homeSelect = byTestId('home-select');
+    this.homeSwitcher = new HomeSwitcher(this, byTestId('home-badge-slot'));
 
     document.getElementById('login-form').addEventListener('submit', (e) => this.login(e));
+    byTestId('login-back').addEventListener('click', () => { byTestId('login-error').textContent = ''; byTestId('login-code').value = ''; this.loginStep(1); });
     byTestId('logout').addEventListener('click', () => this.logout());
     this.homeSelect.addEventListener('change', () => this.selectHome(this.homeSelect.value));
     window.addEventListener('hashchange', () => this.route());
@@ -49,10 +57,10 @@ class SmartHomeApp {
     const [view, sub] = this.currentRoute();
     try {
       if (view === 'devices' && !this.devices.lightPanel.device && !this.devices.remote.device) {
-        await this.devices.load();
-      } else if (view === 'settings' && sub === 'integrations' && !this.settings.dirty) {
-        this.settings.shown = null; // redraw the device lists, unless someone is editing
-        await this.settings.load('integrations', { live: true });
+        await this.devices.load({ live: true });
+      } else if (view === 'settings' && this.settings.liveDue()) {
+        this.settings.shown = null; // redraw the page, unless someone is in the middle of something
+        await this.settings.load(sub, { live: true });
       } else if (view === 'cameras' && this.cameras.grid && this.cameras.player.hidden) {
         await this.cameras.fillEvents();
       }
@@ -70,10 +78,15 @@ class SmartHomeApp {
   async run(action) {
     this.status.pending();
     this.working += 1;
+    const click = this.lastClick;
+    const saving = Boolean(click && click.save && Date.now() - click.at < 1000);
     try {
       await action();
+      if (this.settings) this.settings.dirty = false; // what was typed is saved now
+      if (saving) this.toast.saved();
     } catch (error) {
       this.handleError(error);
+      if (saving && !(error instanceof AuthError)) this.toast.failed(error.message);
     } finally {
       this.working -= 1;
     }
@@ -120,7 +133,18 @@ class SmartHomeApp {
     try { remembered = await this.api.getRememberedLogin(); } catch (error) { return; }
     const { login, device, keep_days: keepDays } = remembered;
     byTestId('login-device-known').hidden = !device;
-    if (keepDays) byTestId('login-keep-label').textContent = `Keep me logged in for ${keepDays} day${keepDays === 1 ? '' : 's'}`;
+    // A choice the admin turned off is hidden (and unticked).
+    const show = (testid, on) => {
+      const box = byTestId(testid);
+      box.closest('label').hidden = !on;
+      if (!on) box.checked = false;
+    };
+    show('login-keep', keepDays !== null && keepDays !== undefined);
+    show('login-remember', remembered.remember_me !== false);
+    show('login-remember-device', remembered.remember_device !== false);
+    byTestId('login-keep-label').textContent = keepDays
+      ? `Keep me logged in for ${keepDays} day${keepDays === 1 ? '' : 's'}`
+      : 'Keep me logged in';
     if (login && !byTestId('login-email').value) {
       byTestId('login-email').value = login;
       byTestId('login-remember').checked = true;
@@ -137,24 +161,25 @@ class SmartHomeApp {
     byTestId('recover-link').hidden = !options.allow_recovery;
   }
 
-  applyTheme(theme) {
-    if (THEMES.includes(theme)) document.documentElement.dataset.theme = theme;
-    else delete document.documentElement.dataset.theme;
-    // The phone's status bar follows the page background.
-    const meta = document.querySelector('meta[name="theme-color"]');
-    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
-    if (meta && bg) meta.setAttribute('content', bg);
+  /** Chosen colors (My Account > Appearance; see theme-custom.js). */
+  applyTheme(theme, custom = null) {
+    applyThemeTo(document.documentElement, theme, custom);
   }
 
   async loadAccount() {
-    this.account = await this.api.getAccount();
-    this.applyTheme(this.account.theme);
-    const homes = this.account.homes;
+    const [account, homes] = await Promise.all([this.api.getAccount(), this.api.getHomes()]);
+    // The homes in the person's own order, with their icons (Admin > Home).
+    account.homes = homes;
+    this.account = account;
+    this.applyTheme(this.account.theme, this.account.theme_custom);
+    applyBackground(this.account.background);
     this.homeSelect.replaceChildren(...homes.map((h) => el('option', { value: h.id, text: h.name })));
     this.homeSelect.hidden = homes.length < 2;
-    const keep = this.home && homes.find((h) => h.id === this.home.id);
-    this.home = keep || homes[0] || null;
+    // The home on screen, else the last one viewed, else the top one.
+    const find = (id) => id && homes.find((h) => h.id === id);
+    this.home = find(this.home && this.home.id) || find(account.last_home_id) || homes[0] || null;
     if (this.home) this.homeSelect.value = this.home.id;
+    this.homeSwitcher.render();
   }
 
   async route() {
@@ -164,12 +189,12 @@ class SmartHomeApp {
     }
     if (!this.account) {
       const hash = window.location.hash;
-      if (hash === '#/recover' && this.loginOptions && this.loginOptions.allow_recovery) {
+      if (hash.startsWith('#/recover') && this.loginOptions && this.loginOptions.allow_recovery) {
         if (byTestId('recover-page').hidden) this.recover.reset();
         this.showPage('recover');
         return;
       }
-      const enrolling = hash === '#/enroll';
+      const enrolling = hash.startsWith('#/enroll'); // #/enroll/<code> from an email
       if (enrolling && byTestId('enroll-page').hidden) this.enroll.reset();
       this.showPage(enrolling ? 'enroll' : 'login');
       return;
@@ -181,11 +206,13 @@ class SmartHomeApp {
       return;
     }
     this.showPage('app');
+    showMotd(this);
     const [view, sub] = this.currentRoute();
     for (const name of VIEWS) {
       byTestId(`view-${name}`).hidden = name !== view;
       byTestId(`nav-${name}`).classList.toggle('active', name === view);
     }
+    ['thermostats', 'doors'].forEach((page) => byTestId(`nav-${page}`).classList.toggle('active', view === 'devices' && sub === page));
     byTestId('home-name').textContent = this.home ? this.home.name : 'No home yet';
     if (!this.home) return;
     this.api.guest = this.isGuest(); // guests use the guest routes
@@ -194,7 +221,8 @@ class SmartHomeApp {
       return;
     }
     this.camerasAvailable();
-    const loaders = { settings: () => this.settings.load(sub), cameras: () => this.cameras.load(), devices: () => this.devices.load() };
+    if (view === 'schedules' && !(await schedulesAvailable(this))) { window.location.hash = '#/devices'; return; }
+    const loaders = { settings: () => this.settings.load(sub), cameras: () => this.cameras.load(), devices: () => this.devices.load(), schedules: () => this.schedules.load() };
     this.run(loaders[view]);
   }
 
@@ -202,61 +230,42 @@ class SmartHomeApp {
     return Boolean(this.home) && this.home.role === 'guest';
   }
 
-  /** Cameras is shown to operators and up (and guests allowed to see them),
-   * and only while Frigate is on. */
-  async camerasAvailable() {
-    let on = false;
-    if (this.isGuest()) {
-      try {
-        const page = await this.api.getGuestPage(this.home.id);
-        on = page.access.cameras && page.integrations_on.includes('frigate');
-      } catch (error) {
-        on = false;
-      }
-    } else if (this.can('operator')) {
-      try {
-        const integrations = await this.api.getIntegrations(this.home.id);
-        on = integrations.some((i) => i.id === 'frigate' && i.enabled);
-      } catch (error) {
-        on = false;
-      }
-    }
-    byTestId('nav-cameras').hidden = !on;
-    return on;
+  /** The Cameras and Schedules and Scenes tabs (nav-access.js). */
+  camerasAvailable() {
+    schedulesAvailable(this);
+    return camerasAvailable(this);
   }
 
   selectHome(homeId) {
     this.home = this.account.homes.find((h) => h.id === homeId) || this.home;
+    this.homeSelect.value = this.home.id;
+    this.homeSwitcher.render();
     this.status.show('', 'info');
+    this.saveLastHome(this.home.id);
     this.route();
   }
 
-  async login(event) {
-    event.preventDefault();
-    const errorEl = byTestId('login-error');
-    errorEl.textContent = '';
-    const password = byTestId('login-password');
-    const code = byTestId('login-code');
-    const name = byTestId('login-email').value.trim();
-    try {
-      await this.api.login(name, password.value, code.value.trim(), {
-        keepLoggedIn: byTestId('login-keep').checked,
-        rememberMe: byTestId('login-remember').checked,
-        rememberDevice: byTestId('login-remember-device').checked,
-      });
-      password.value = '';
-      code.value = '';
-      await this.loadAccount();
-      this.status.show('', 'info');
-      this.route();
-    } catch (error) {
-      errorEl.textContent = error.status === 429
-        ? 'Too many failed attempts. Wait five minutes and try again.'
-        : 'Login failed. Check your email, password and code.';
-    }
+  // Opened first next time (a miss only opens the top home). One save at a
+  // time, newest last, so quick switches can't leave an older home saved.
+  saveLastHome(homeId) {
+    this.lastHomeWanted = homeId;
+    if (this.lastHomeSaving) return;
+    const next = () => {
+      const wanted = this.lastHomeWanted;
+      this.lastHomeWanted = null;
+      this.lastHomeSaving = wanted
+        ? this.api.setLastHome(wanted).catch(() => {}).then(next)
+        : null;
+      return this.lastHomeSaving;
+    };
+    next();
   }
 
   async logout() {
+    // Let a save of the home last viewed finish first (a few seconds at most).
+    if (this.lastHomeSaving) {
+      await Promise.race([this.lastHomeSaving, new Promise((done) => setTimeout(done, 3000))]);
+    }
     try {
       await this.api.logout();
     } catch (error) {
@@ -265,6 +274,7 @@ class SmartHomeApp {
     this.account = null;
     this.home = null;
     this.applyTheme('system');
+    applyBackground(null);
     this.route();
     await this.fillRememberedLogin(); // a device approved at this login
   }

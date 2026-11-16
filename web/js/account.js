@@ -1,6 +1,6 @@
 /**
- * Settings > Your account: password, recovery codes, authenticator app and
- * logged-in sessions. Secrets shown here are displayed once and never stored.
+ * Settings > Your account: password, appearance, 2 Factor Login (status,
+ * authenticator app, recovery codes) and logged-in sessions. Secrets shown here are displayed once and never stored.
  */
 
 const MIN_PASSWORD = 12;
@@ -17,11 +17,10 @@ class AccountSection {
   async render(container) {
     container.append(
       el('p', { className: 'muted', text: `Logged in as ${this.app.account.email}` }),
+      ownInfoBox(this.app) || '',
       this.passwordForm(),
       this.themeBox(),
-      this.twoFactorBox(),
-      this.recoveryForm(),
-      this.totpForm(),
+      groupSections('2 Factor Login', 'two-factor-login', [this.twoFactorBox(), this.totpForm(), this.recoveryForm()]),
     );
     // Two tabs: where you are logged in now, and the devices approved to
     // skip the two-factor code.
@@ -70,22 +69,11 @@ class AccountSection {
     return form;
   }
 
+  /** Appearance (theme-custom.js) with the background picture in it. */
   themeBox() {
-    const select = el('select', { testid: 'theme-select', 'aria-label': 'Appearance' }, [
-      el('option', { value: 'system', text: 'Device Theme' }),
-      el('option', { value: 'light', text: 'Light' }),
-      el('option', { value: 'dark', text: 'Dark' }),
-      el('option', { value: 'red', text: 'Red' }),
-      el('option', { value: 'violet', text: 'Purple' }),
-    ]);
-    select.value = this.app.account.theme || 'system';
-    select.addEventListener('change', () => this.app.run(async () => {
-      await this.app.api.setPreferences({ theme: select.value });
-      this.app.account.theme = select.value;
-      this.app.applyTheme(select.value);
-      this.app.status.success('Appearance saved.');
-    }));
-    return el('div', { className: 'subpanel' }, [el('h3', { text: 'Appearance' }), field('Colours', select)]);
+    const box = appearanceBox(this.app);
+    box.append(new BackgroundBox(this.app).element());
+    return nestSections(box);
   }
 
   twoFactorBox() {
@@ -97,7 +85,7 @@ class AccountSection {
   fillTwoFactor() {
     const account = this.app.account;
     const parts = [
-      el('h3', { text: 'Two-factor login' }),
+      el('h3', { text: 'Status' }),
       el('p', {
         testid: 'two-factor-status',
         text: account.two_factor

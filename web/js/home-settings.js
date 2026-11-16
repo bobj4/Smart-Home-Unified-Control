@@ -1,11 +1,11 @@
 /**
- * Settings that belong to the current home: safety limits, devices,
+ * Settings that belong to the current home: safety settings, devices,
  * integrations and the activity log.
  */
 
 const LIMIT_TYPES = [
   ['thermostat', 'Thermostat'],
-  ['water_heater', 'Water heater'],
+  ['water_heater', 'Water Heater'],
 ];
 
 function numberOrNull(input) {
@@ -34,6 +34,8 @@ class HomeSettings {
       container.append(el('p', { className: 'muted empty', testid: 'limits-none', text: 'No thermostats or water heaters yet.' }));
       return;
     }
+    // Who may change installer settings, for homes with a thermostat (thermostat-access.js).
+    const access = present.has('thermostat') ? await thermostatAccessBox(this.app) : null;
     const list = el('div', { className: 'limits' }, types.map(([type, label]) => this.limitsRow(type, label, byType[type], owner)));
     container.append(list);
     // Each thermostat and water heater can have narrower limits of its own.
@@ -42,6 +44,7 @@ class HomeSettings {
       el('h3', { text: 'Per device (optional, inside the limits above)' }),
       ...limited.map((d) => this.deviceLimitsRow(d, byType[d.type], owner)),
     ]));
+    if (access) container.append(access);
     if (owner) {
       container.append(el('div', { className: 'actions' }, [
         el('button', {
@@ -170,24 +173,17 @@ class HomeSettings {
     const rows = await this.app.api.getIntegrations(this.app.home.id);
     const devices = await this.app.api.getDevices(this.app.home.id);
     const problems = this.app.can('operator') ? await this.app.api.getIntegrationProblems(this.app.home.id) : {};
-    container.append(el('div', { className: 'integration-list' }, rows.flatMap((row) => {
-      const toggle = el('input', {
-        type: 'checkbox', role: 'switch', className: 'switch', testid: 'integration-toggle',
-        checked: row.enabled, disabled: !owner, 'aria-label': `${row.name} on or off`,
-      });
-      toggle.addEventListener('change', () => this.app.run(async () => {
-        try {
-          const saved = await this.app.api.setIntegration(this.app.home.id, row.id, toggle.checked);
-          if (['rheem_econet', 'samsung_tv', 'frigate', 'cync'].includes(saved.id)) {
-            this.app.settings.shown = null; // redraw to show or hide the account panel
-            this.app.route();
-          }
-          this.app.status.success(`${saved.name} turned ${saved.enabled ? 'on' : 'off'}.`);
-        } catch (error) {
-          toggle.checked = !toggle.checked;
-          throw error;
-        }
-      }));
+    const add = addIntegrationRow(this, rows);
+    if (add) container.append(add);
+    const scanBox = tvScanPanel(this);
+    if (scanBox) container.append(scanBox);
+    // Only the integrations in use are listed, and the demo devices always
+    // (with a switch); the rest are in "Add integration".
+    const inUse = rows.filter((row) => row.enabled || row.id === 'simulated');
+    if (inUse.length === 0) container.append(el('p', { className: 'muted', testid: 'integrations-none', text: 'No integrations yet.' }));
+    container.append(el('div', { className: 'integration-list' }, inUse.flatMap((row) => {
+      const remove = !owner ? null
+        : row.id === 'simulated' ? demoSwitch(this, row) : integrationRemoveButton(this, row); // integration-add.js
       const rowEl = el('div', { className: 'integration-row', testid: 'integration-row', 'data-integration': row.id, 'data-available': String(row.available) }, [
         el('div', {}, [
           el('strong', { text: row.name }),
@@ -197,7 +193,7 @@ class HomeSettings {
             ? el('p', { className: 'error', testid: 'integration-problem', text: `Connection problem: ${problems[row.id].reason}` })
             : null,
         ]),
-        toggle,
+        remove,
       ]);
       const own = devices.filter((d) => d.integration === row.id);
       if (own.length === 0) return [rowEl];
@@ -219,6 +215,26 @@ class HomeSettings {
     const samsungRow = rows.find((row) => row.id === 'samsung_tv');
     if (samsungRow && samsungRow.enabled && this.app.can('operator')) {
       await new SamsungPanel(this.app).render(container);
+    }
+    const hueRow = rows.find((row) => row.id === 'hue');
+    if (hueRow && hueRow.enabled && this.app.can('operator')) {
+      await new HuePanel(this.app).render(container);
+    }
+    const kasaRow = rows.find((row) => row.id === 'kasa');
+    if (kasaRow && kasaRow.enabled && this.app.can('operator')) {
+      await new KasaPanel(this.app).render(container);
+    }
+    const lgRow = rows.find((row) => row.id === 'lg_tv');
+    if (lgRow && lgRow.enabled && this.app.can('operator')) {
+      await new LgPanel(this.app).render(container);
+    }
+    const ratgdoRow = rows.find((row) => row.id === 'ratgdo');
+    if (ratgdoRow && ratgdoRow.enabled && this.app.can('operator')) {
+      await new RatgdoPanel(this.app).render(container);
+    }
+    const rokuRow = rows.find((row) => row.id === 'roku_tv');
+    if (rokuRow && rokuRow.enabled && this.app.can('operator')) {
+      await new RokuPanel(this.app).render(container);
     }
 
   }

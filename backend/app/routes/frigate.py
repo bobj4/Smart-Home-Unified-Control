@@ -3,6 +3,7 @@ sees recent events with thumbnails and plays their clips. Media is passed
 through this app, so the browser never talks to Frigate directly."""
 
 import ipaddress
+import time
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -171,17 +172,50 @@ def remove_server(
 # ------------------------------------------------------------ viewing (members)
 
 
+# A guest kept to some cameras: the events they were shown, so their
+# thumbnails and clips need no search. (user id, home id) -> (when, ids)
+SHOWN_SECONDS = 1800
+_shown: dict[tuple[str, str], tuple[float, set[str]]] = {}
+
+
+def _remember(user_id: str, home_id: str, events: list[dict[str, Any]]) -> None:
+    now = time.monotonic()
+    when, ids = _shown.get((user_id, home_id), (now, set()))
+    if now - when > SHOWN_SECONDS:
+        ids = set()
+    _shown[(user_id, home_id)] = (now, ids | {str(e["id"]) for e in events})
+
+
+def _event_allowed(
+    client: frigate.FrigateClient,
+    user_id: str,
+    home_id: str,
+    event_id: str,
+    cameras: set[str],
+) -> bool:
+    """Whether the event is from one of the guest's cameras."""
+    when, ids = _shown.get((user_id, home_id), (0.0, set()))
+    if event_id in ids and time.monotonic() - when <= SHOWN_SECONDS:
+        return True
+    for camera in sorted(cameras):
+        found = call(lambda camera=camera: client.events(100, camera))
+        if any(str(e["id"]) == event_id for e in found):
+            _remember(user_id, home_id, found)
+            return True
+    return False
+
+
 @router.get("")
 def list_cameras(
     home_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> list[str]:
-    require_camera_viewer(db, user, home_id)  # operators, or guests allowed
+    allowed = require_camera_viewer(db, user, home_id)  # operators, or guests allowed
     try:
         client = client_for_home(db, home_id)
         result: list[str] = call(client.cameras)
     except FrigateUnavailable as error:
         raise _fail(error) from None
-    return result
+    return result if allowed is None else [c for c in result if c in allowed]
 
 
 @router.get("/events")
@@ -192,12 +226,23 @@ def list_events(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
-    require_camera_viewer(db, user, home_id)  # operators, or guests allowed
+    allowed = require_camera_viewer(db, user, home_id)  # operators, or guests allowed
+    if allowed is not None and camera is not None and camera not in allowed:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Forbidden")
     try:
         client = client_for_home(db, home_id)
-        result: list[dict[str, Any]] = call(lambda: client.events(limit, camera))
+        if allowed is None or camera is not None:
+            result: list[dict[str, Any]] = call(lambda: client.events(limit, camera))
+        else:  # a guest kept to some cameras: theirs, newest first
+            result = []
+            for name in sorted(allowed):
+                result += call(lambda name=name: client.events(limit, name))
+            result.sort(key=lambda e: float(e.get("start_time") or 0), reverse=True)
+            result = result[:limit]
     except FrigateUnavailable as error:
         raise _fail(error) from None
+    if allowed is not None:
+        _remember(user.id, home_id, result)
     return result
 
 
@@ -217,9 +262,13 @@ def event_thumbnail(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    require_camera_viewer(db, user, home_id)  # operators, or guests allowed
+    allowed = require_camera_viewer(db, user, home_id)  # operators, or guests allowed
     try:
         client = client_for_home(db, home_id)
+        if allowed is not None and not _event_allowed(
+            client, user.id, home_id, event_id, allowed
+        ):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
         media: frigate.Media = call(lambda: client.thumbnail(event_id))
     except FrigateUnavailable as error:
         raise _fail(error) from None
@@ -237,9 +286,13 @@ def event_clip(
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """The event's video, passing Range through so the player can seek."""
-    require_camera_viewer(db, user, home_id)  # operators, or guests allowed
+    allowed = require_camera_viewer(db, user, home_id)  # operators, or guests allowed
     try:
         client = client_for_home(db, home_id)
+        if allowed is not None and not _event_allowed(
+            client, user.id, home_id, event_id, allowed
+        ):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
         media: frigate.Media = call(lambda: client.clip(event_id, range_header))
     except FrigateUnavailable as error:
         raise _fail(error) from None

@@ -1,7 +1,7 @@
 """Read-only probe of the Cync thermostat (step 2 of the thermostat notes).
 
     python scripts/cync_thermostat_probe.py [--seconds 30]
-    python scripts/cync_thermostat_probe.py --schedules 556336025 [--seconds 60]
+    python scripts/cync_thermostat_probe.py --schedules 123456789 [--seconds 60]
 
 Uses the Cync login saved in Settings > Integrations (SECRETS_KEY must be
 set). Lists every device on the account, then connects to Cync's server,

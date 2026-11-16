@@ -24,11 +24,13 @@ from app.auth import (
 )
 from app.db_config import get_db
 from app.dependencies import client_ip, current_session, current_user, require_csrf
-from app.login_policy import check_password
+from app.login_policy import check_password, settings
 from app.login_times import forget_all
 from app.models import Home, HomeMembership, User
 from app.models import Session as SessionModel
 from app.rate_limiter import check_login_allowed, record_login_failure
+from app.routes.background import background_out
+from app.routes.motd import motd_for
 from app.sessions import as_utc
 
 router = APIRouter(prefix="/api/v1/account", tags=["account"])
@@ -47,10 +49,25 @@ class PasswordChange(BaseModel):
     )  # rules: app/login_policy.py
 
 
+class CustomTheme(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    accent: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
+    # The background: dark, light, or a color of one's own.
+    base: str = Field(pattern=r"^(dark|light|#[0-9a-fA-F]{6})$")
+
+
 class Preferences(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    # "red": black and red; "violet": purple and black.
-    theme: Literal["system", "light", "dark", "red", "violet"]
+    # "red": black and red; "violet": purple and black; "custom": `custom`.
+    theme: Literal["system", "light", "dark", "red", "violet", "custom"]
+    custom: CustomTheme | None = None
+
+
+def _custom(user: User) -> dict[str, str] | None:
+    if not user.theme_custom:
+        return None
+    accent, base = user.theme_custom.split(" ")
+    return {"accent": accent, "base": base}
 
 
 class TotpDisable(BaseModel):
@@ -90,20 +107,55 @@ def get_account(
         "email": user.email,
         "name": user.name,
         "homes": [{"id": h.id, "name": h.name, "role": role} for h, role in homes],
+        # Opened first (none, or no longer mine: the top home of /homes).
+        "last_home_id": user.last_home_id
+        if any(h.id == user.last_home_id for h, _ in homes)
+        else None,
         "two_factor": bool(user.is_totp_enabled),
         "two_factor_required": required,
         # A home requires it and it is off: the app shows only the setup page.
         "two_factor_setup_required": required and not user.is_totp_enabled,
         "theme": user.theme or "system",
+        # The last custom colors, kept when another theme is chosen.
+        "theme_custom": _custom(user),
+        "background": background_out(db, user),
+        "motd": motd_for(db, user),
+        "can_edit_info": bool(settings(db).users_edit_own_info),
+        "collapsed_sections": json.loads(user.settings_collapsed or "[]"),
     }
+
+
+class Collapsed(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    sections: list[str] = Field(max_length=200)
+
+
+@router.put("/collapsed", dependencies=[Depends(require_csrf)])
+def set_collapsed(
+    body: Collapsed, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict[str, list[str]]:
+    """The Settings sections folded shut, remembered for this person."""
+    sections = list(dict.fromkeys(s for s in body.sections if 0 < len(s) <= 100))
+    user.settings_collapsed = json.dumps(sections)
+    db.commit()
+    return {"sections": sections}
 
 
 @router.put("/preferences", dependencies=[Depends(require_csrf)])
 def set_preferences(
     body: Preferences, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> dict[str, str]:
+) -> dict[str, Any]:
+    if body.theme == "custom":
+        if body.custom is None and not user.theme_custom:
+            raise HTTPException(422, "choose the custom color")
+        if body.custom is not None:
+            user.theme_custom = (
+                f"{body.custom.accent.lower()} {body.custom.base.lower()}"
+            )
     user.theme = body.theme
     db.commit()
+    if user.theme == "custom":
+        return {"theme": user.theme, "custom": _custom(user)}
     return {"theme": user.theme}
 
 

@@ -27,12 +27,24 @@ class AdminSection {
       this.app.api.getSecurityPolicy(this.app.home.id),
       this.app.api.getHttps(),
       this.app.api.getEmailServer(),
-      this.app.api.getDisplay(this.app.home.id),
+      // At another site with its server not connected: drawn without it.
+      this.app.api.getDisplay(this.app.home.id).catch(() => null),
     ]);
     this.httpsBox = el('div', { className: 'subpanel', testid: 'https-box' });
     this.fillHttps(https);
-    container.append(this.nameForm(), this.displayBox(display), this.twoFactor(security), this.policyForm(policy));
-    await new LoginTimesPanel(this.app).render(container);
+    const times = new LoginTimesPanel(this.app);
+    // 2 Factor Login: the rule, and everyone's approved devices.
+    const twoFactor = this.twoFactor(security);
+    // Login rules: accounts and passwords, failed logins, login times.
+    const rules = groupSections('Login rules', 'login-rules', [this.policyForm(policy)]);
+    container.append(new HomesPanel(this.app).render(), display ? this.displayBox(display) : '', twoFactor, rules);
+    await new LoginFailuresPanel(this.app).render(rules);
+    await times.render(rules);
+    await times.renderDevices(twoFactor);
+    nestSections(rules);
+    nestSections(twoFactor);
+    await new MotdPanel(this.app).render(container);
+    await new ScheduleSettingsPanel(this.app).render(container);
     container.append(this.emailForm(email), this.httpsBox);
   }
 
@@ -90,7 +102,9 @@ class AdminSection {
     toggle.disabled = !cert;
     toggle.addEventListener('change', () => this.app.run(async () => {
       try {
-        this.fillHttps(await this.app.api.setHttps(toggle.checked));
+        const saved = await this.app.api.setHttps(toggle.checked);
+        this.fillHttps(saved);
+        if (saved.restart_needed) httpsRestartPopup(this.app).open(saved); // https-restart.js
       } catch (error) {
         toggle.checked = !toggle.checked;
         throw error;
@@ -131,27 +145,11 @@ class AdminSection {
       el('h3', { text: 'HTTPS' }),
       settingRow('Use HTTPS', 'Needs a certificate. Takes effect when the server restarts (scripts/serve.py).', toggle),
       el('p', { className: https.restart_needed ? 'warning' : 'muted', testid: 'https-state', text: https.restart_needed ? `${now} Restart the server to apply the change.` : now }),
+      https.restart_needed ? el('button', { type: 'button', className: 'secondary', testid: 'https-restart', text: 'Restart…', onclick: () => httpsRestartPopup(this.app).open(https) }) : '',
       details,
+      certAutoImportRow(this.app), // cert-auto.js
       upload,
     );
-  }
-
-  nameForm() {
-    const name = el('input', { type: 'text', testid: 'home-name-input', maxlength: '100', required: true, value: this.app.home.name });
-    const form = el('form', { className: 'subpanel' }, [
-      el('h3', { text: 'Home' }),
-      el('div', { className: 'row' }, [field('Home name', name), el('button', { type: 'submit', testid: 'home-name-save', text: 'Rename' })]),
-    ]);
-    form.addEventListener('submit', (event) => {
-      event.preventDefault();
-      this.app.run(async () => {
-        const saved = await this.app.api.renameHome(this.app.home.id, name.value.trim());
-        await this.app.loadAccount();
-        byTestId('home-name').textContent = saved.name;
-        this.app.status.success(`Home renamed to ${saved.name}.`);
-      });
-    });
-    return form;
   }
 
   displayBox(display) {
@@ -186,9 +184,9 @@ class AdminSection {
         ? 'Everyone in this home now needs two-factor login.'
         : 'Two-factor login is now each person\'s choice.');
     }));
-    return el('div', { className: 'subpanel' }, [
-      el('h3', { text: 'Two-factor login' }),
-      settingRow('Require two-factor login', 'Members without it can only open My account until they set it up.', toggle),
+    return el('div', { className: 'subpanel', testid: 'admin-two-factor' }, [
+      el('h3', { text: '2 Factor Login' }),
+      settingRow('Require two-factor login', 'Members without it can only open My Account until they set it up.', toggle),
     ]);
   }
 
@@ -199,7 +197,7 @@ class AdminSection {
     const rules = [['pw-upper', 'upper', 'Uppercase letter'], ['pw-lower', 'lower', 'Lowercase letter'], ['pw-digit', 'digit', 'Number'], ['pw-special', 'special', 'Special character']]
       .map(([testid, key, label]) => [key, switchInput(testid, policy.password[key], `Require ${label.toLowerCase()}`), label]);
     const form = el('form', { className: 'subpanel' }, [
-      el('h3', { text: 'Login rules (every account)' }),
+      el('h3', { text: 'Accounts (every account)' }),
       settingRow('Require an email address', 'When off, new accounts may use a username instead.', email),
       settingRow('Password recovery', 'Owners can give a member a one-time code to set a new password.', recovery),
       el('h3', { text: 'Password requirements' }),

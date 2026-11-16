@@ -14,7 +14,7 @@ admin (SEC-11: never other homes' people).
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -22,17 +22,26 @@ from app.audit import record_event
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
 from app.login_policy import settings
-from app.login_times import DEVICE_COOKIE, LIMITS, device_out, times_out
+from app.login_times import (
+    DEVICE_COOKIE,
+    MAX_DAYS,
+    TIMES,
+    clean_name,
+    device_out,
+    times_out,
+)
 from app.models import HomeMembership, Role, TrustedDevice, User
 
 router = APIRouter(prefix="/api/v1", tags=["login times"])
 
 
 class LoginTimes(BaseModel):
+    """Days; 0 = never expires; null = turned off."""
+
     model_config = ConfigDict(extra="forbid")
-    keep_logged_in_days: StrictInt
-    remember_me_days: StrictInt
-    remember_device_days: StrictInt  # 0 = forever
+    keep_logged_in_days: StrictInt | None
+    remember_me_days: StrictInt | None
+    remember_device_days: StrictInt | None
 
 
 def _admin_homes(db: Session, user: User) -> list[str]:
@@ -66,7 +75,7 @@ def _people(db: Session, homes: list[str]) -> dict[str, User]:
 @router.get("/admin/login-times")
 def get_login_times(
     user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> dict[str, int]:
+) -> dict[str, int | None]:
     require_admin(db, user)
     return times_out(settings(db))
 
@@ -77,12 +86,15 @@ def set_login_times(
     request: Request,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-) -> dict[str, int]:
+) -> dict[str, int | None]:
     require_admin(db, user)
     values = body.model_dump()
-    for name, (low, high) in LIMITS.items():
-        if not low <= values[name] <= high:
-            raise HTTPException(422, f"{name} must be {low} to {high} days")
+    for name in TIMES:
+        value = values[name]
+        if value is not None and not 0 <= value <= MAX_DAYS:
+            raise HTTPException(
+                422, f"{name}: a number of days (0 = never expires), or blank for off"
+            )
     row = settings(db)
     before = times_out(row)
     for name, value in values.items():
@@ -111,6 +123,40 @@ def my_devices(
         .order_by(TrustedDevice.created_at.desc())
     ).all()
     return [device_out(db, d, token) for d in devices]
+
+
+class DeviceRename(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=100)
+
+
+@router.patch(
+    "/account/trusted-devices/{device_id}", dependencies=[Depends(require_csrf)]
+)
+def rename_mine(
+    device_id: str,
+    body: DeviceRename,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Give one of my approved devices a name of my own."""
+    device = db.get(TrustedDevice, device_id)
+    if device is None or device.user_id != user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    name = clean_name(body.name)
+    if name is None:
+        raise HTTPException(422, "Give the device a name")
+    before, device.name = device.name, name
+    db.commit()
+    record_event(
+        db,
+        "device_renamed",
+        user_id=user.id,
+        ip_address=client_ip(request),
+        details={"before": before, "after": name},
+    )
+    return device_out(db, device, request.cookies.get(DEVICE_COOKIE))
 
 
 def _forget(db: Session, device: TrustedDevice, by: User, request: Request) -> None:

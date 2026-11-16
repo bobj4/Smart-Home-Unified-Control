@@ -14,7 +14,22 @@ import time
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import cync_home, integration_status, rheem_home, samsung_home, verbose
+from app import (
+    cync_home,
+    hue_home,
+    integration_status,
+    kasa_home,
+    lg_home,
+    ratgdo_home,
+    rheem_home,
+    roku_home,
+    samsung_home,
+    smartthings_oauth,
+    tv_pending,
+    tv_power,
+    tv_sources,
+    verbose,
+)
 from app.db_config import SessionLocal
 from app.features import integration_enabled
 from app.integrations import samsung
@@ -28,8 +43,8 @@ _cync_read_at: dict[str, float] = {}
 
 
 def refresh_tvs(db: Session, home_id: str) -> int:
-    """Update the on/off state of the home's paired TVs; returns how many
-    changed."""
+    """Update the on/off state of the home's paired TVs, and whether they
+    answer; returns how many changed."""
     if not integration_enabled(db, home_id, samsung_home.INTEGRATION):
         return 0
     changed = 0
@@ -37,10 +52,21 @@ def refresh_tvs(db: Session, home_id: str) -> int:
         settings = samsung_home.config(tv)
         if not settings["paired"]:
             continue
-        on = samsung.is_on(str(tv.external_id), settings["protocol"])
+        host, protocol = str(tv.external_id), settings["protocol"]
+        on = samsung.is_on(host, protocol)
+        # Off but answering (2018+ network standby), or not answering but
+        # still online in SmartThings (it can turn it on): only a TV neither
+        # way is greyed out. It stays "online", as one that can be woken
+        # (Wake-on-LAN) still takes the power button.
+        reachable = (
+            on
+            or tv_power.power_state(host, protocol) == "standby"
+            or tv_sources.cloud_online(db, tv)
+        )
+        tv_pending.seen(tv.id, on)
         state = json.loads(tv.state or "{}")
-        if state.get("on") != on:
-            tv.state = json.dumps({**state, "on": on})
+        if state.get("on") != on or state.get("reachable") != reachable:
+            tv.state = json.dumps({**state, "on": on, "reachable": reachable})
             tv.last_updated = utcnow()
             changed += 1
     db.commit()
@@ -63,7 +89,7 @@ def refresh_rheem(db: Session, home_id: str, now: float | None = None) -> bool:
         return False
     _rheem_read_at[home_id] = now
     try:
-        rheem_home.sync(db, home_id)
+        rheem_home.sync(db, home_id)  # keeps heaters through an empty answer
     except rheem_home.RheemUnavailable as error:
         db.rollback()
         integration_status.failed(home_id, rheem_home.INTEGRATION, error.reason)
@@ -114,8 +140,14 @@ def refresh_all(db: Session) -> None:
     for home_id in db.scalars(select(Home.id)).all():
         steps = (
             (refresh_tvs, "samsung_tv"),
+            (roku_home.refresh, "roku_tv"),
+            (hue_home.refresh, "hue"),
+            (kasa_home.refresh, "kasa"),
+            (lg_home.refresh, "lg_tv"),
+            (ratgdo_home.refresh, "ratgdo"),
             (refresh_rheem, "rheem_econet"),
             (refresh_cync, "cync"),
+            (smartthings_oauth.keep_fresh, "smartthings"),
         )
         for step, integration in steps:
             start = time.monotonic()

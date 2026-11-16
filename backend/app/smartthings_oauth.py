@@ -1,0 +1,355 @@
+"""SmartThings sign-in that keeps itself (OAuth), instead of a personal
+access token that lasts 24 hours.
+
+The owner makes an "OAuth-In" SmartApp once (SmartThings CLI: `smartthings
+apps:create`, scopes r:devices:* and x:devices:*) whose redirect URI is this
+server's /api/v1/smartthings/callback, and enters its client ID and secret
+here. "Connect SmartThings" sends them to Samsung to sign in; SmartThings
+sends them back with a code, swapped for a 24-hour access token and a
+refresh token. The refresh runs about every 12 hours (refresh_all), so the
+refresh token (about 29 days unused) never lapses while the server runs.
+
+Saved like the token was (credential "samsung_tv:smartthings", encrypted):
+{"oauth": true, "client_id", "client_secret", "redirect_uri",
+ "access_token", "refresh_token", "expires_at" (epoch seconds),
+ "renewed_at", "problem" (None, or why it must be connected again)}.
+"""
+
+import logging
+import secrets
+import threading
+import time
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from app import credentials, integration_status
+from app.integrations import smartthings
+
+log = logging.getLogger(__name__)
+CREDENTIAL = "samsung_tv:smartthings"
+INTEGRATION = "samsung_tv"
+RENEW_SECONDS = 12 * 3600  # renew once the token is this old
+SOON_SECONDS = 600  # or when it ends within this
+START_SECONDS = 900  # a sign-in must come back within this
+CALLBACK = "/api/v1/smartthings/callback"
+RECONNECT = "SmartThings needs connecting again (Settings > Integrations)"
+PAT_LAPSED = (
+    "SmartThings stopped accepting the personal token (they last 24 hours):"
+    " sign in with SmartThings to stay connected, or paste a new token"
+)
+# One renewal at a time: each refresh token works once, so a request and the
+# background refresh renewing together would use it up and lose the sign-in.
+_renewing = threading.Lock()
+
+# state -> (home id, user id, app details, started)
+_started: dict[str, tuple[str, str, dict[str, str], float]] = {}
+
+
+class OAuthProblem(Exception):
+    def __init__(self, status_code: int, reason: str) -> None:
+        self.status_code = status_code
+        self.reason = reason
+
+
+def start(home_id: str, user_id: str, app: dict[str, str]) -> str:
+    """The SmartThings sign-in page to send the person to. `app`: client_id,
+    client_secret, redirect_uri."""
+    if not app["redirect_uri"].startswith("https://"):
+        raise OAuthProblem(
+            422, "SmartThings only sends you back to an https:// address"
+        )
+    now = time.monotonic()
+    for state, entry in list(_started.items()):
+        if now - entry[3] > START_SECONDS:
+            _started.pop(state, None)
+    state = secrets.token_urlsafe(24)
+    _started[state] = (home_id, user_id, dict(app), now)
+    return smartthings.authorize_url(app["client_id"], app["redirect_uri"], state)
+
+
+def _saved(answer: dict[str, Any], app: dict[str, str]) -> dict[str, Any]:
+    now = time.time()
+    return {
+        "oauth": True,
+        **app,
+        "access_token": str(answer["access_token"]),
+        "refresh_token": str(answer.get("refresh_token") or ""),
+        "expires_at": now + float(answer.get("expires_in") or 86400),
+        "renewed_at": now,
+        "problem": None,
+    }
+
+
+def finish(db: Session, state: str, code: str) -> tuple[str, str]:
+    """Swap the code SmartThings sent back for tokens and save them.
+    Returns (home id, who started it).
+
+    The way back from SmartThings carries no login (the session cookie is
+    SameSite=Strict): the state, random, used once and only for
+    START_SECONDS, is what ties it to the home and person who started it."""
+    entry = _started.pop(state, None)
+    if entry is None or time.monotonic() - entry[3] > START_SECONDS:
+        raise OAuthProblem(400, "that sign-in has expired: connect SmartThings again")
+    home_id, started_by, app, _ = entry
+    try:
+        answer = smartthings.token_request(
+            app["client_id"],
+            app["client_secret"],
+            {
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": app["redirect_uri"],
+            },
+        )
+        smartthings.tvs(str(answer["access_token"]))  # it works
+    except smartthings.SmartThingsError as error:
+        raise OAuthProblem(502, str(error)) from None
+    credentials.save(db, home_id, CREDENTIAL, "SmartThings", _saved(answer, app))
+    integration_status.worked(home_id, INTEGRATION)
+    return home_id, started_by
+
+
+def _renew(db: Session, home_id: str, saved: dict[str, Any]) -> dict[str, Any]:
+    app = {k: str(saved[k]) for k in ("client_id", "client_secret", "redirect_uri")}
+    try:
+        answer = smartthings.token_request(
+            app["client_id"],
+            app["client_secret"],
+            {
+                "grant_type": "refresh_token",
+                "refresh_token": str(saved["refresh_token"]),
+            },
+        )
+    except smartthings.SmartThingsDenied:
+        # The refresh token is used up or lapsed: only signing in again helps.
+        credentials.save(
+            db, home_id, CREDENTIAL, "SmartThings", {**saved, "problem": RECONNECT}
+        )
+        integration_status.failed(home_id, INTEGRATION, RECONNECT)
+        raise
+    fresh = _saved(answer, app)
+    if not fresh["refresh_token"]:
+        fresh["refresh_token"] = saved["refresh_token"]
+    credentials.save(db, home_id, CREDENTIAL, "SmartThings", fresh)
+    integration_status.worked(home_id, INTEGRATION)
+    return fresh
+
+
+TOKEN_SECONDS = 24 * 3600  # how long SmartThings accepts a personal token
+WARN_SECONDS = 3600  # say so this long before it ends
+
+
+def token_login(token: str) -> dict[str, Any]:
+    """A personal token as saved: with when, to tell before it lapses."""
+    return {"token": token, "saved_at": time.time()}
+
+
+def health(saved: dict[str, Any] | None, now: float) -> tuple[str, str] | None:
+    """("lapsed" | "soon", what to do) for the alerts (alerts.py), or None
+    while SmartThings is fine (or not used). `now`: epoch seconds."""
+    if not saved:
+        return None
+    if saved.get("problem"):
+        return "lapsed", str(saved["problem"])
+    if saved.get("oauth") or not saved.get("saved_at"):
+        return None  # a sign-in renews itself; an old token's age is unknown
+    age = now - float(saved["saved_at"])
+    if age >= TOKEN_SECONDS:
+        return "lapsed", PAT_LAPSED
+    if age >= TOKEN_SECONDS - WARN_SECONDS:
+        return "soon", (
+            "The SmartThings token stops working within the hour (they last 24"
+            " hours): paste a new one in Settings > Integrations"
+        )
+    return None
+
+
+def _current(db: Session, home_id: str, saved: dict[str, Any]) -> dict[str, Any]:
+    """The saved sign-in as it is now (another thread may have renewed it)."""
+    return credentials.load(db, home_id, CREDENTIAL) or saved
+
+
+def access_token(db: Session, home_id: str, saved: dict[str, Any]) -> str:
+    """The token to call SmartThings with: a saved personal token as it is,
+    an OAuth one renewed first if it is about to end."""
+    if saved.get("problem"):
+        raise smartthings.SmartThingsDenied(str(saved["problem"]))
+    if not saved.get("oauth"):
+        return str(saved["token"])
+    if float(saved["expires_at"]) - time.time() < SOON_SECONDS:
+        with _renewing:
+            saved = _current(db, home_id, saved)
+            if saved.get("problem"):
+                raise smartthings.SmartThingsDenied(str(saved["problem"]))
+            if float(saved["expires_at"]) - time.time() < SOON_SECONDS:
+                saved = _renew(db, home_id, saved)
+    return str(saved["access_token"])
+
+
+def rejected(db: Session, home_id: str, token: str) -> str:
+    """SmartThings refused `token`. A sign-in is renewed and the new token
+    returned (to try once more); a personal token that no longer lists the
+    TVs has lapsed, which is saved and shown (raises SmartThingsDenied with
+    what to do)."""
+    with _renewing:
+        saved = credentials.load(db, home_id, CREDENTIAL) or {}
+        if saved.get("problem"):
+            raise smartthings.SmartThingsDenied(str(saved["problem"]))
+        if saved.get("oauth"):
+            if str(saved.get("access_token")) != token:
+                return str(saved["access_token"])  # renewed meanwhile
+            try:
+                return str(_renew(db, home_id, saved)["access_token"])
+            except smartthings.SmartThingsDenied:
+                raise smartthings.SmartThingsDenied(RECONNECT) from None
+        if not saved:
+            raise smartthings.SmartThingsDenied(RECONNECT)
+    try:
+        smartthings.tvs(str(saved["token"]))
+    except smartthings.SmartThingsDenied:
+        credentials.save(
+            db, home_id, CREDENTIAL, "SmartThings", {**saved, "problem": PAT_LAPSED}
+        )
+        integration_status.failed(home_id, INTEGRATION, PAT_LAPSED)
+        raise smartthings.SmartThingsDenied(PAT_LAPSED) from None
+    return str(saved["token"])  # it works: what was refused was something else
+
+
+def keep_fresh(db: Session, home_id: str) -> bool:
+    """Renew the home's SmartThings sign-in once it is RENEW_SECONDS old
+    (from the background refresh). Returns whether it was renewed."""
+    if credentials.label(db, home_id, CREDENTIAL) is None:
+        return False
+    saved = credentials.load(db, home_id, CREDENTIAL) or {}
+    if not saved.get("oauth") or saved.get("problem"):
+        return False
+    old = time.time() - float(saved.get("renewed_at") or 0) >= RENEW_SECONDS
+    if not old and float(saved["expires_at"]) - time.time() >= SOON_SECONDS:
+        return False
+    try:
+        with _renewing:
+            if _current(db, home_id, saved).get("renewed_at") != saved.get(
+                "renewed_at"
+            ):
+                return False  # renewed meanwhile
+            _renew(db, home_id, saved)
+    except smartthings.SmartThingsDenied:
+        return False
+    except smartthings.SmartThingsError as error:
+        integration_status.failed(home_id, INTEGRATION, str(error))  # try next pass
+        return False
+    return True
+
+
+APP_CREDENTIAL = "samsung_tv:smartthings_app"
+
+
+def setup(
+    db: Session, home_id: str, user_id: str, token: str, redirect_uri: str
+) -> dict[str, Any]:
+    """The one-step setup: a personal token (Devices and Apps permissions).
+    It connects SmartThings at once (for its 24 hours), registers this
+    server's SmartApp if it has none yet, and starts the sign-in that keeps
+    it connected. {"authorize_url": where to sign in, or None, "problem":
+    why the sign-in cannot start, or None}."""
+    try:
+        smartthings.tvs(token)
+    except smartthings.SmartThingsDenied:
+        raise OAuthProblem(
+            422,
+            "SmartThings refused that token: make it with the Devices permissions"
+            " (list, see and control all devices)",
+        ) from None
+    except smartthings.SmartThingsError as error:
+        raise OAuthProblem(502, str(error)) from None
+    current = credentials.load(db, home_id, CREDENTIAL) or {}
+    if not current.get("oauth") or current.get("problem"):
+        credentials.save(db, home_id, CREDENTIAL, "SmartThings", token_login(token))
+    app = credentials.load(db, home_id, APP_CREDENTIAL)
+    try:
+        if not app:
+            made = smartthings.register_app(
+                token, redirect_uri, f"{home_id[:8]}-{secrets.token_hex(2)}"
+            )
+            app = {**made, "redirect_uri": redirect_uri}
+            credentials.save(db, home_id, APP_CREDENTIAL, "SmartThings app", app)
+        elif app.get("redirect_uri") != redirect_uri:
+            smartthings.update_redirect(token, str(app["app_id"]), redirect_uri)
+            app = {**app, "redirect_uri": redirect_uri}
+            credentials.save(db, home_id, APP_CREDENTIAL, "SmartThings app", app)
+    except smartthings.SmartThingsError as error:
+        return _setup_failed(db, home_id, str(error))
+    try:
+        url = start(home_id, user_id, _app(app))
+    except OAuthProblem as problem:
+        return _setup_failed(db, home_id, problem.reason)
+    return {"authorize_url": url, "problem": None}
+
+
+def _setup_failed(db: Session, home_id: str, why: str) -> dict[str, Any]:
+    """Connected with the token, but the sign-in could not start: kept with
+    the token so Settings shows why (not only a passing message), and logged."""
+    log.warning("SmartThings sign-in could not start: %s", why)
+    current = credentials.load(db, home_id, CREDENTIAL) or {}
+    if not current.get("oauth"):
+        credentials.save(
+            db, home_id, CREDENTIAL, "SmartThings", {**current, "setup_problem": why}
+        )
+    return {"authorize_url": None, "problem": why}
+
+
+def _app(saved: dict[str, Any]) -> dict[str, str]:
+    return {k: str(saved[k]) for k in ("client_id", "client_secret", "redirect_uri")}
+
+
+def saved_app(db: Session, home_id: str) -> dict[str, str] | None:
+    """The SmartApp to sign in with again: the one signed in with before, or
+    the one registered for this server."""
+    saved = credentials.load(db, home_id, CREDENTIAL) or {}
+    if saved.get("oauth"):
+        return _app(saved)
+    registered = credentials.load(db, home_id, APP_CREDENTIAL)
+    return _app(registered) if registered else None
+
+
+def callback_problem(params: dict[str, str]) -> str:
+    """What SmartThings sent back instead of a sign-in code, in words."""
+    error = params.get("error", "")
+    description = params.get("error_description", "").replace("+", " ")
+    if error:
+        known = {
+            "access_denied": "you (or Samsung) declined the sign-in",
+            "unsupported_response_type": "Samsung refused the app's permissions"
+            " (a known SmartThings fault since September 2026)",
+            "server_error": "Samsung's sign-in failed on their side",
+            "invalid_scope": "Samsung refused the app's permissions",
+        }
+        why = known.get(error, error)
+        return f"SmartThings did not finish the sign-in: {why}" + (
+            f" ({description})" if description else ""
+        )
+    sent = ", ".join(sorted(k for k in params if k)) or "nothing"
+    return (
+        "SmartThings came back without a sign-in code (it sent: "
+        f"{sent}). Samsung's sign-in may be failing on their side;"
+        " the token keeps SmartThings connected meanwhile"
+    )
+
+
+def status(saved: dict[str, Any] | None) -> dict[str, Any]:
+    """What Settings shows: how it is connected, and any problem."""
+    if not saved:
+        return {"method": None, "problem": None}
+    if not saved.get("oauth"):
+        return {
+            "method": "token",
+            "problem": saved.get("problem"),
+            "setup_problem": saved.get("setup_problem"),
+        }
+    return {
+        "method": "oauth",
+        "problem": saved.get("problem"),
+        "client_id": saved.get("client_id"),
+        "redirect_uri": saved.get("redirect_uri"),
+    }

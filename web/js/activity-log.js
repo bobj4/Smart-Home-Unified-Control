@@ -1,5 +1,5 @@
 /**
- * Settings > Activity log (admins): the newest events first, and the
+ * Settings > Activity Log (admins): the newest events first, and the
  * verbose logging switch (off by default): while on, integration detail is
  * recorded too (events starting "verbose_", shown with their details).
  */

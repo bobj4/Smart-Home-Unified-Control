@@ -37,7 +37,11 @@ class SmartHomeAPI {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const data = await response.json().catch(() => ({}));
-    if (response.status === 401) throw new AuthError(data.detail || 'Not logged in');
+    if (response.status === 401) {
+      const error = new AuthError(data.detail || 'Not logged in');
+      error.codeRequired = Boolean(data.code_required); // login: right password, code next
+      throw error;
+    }
     if (!response.ok) {
       const detail = Array.isArray(data.detail)
         ? data.detail.map((d) => String(d.msg).replace(/^Value error, /, '')).join('; ')
@@ -62,23 +66,29 @@ class SmartHomeAPI {
     };
     if (code.length === 8) body.recovery_code = code;
     else if (code) body.totp_code = code;
+    // The name given in the "Name this device" popup (device-name.js).
     return this.post('/auth/login', body);
   }
   logout() { return this.post('/auth/logout'); }
   getRememberedLogin() { return this.get('/auth/remembered'); }
   getLoginTimes() { return this.get('/admin/login-times'); }
+  getLoginFailures() { return this.get('/admin/login-failures'); }
+  setLoginFailures(body) { return this.put('/admin/login-failures', body); }
   setLoginTimes(body) { return this.put('/admin/login-times', body); }
   getMyDevices() { return this.get('/account/trusted-devices'); }
   forgetMyDevice(id) { return this.del(`/account/trusted-devices/${enc(id)}`); }
+  renameMyDevice(id, name) { return this.patch(`/account/trusted-devices/${enc(id)}`, { name }); }
   getAllDevices() { return this.get('/admin/trusted-devices'); }
+  getAllSessions() { return this.get('/admin/sessions'); }
+  endAnySession(sessionId) { return this.del(`/admin/sessions/${enc(sessionId)}`); }
   forgetAnyDevice(id) { return this.del(`/admin/trusted-devices/${enc(id)}`); }
   getVerbose() { return this.get('/admin/verbose-logging'); }
   setVerbose(enabled) { return this.put('/admin/verbose-logging', { enabled }); }
   getGuestPage(homeId) { return this.get(`/homes/${enc(homeId)}/guest`); }
   getGuestAccess(homeId, userId) { return this.get(`/homes/${enc(homeId)}/members/${enc(userId)}/guest-access`); }
   setGuestAccess(homeId, userId, body) { return this.put(`/homes/${enc(homeId)}/members/${enc(userId)}/guest-access`, body); }
-  getLayout(homeId) { return this.get(`/homes/${enc(homeId)}/layout`); }
-  setLayout(homeId, roomOrder) { return this.put(`/homes/${enc(homeId)}/layout`, { room_order: roomOrder }); }
+  getLayout(homeId, screen) { return this.get(`/homes/${enc(homeId)}/layout?screen=${enc(screen)}`); }
+  setLayout(homeId, layout) { return this.put(`/homes/${enc(homeId)}/layout`, layout); }
 
   // Devices
   getDevices(homeId) { return this.get(`/homes/${enc(homeId)}/devices`); }
@@ -92,16 +102,40 @@ class SmartHomeAPI {
   createGroup(homeId, group) { return this.post(`/homes/${enc(homeId)}/groups`, group); }
   changeGroup(homeId, groupId, changes) { return this.patch(`/homes/${enc(homeId)}/groups/${enc(groupId)}`, changes); }
   deleteGroup(homeId, groupId) { return this.del(`/homes/${enc(homeId)}/groups/${enc(groupId)}`); }
-  groupCommand(homeId, groupId, command, payload) { return this.post(`/homes/${enc(homeId)}/groups/${enc(groupId)}/command`, { command, payload }); }
+  /** A group: each device's result; any that failed open the failure popup. */
+  async groupCommand(homeId, groupId, command, payload) {
+    const again = () => this.groupCommand(homeId, groupId, command, payload);
+    let result;
+    try {
+      result = await this.post(`/homes/${enc(homeId)}/groups/${enc(groupId)}/command`, { command, payload });
+    } catch (error) {
+      this.commandFailed({ groupId, command, error, again });
+      throw error;
+    }
+    const failed = (result.results || []).filter((r) => r.ok === false);
+    if (failed.length) this.commandFailed({ groupId, command, failed, again });
+    return result;
+  }
   setDeviceLimits(homeId, deviceId, limits) { return this.put(`/homes/${enc(homeId)}/devices/${enc(deviceId)}/limits`, limits); }
   deleteDevice(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/devices/${enc(deviceId)}`); }
   updateDevice(homeId, deviceId, changes) {
     return this.patch(`/homes/${enc(homeId)}/devices/${enc(deviceId)}`, changes);
   }
   /** Guests send through the guest route, which checks their access. */
-  sendCommand(homeId, deviceId, command, payload = {}) {
-    if (this.guest) return this.post(`/homes/${enc(homeId)}/guest/devices/${enc(deviceId)}/command`, { command, payload });
-    return this.post(`/homes/${enc(homeId)}/devices/${enc(deviceId)}/command`, { command, payload });
+  async sendCommand(homeId, deviceId, command, payload = {}) {
+    const path = this.guest ? `/homes/${enc(homeId)}/guest/devices/${enc(deviceId)}/command` : `/homes/${enc(homeId)}/devices/${enc(deviceId)}/command`;
+    try {
+      return await this.post(path, { command, payload });
+    } catch (error) {
+      this.commandFailed({ deviceId, command, error, again: () => this.sendCommand(homeId, deviceId, command, payload) });
+      throw error;
+    }
+  }
+
+  /** A device did not follow a command: the app shows a popup (app.js). */
+  commandFailed(failure) {
+    if (failure.error instanceof AuthError) return; // the login page takes over
+    if (this.onCommandFailed) this.onCommandFailed(failure);
   }
 
   // Safety limits
@@ -130,8 +164,41 @@ class SmartHomeAPI {
   // Samsung TVs (admin)
   getTvs(homeId) { return this.get(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs`); }
   addTv(homeId, tv) { return this.post(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs`, tv); }
+  editTv(homeId, deviceId, tv) { return this.put(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}`, tv); }
   pairTv(homeId, deviceId) { return this.post(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}/pair`); }
   sendTvPin(homeId, deviceId, pin) { return this.post(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}/pin`, { pin }); }
+  getTvApps(homeId, deviceId) { return this.get(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}/apps`); }
+  setQuickApps(homeId, deviceId, apps) { return this.put(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}/quick-apps`, { apps }); }
+  getSmartThings(homeId) { return this.get(`/homes/${enc(homeId)}/integrations/samsung_tv/smartthings`); }
+  connectSmartThings(homeId, token) { return this.put(`/homes/${enc(homeId)}/integrations/samsung_tv/smartthings`, { token }); }
+  setupSmartThings(homeId, body) { return this.post(`/homes/${enc(homeId)}/integrations/samsung_tv/smartthings/setup`, body); }
+  startSmartThingsSignIn(homeId, body) { return this.post(`/homes/${enc(homeId)}/integrations/samsung_tv/smartthings/oauth`, body); }
+  disconnectSmartThings(homeId) { return this.del(`/homes/${enc(homeId)}/integrations/samsung_tv/smartthings`); }
+  linkTv(homeId, deviceId, smartthingsId) { return this.put(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}/smartthings`, { smartthings_id: smartthingsId }); }
+  getTvSources(homeId, deviceId) { return this.get(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}/sources`); }
+  getHue(homeId) { return this.get(`/homes/${enc(homeId)}/integrations/hue`); }
+  pairHue(homeId, host) { return this.post(`/homes/${enc(homeId)}/integrations/hue/pair`, { host }); }
+  syncHue(homeId) { return this.post(`/homes/${enc(homeId)}/integrations/hue/sync`); }
+  unpairHue(homeId) { return this.del(`/homes/${enc(homeId)}/integrations/hue`); }
+  getLgTvs(homeId) { return this.get(`/homes/${enc(homeId)}/integrations/lg_tv/tvs`); }
+  addLgTv(homeId, tv) { return this.post(`/homes/${enc(homeId)}/integrations/lg_tv/tvs`, tv); }
+  pairLgTv(homeId, deviceId) { return this.post(`/homes/${enc(homeId)}/integrations/lg_tv/tvs/${enc(deviceId)}/pair`); }
+  removeLgTv(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/integrations/lg_tv/tvs/${enc(deviceId)}`); }
+  getDoors(homeId) { return this.get(`/homes/${enc(homeId)}/integrations/ratgdo/doors`); }
+  addDoor(homeId, door) { return this.post(`/homes/${enc(homeId)}/integrations/ratgdo/doors`, door); }
+  removeDoor(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/integrations/ratgdo/doors/${enc(deviceId)}`); }
+  findTvs(homeId, network) { return this.post(`/homes/${enc(homeId)}/tv-scan`, network ? { network } : {}); }
+  getHttpsAutoImport() { return this.get('/admin/https/auto-import'); }
+  setHttpsAutoImport(enabled) { return this.put('/admin/https/auto-import', { enabled }); }
+  requestHttpsImport() { return this.post('/admin/https/auto-import/request', {}); }
+  getKasa(homeId) { return this.get(`/homes/${enc(homeId)}/integrations/kasa`); }
+  addKasa(homeId, host) { return this.post(`/homes/${enc(homeId)}/integrations/kasa/devices`, { host }); }
+  removeKasa(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/integrations/kasa/devices/${enc(deviceId)}`); }
+  setKasaLogin(homeId, email, password) { return this.put(`/homes/${enc(homeId)}/integrations/kasa/login`, { email, password }); }
+  removeKasaLogin(homeId) { return this.del(`/homes/${enc(homeId)}/integrations/kasa/login`); }
+  getRokus(homeId) { return this.get(`/homes/${enc(homeId)}/integrations/roku_tv/tvs`); }
+  addRoku(homeId, tv) { return this.post(`/homes/${enc(homeId)}/integrations/roku_tv/tvs`, tv); }
+  removeRoku(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/integrations/roku_tv/tvs/${enc(deviceId)}`); }
   removeTv(homeId, deviceId) { return this.del(`/homes/${enc(homeId)}/integrations/samsung_tv/tvs/${enc(deviceId)}`); }
 
   // Frigate: server settings (owner) and events (members)
@@ -144,11 +211,24 @@ class SmartHomeAPI {
     return this.get(`/homes/${enc(homeId)}/cameras/events?limit=24${query}`);
   }
 
-  // Activity log (owner only)
+  // Activity Log (owner only)
   getActivity(homeId, limit = 50) { return this.get(`/homes/${enc(homeId)}/audit?limit=${limit}`); }
 
   // Own account
   getAccount() { return this.get('/account'); }
+  getHomes() { return this.get('/homes'); }
+  addHome(body) { return this.post('/homes', body); }
+  changeHome(homeId, changes) { return this.patch(`/homes/${enc(homeId)}`, changes); }
+  setHomePicture(homeId, dataUrl) { return this.put(`/homes/${enc(homeId)}/icon-image`, { data_url: dataUrl }); }
+  removeHomePicture(homeId) { return this.del(`/homes/${enc(homeId)}/icon-image`); }
+  setHomeOrder(homeIds) { return this.put('/account/home-order', { home_ids: homeIds }); }
+  setLastHome(homeId) { return this.put('/account/last-home', { home_id: homeId }); }
+  getSite(homeId) { return this.get(`/homes/${enc(homeId)}/site`); }
+  startSitePairing(homeId) { return this.post(`/homes/${enc(homeId)}/site/pairing`, {}); }
+  unlinkSite(homeId) { return this.del(`/homes/${enc(homeId)}/site`); }
+  getMainServer(homeId) { return this.get(`/homes/${enc(homeId)}/main-server`); }
+  linkMainServer(homeId, mainUrl, code) { return this.post(`/homes/${enc(homeId)}/main-server`, { main_url: mainUrl, code }); }
+  unlinkMainServer(homeId) { return this.del(`/homes/${enc(homeId)}/main-server`); }
   changePassword(currentPassword, newPassword) {
     return this.post('/account/password', { current_password: currentPassword, new_password: newPassword });
   }
@@ -167,11 +247,22 @@ class SmartHomeAPI {
   setHttps(enabled) { return this.put('/admin/https', { enabled }); }
   saveHttpsCertificate(certificate, privateKey) { return this.put('/admin/https/certificate', { certificate, private_key: privateKey }); }
   deleteHttpsCertificate() { return this.del('/admin/https/certificate'); }
-  renameHome(homeId, name) { return this.patch(`/homes/${enc(homeId)}`, { name }); }
   createUser(homeId, user) { return this.post(`/homes/${enc(homeId)}/members`, user); }
   setMemberPassword(homeId, userId, password) { return this.post(`/homes/${enc(homeId)}/members/${enc(userId)}/password`, { password }); }
   createResetCode(homeId, userId) { return this.post(`/homes/${enc(homeId)}/members/${enc(userId)}/reset-code`); }
   setPreferences(prefs) { return this.put('/account/preferences', prefs); }
+  setCollapsed(sections) { return this.put('/account/collapsed', { sections }); }
+  getSetupSteps(homeId) { return this.get(homeId ? `/admin/setup?home_id=${enc(homeId)}` : '/admin/setup'); }
+  editOwnInfo(info) { return this.put('/account/info', info); }
+  getSelfEdit() { return this.get('/admin/self-edit'); }
+  setSelfEdit(allowed) { return this.put('/admin/self-edit', { allowed }); }
+  editMemberInfo(homeId, userId, info) { return this.put(`/homes/${enc(homeId)}/members/${enc(userId)}/info`, info); }
+  dismissMotd(version) { return this.post('/account/motd/dismiss', { version }); }
+  getMotd() { return this.get('/admin/motd'); }
+  setMotd(text) { return this.put('/admin/motd', { text }); }
+  setBackground(image) { return this.put('/account/background', { image }); }
+  switchBackground(on) { return this.put('/account/background/on', { on }); }
+  removeBackground() { return this.del('/account/background'); }
   disableTotp(password, code) { return this.post('/account/totp/disable', { password, totp_code: code }); }
   getSecurityPolicy(homeId) { return this.get(`/homes/${enc(homeId)}/security`); }
   setSecurityPolicy(homeId, requireTwoFactor) { return this.put(`/homes/${enc(homeId)}/security`, { require_two_factor: requireTwoFactor }); }
@@ -187,6 +278,7 @@ class SmartHomeAPI {
   setMemberActive(homeId, userId, active) { return this.put(`/homes/${enc(homeId)}/members/${enc(userId)}/active`, { active }); }
   createEnrollment(homeId, invite) { return this.post(`/homes/${enc(homeId)}/members/enrollments`, invite); }
   getEnrollments(homeId) { return this.get(`/homes/${enc(homeId)}/members/enrollments`); }
+  getMemberCodes(homeId) { return this.get(`/homes/${enc(homeId)}/members/codes`); }
   cancelEnrollment(homeId, id) { return this.del(`/homes/${enc(homeId)}/members/enrollments/${enc(id)}`); }
 
   // Joining a home with an enrollment code (no session needed)

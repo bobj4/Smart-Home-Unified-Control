@@ -131,6 +131,12 @@ def test_layout_defaults_to_thermostats_first(client, owner, login):
     r = client.get(f"/api/v1/homes/{owner.home_id}/layout")
     assert r.json() == {
         "room_order": ["Thermostats"],
+        "collapsed": [],
+        "filters": {"text": "", "type": "", "on": False},
+        "screen": "wide",
+        "thermostats_apart": False,
+        "doors_apart": False,
+        "grid": {"columns": 2, "sizes": {}},
         "thermostats_room": "Thermostats",
     }
 

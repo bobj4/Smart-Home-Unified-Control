@@ -32,6 +32,32 @@ def members(db: Session, group: DeviceGroup) -> list[Device]:
     return [found[i] for i in ids if i in found]
 
 
+def most_common_room(devices: list[Device]) -> str | None:
+    """The room most of the devices are in (the first such on a tie)."""
+    rooms = [d.room for d in devices if d.room]
+    return max(rooms, key=rooms.count) if rooms else None
+
+
+def follow_device(db: Session, device: Device) -> int:
+    """After a device moved room: each group it is in whose devices are now
+    all in one room moves to that room too. Returns how many moved."""
+    moved = 0
+    for group in db.scalars(
+        select(DeviceGroup).where(
+            DeviceGroup.home_id == device.home_id, DeviceGroup.deleted.is_(False)
+        )
+    ):
+        if device.id not in [str(i) for i in json.loads(group.device_ids or "[]")]:
+            continue
+        rooms = {d.room for d in members(db, group)}
+        if len(rooms) == 1:
+            (room,) = rooms
+            if group.room != room:
+                group.room = room
+                moved += 1
+    return moved
+
+
 def group_out(db: Session, group: DeviceGroup) -> dict[str, Any]:
     devices = members(db, group)
     states = [json.loads(d.state or "{}") for d in devices]
@@ -51,7 +77,7 @@ def group_out(db: Session, group: DeviceGroup) -> dict[str, Any]:
             if k in first
         },
     }
-    room = group.room or next((d.room for d in devices if d.room), None)
+    room = group.room or most_common_room(devices)
     return {
         "id": group.id,
         "name": group.name,

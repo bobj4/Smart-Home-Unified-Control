@@ -41,7 +41,9 @@ def test_ui_rheem_owner_connects_account_and_controls_heater(
     expect(section.get_by_test_id("rheem-account")).to_have_count(
         0
     )  # off: no account panel
-    rheem_row(section).get_by_test_id("integration-toggle").check()
+    _ui.add_integration(
+        page, "rheem_econet"
+    )  # added from the dropdown (owner's approval, 2026-11-06)
     expect(page.get_by_test_id("status")).to_have_attribute("data-kind", "success")
 
     panel = page.get_by_test_id("rheem-account")
@@ -85,8 +87,9 @@ def test_ui_rheem_owner_connects_account_and_controls_heater(
 def test_ui_rheem_owner_removes_login(open_page, owner, econet, secrets_key):
     page = open_page()
     ui_login(page, owner)
-    section = go_settings(page, "integrations")
-    rheem_row(section).get_by_test_id("integration-toggle").check()
+    _ui.add_integration(
+        page, "rheem_econet"
+    )  # added from the dropdown (owner's approval, 2026-11-06)
     panel = page.get_by_test_id("rheem-account")
     panel.get_by_test_id("rheem-email").fill(EMAIL)
     panel.get_by_test_id("rheem-password").fill(PASSWORD)

@@ -48,9 +48,10 @@ class FrigatePanel {
       });
     });
     box.replaceChildren(
-      el('h3', { text: 'Frigate server' }),
+      el('h3', { text: 'Frigate Server' }),
       el('p', { className: 'muted', testid: 'frigate-configured', text: server.configured ? `Connected to ${server.url}${server.username ? ` as ${server.username}` : ''}` : 'Not set up yet.' }),
       form,
+      await this.alertLabels(),
     );
     if (server.configured) {
       box.append(el('button', {
@@ -64,5 +65,25 @@ class FrigatePanel {
     }
   }
 }
+
+/** Camera alerts: what Frigate must see (alerts.py; each person picks
+ * "A camera sees someone" in My Account > Alerts). */
+FrigatePanel.prototype.alertLabels = async function alertLabels() {
+  const data = await this.app.api.getAlerts(this.app.home.id).catch(() => null);
+  if (!data) return '';
+  const labels = el('input', { type: 'text', testid: 'frigate-alert-labels', value: data.settings.frigate_labels.join(', '), placeholder: 'person, car' });
+  const form = el('form', { className: 'subpanel', testid: 'frigate-alerts' }, [
+    field('Alert when a camera sees (Frigate labels, empty: never)', labels),
+    el('button', { type: 'submit', className: 'secondary', testid: 'frigate-alert-save', text: 'Save' }),
+  ]);
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    this.app.run(async () => {
+      await this.app.api.setAlertSettings(this.app.home.id, { frigate_labels: labels.value.split(',').map((x) => x.trim()).filter(Boolean) });
+      this.app.status.success('Camera alerts saved.');
+    });
+  });
+  return form;
+};
 
 window.FrigatePanel = FrigatePanel;

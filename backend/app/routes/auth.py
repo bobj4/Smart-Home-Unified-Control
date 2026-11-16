@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from sqlalchemy.orm import Session
 
+from app import login_failures
 from app.audit import record_event
 from app.auth import authenticate_user, verify_recovery_code, verify_totp_code
 from app.db_config import get_db
@@ -50,11 +51,14 @@ class LoginRequest(BaseModel):
     remember_me: StrictBool = False
     # Skip the two-factor code on this browser next time (app/login_times.py).
     remember_device: StrictBool = False
+    # What to call it in the approved-devices lists ("Kitchen tablet").
+    device_name: str | None = Field(default=None, max_length=100)
 
 
 def _fail(db: Session, account: str, ip: str | None) -> HTTPException:
     record_login_failure(account, ip)
     record_event(db, "login_failure", ip_address=ip, details={"reason": "invalid"})
+    login_failures.failed(db, account, ip)  # the admin's lockout rule
     return HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
 
 
@@ -72,6 +76,13 @@ def login(
     user = authenticate_user(db, body.email.strip(), body.password)
     if user is None:
         raise _fail(db, account, ip)
+    ends = login_failures.locked_until(user)
+    if ends is not None:
+        # Said only to someone who gave the right password.
+        record_event(db, "login_refused_locked", user_id=user.id, ip_address=ip)
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, login_failures.locked_message(ends)
+        )
 
     if not user.is_totp_enabled:
         # The person turned two-factor off for their account (homes that
@@ -99,15 +110,30 @@ def login(
             raise _fail(db, account, ip)
         method = "recovery_code"
     else:
-        raise _fail(db, account, ip)
+        # The right password, no code yet: the login page asks for it on a
+        # second screen. Still 401 with no session; not a failed login.
+        return JSONResponse(
+            {"detail": "Invalid credentials", "code_required": True},
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
 
-    keep = body.keep_logged_in
+    # A choice the admin turned off (blank in Login times) is ignored.
     kept_for = keep_seconds(db)
+    keep = body.keep_logged_in and kept_for is not None
+    remember_for = remember_me_seconds(db)
+    device_for = device_cookie_seconds(db)
+    login_failures.succeeded(db, user)
     # Commits the TOTP/recovery change too.
-    token, csrf = create_session(db, user.id, ip, keep=keep, keep_seconds=kept_for)
+    token, csrf = create_session(db, user.id, ip, keep=keep, keep_seconds=kept_for or 0)
     new_device = None
-    if body.remember_device and method in ("totp", "recovery_code"):
-        new_device = remember(db, user.id, request.headers.get("user-agent"), ip)
+    if (
+        body.remember_device
+        and device_for is not None
+        and method in ("totp", "recovery_code")
+    ):
+        new_device = remember(
+            db, user.id, request.headers.get("user-agent"), ip, body.device_name
+        )
         record_event(db, "device_remembered", user_id=user.id, ip_address=ip)
     record_event(
         db,
@@ -138,17 +164,17 @@ def login(
         response.set_cookie(
             DEVICE_COOKIE,
             new_device,
-            max_age=device_cookie_seconds(db),
+            max_age=device_for,
             path=DEVICE_PATH,
             secure=True,
             httponly=True,
             samesite="strict",
         )
-    if body.remember_me:
+    if body.remember_me and remember_for is not None:
         response.set_cookie(
             REMEMBER_COOKIE,
             body.email.strip(),
-            max_age=remember_me_seconds(db),
+            max_age=remember_for,
             path="/api/v1/auth",
             secure=True,
             httponly=True,
@@ -166,14 +192,19 @@ def remembered(
     remembered_login: str | None = Cookie(default=None, max_length=255),
     trusted_device: str | None = Cookie(default=None, max_length=100),
     db: Session = Depends(get_db),
-) -> dict[str, str | bool | int]:
+) -> dict[str, str | bool | int | None]:
     """The login name this browser asked to remember ("" when none), and
     whether it holds a remembered-device cookie (checked at login, for the
     account that logs in)."""
+    row = settings(db)
+    remember_on = row.remember_me_days is not None
     return {
-        "login": (remembered_login or "").strip(),
-        "device": bool(trusted_device),
-        "keep_days": settings(db).keep_logged_in_days,
+        "login": (remembered_login or "").strip() if remember_on else "",
+        "device": bool(trusted_device) and row.remember_device_days is not None,
+        # Days; 0 = until logging out; None = the choice is off (hidden).
+        "keep_days": row.keep_logged_in_days,
+        "remember_me": remember_on,
+        "remember_device": row.remember_device_days is not None,
     }
 
 

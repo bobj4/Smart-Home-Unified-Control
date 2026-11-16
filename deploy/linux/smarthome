@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smart Home Control on a headless Linux server (Docker).
+# Smart Home Unified Control on a headless Linux server (Docker).
 #
 #   deploy/linux/smarthome install [options]   set up, start, and start at boot
 #       --access lan       reached on this network only (the default)
@@ -23,6 +23,14 @@
 #                                        print a reverse-proxy config for NAME
 #   deploy/linux/smarthome install-service | remove-service
 #   deploy/linux/smarthome make-key      print a new SECRETS_KEY
+#   deploy/linux/smarthome offsite-backup DEST | offsite-setup DEST [HOUR]
+#                                        copy backups off this server (now,
+#                                        or daily); offsite-remove stops it
+#   deploy/linux/smarthome fail2ban-setup  ban addresses that keep failing
+#                                        to log in (internet-facing servers)
+#   deploy/linux/smarthome cert-import | cert-auto-setup
+#                                        give the app the web server's HTTPS
+#                                        certificate (now, or kept up to date)
 #
 # Run it from anywhere inside the checkout; it uses deploy/docker-compose.yml.
 # The database and backups live in the Docker volume "data". Settings are in
@@ -32,7 +40,8 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Through the /usr/bin/smarthome link too (the package installs one).
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd)"
 ENV_FILE="$ROOT/deploy/.env"
 CONF="$ROOT/deploy/linux/local.conf"
 SERVICE="smart-home"
@@ -258,9 +267,9 @@ unit_text() {
         if [[ "$f" == -* ]]; then line+=" $f"; else line+=" \"$f\""; fi
     done
     cat <<EOF
-# Written by $SELF install-service. Starts Smart Home Control at boot.
+# Written by $SELF install-service. Starts Smart Home Unified Control at boot.
 [Unit]
-Description=Smart Home Control (Docker)
+Description=Smart Home Unified Control (Docker)
 Requires=docker.service
 After=docker.service network-online.target
 Wants=network-online.target
@@ -306,6 +315,7 @@ cmd_remove_service() {
 
 refresh_service() {  # the unit names the compose files: keep it current
     if service_installed; then cmd_install_service; fi
+    cert_units_install  # certificate import from the web server (certificates.sh)
 }
 
 # ------------------------------------------------------------------ install
@@ -415,10 +425,11 @@ cmd_install() {
     wait_healthy
     sync_forwarded
     if [[ "$service" == "yes" ]]; then cmd_install_service; fi
+    cert_units_install
     [[ -n "$new" ]] && confirm_key_saved "$new"
 
     say ""
-    say "Smart Home Control is running:"
+    say "Smart Home Unified Control is running:"
     addresses
     say ""
     if [[ "$access" == "proxy" ]]; then
@@ -572,16 +583,31 @@ cmd_doctor() {
             || bad "visitor addresses are not trusted from the proxy: $SELF start (sets FORWARDED_ALLOW_IPS)"
     fi
 
+    say "Integrations (last 30 minutes of the log)"
+    local problems_seen
+    problems_seen="$(compose logs --since 30m "$SERVICE" 2>/dev/null | grep -E "refresh skipped|live connection ended|connection closed|Failed to connect|live refresh failed" | tail -n 5 || true)"
+    if [[ -z "$problems_seen" ]]; then
+        ok "no connection problems logged"
+    else
+        bad "connection problems logged (newest last; Settings > Integrations shows the same):"
+        printf '%s\n' "$problems_seen" | sed 's/^/          /'
+    fi
+
     say "Data"
     [[ -n "$(env_get SECRETS_KEY)" ]] && ok "SECRETS_KEY is set (keep a copy off this server)" || bad "no SECRETS_KEY in deploy/.env: $SELF install"
     local newest
     newest="$(compose exec -T "$SERVICE" python scripts/backup.py --list 2>/dev/null | grep -E '^/' | head -n1 | awk '{print $1}' || true)"
     [[ -n "$newest" ]] && ok "newest backup: $newest" || note "no backups listed yet (the first comes after BACKUP_HOURS, or: $SELF backup)"
-    note "backups live on this disk: copy them elsewhere ($SELF copy-backups DIR, or a cron job; docs/DEPLOY-LINUX.md, section 6)"
+    doctor_public_node
 
     say ""
     if [[ "$problems" -eq 0 ]]; then say "Nothing to fix."; else say "$problems thing(s) to fix, above."; return 1; fi
 }
+
+# shellcheck source=deploy/linux/public-node.sh
+. "$ROOT/deploy/linux/public-node.sh"
+# shellcheck source=deploy/linux/certificates.sh
+. "$ROOT/deploy/linux/certificates.sh"
 
 main() {
     local cmd="${1:-help}"
@@ -609,7 +635,14 @@ main() {
         install-service) need_docker; cmd_install_service ;;
         remove-service) cmd_remove_service ;;
         make-key) new_key ;;
-        help|-h|--help) sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+        offsite-backup) cmd_offsite_backup "$@" ;;
+        offsite-setup) cmd_offsite_setup "$@" ;;
+        offsite-remove) cmd_offsite_remove ;;
+        fail2ban-setup) cmd_fail2ban_setup ;;
+        cert-import) cmd_cert_import "$@" ;;
+        cert-auto-setup) cmd_cert_auto_setup ;;
+        cert-auto-remove) cmd_cert_auto_remove ;;
+        help|-h|--help) sed -n '2,38p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
         *) die "Unknown command: $cmd (try: $SELF help)" ;;
     esac
 }

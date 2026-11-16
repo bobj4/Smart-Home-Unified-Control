@@ -8,7 +8,9 @@ refuses logins with HTTP 429 when they come too often.
 
 import asyncio
 import concurrent.futures
-import hashlib
+import ipaddress
+import logging
+import re
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
@@ -24,11 +26,12 @@ from pyeconet.errors import (
     PyeconetError,
 )
 
+log = logging.getLogger(__name__)
 TIMEOUT_SECONDS = 30
 SESSION_SECONDS = 6 * 3600
 RATE_LIMITED = "Rheem is refusing logins for now (too many attempts). Wait 15 minutes, then try once."
-# hash of (email, password) -> (user token, account id, time of login)
-_sessions: dict[str, tuple[str, str, float]] = {}
+# (email, password) -> (user token, account id, time of login)
+_sessions: dict[tuple[str, str], tuple[str, str, float]] = {}
 
 
 class RheemError(Exception):
@@ -62,6 +65,8 @@ class RheemHeater:
     wifi: int | None = None
     alerts: int = 0
     activity: str | None = None  # what Rheem reports the heater is doing
+    mac: str | None = None  # its Wi-Fi module's, when EcoNet says (network_ids)
+    ip: str | None = None
 
     @property
     def status(self) -> str:
@@ -79,24 +84,56 @@ class RheemHeater:
             **{
                 k: v
                 for k, v in data.items()
-                if k not in ("serial", "name", "connected")
+                if k not in ("serial", "name", "connected", "mac", "ip")
             },
             "modes": list(self.modes),
             "status": self.status,
         }
 
 
+def heater_mode(heater: WaterHeater) -> str | None:
+    """The heater's mode, read from the name of its @MODE value.
+
+    pyeconet's own `mode` counts along its list of the modes it knows, so
+    a mode name it does not know earlier in the heater's list shifts every
+    later mode (or fails): the wrong mode, and with it the wrong status."""
+    info = heater._equipment_info  # noqa: SLF001 - the raw EcoNet values
+    enabled = info.get("@ENABLED")
+    if isinstance(enabled, dict) and enabled.get("value") == 0:
+        return "off"
+    raw = info.get("@MODE")
+    if isinstance(raw, dict):
+        names = (raw.get("constraints") or {}).get("enumText") or []
+        value = raw.get("value")
+        text = raw.get("status")
+        if isinstance(value, int) and 0 <= value < len(names):
+            text = names[value]
+        if isinstance(text, str) and text.strip():
+            found = WaterHeaterOperationMode.by_string(text)
+            if found is WaterHeaterOperationMode.ELECTRIC_GAS:
+                gas = heater.generic_type in ("gasWaterHeater", "tanklessWaterHeater")
+                found = (
+                    WaterHeaterOperationMode.GAS
+                    if gas
+                    else WaterHeaterOperationMode.ELECTRIC_MODE
+                )
+            if found is not WaterHeaterOperationMode.UNKNOWN:
+                return found.name.lower()
+            return "_".join(text.lower().split())[:30]
+    mode = _safe(lambda: heater.mode, None)
+    return mode.name.lower() if mode is not None else None
+
+
 def heater_from_equipment(heater: WaterHeater) -> RheemHeater:
     low, high = heater.set_point_limits
-    mode = heater.mode
     return RheemHeater(
         serial=str(heater.serial_number),
         name=str(heater.device_name),
         set_point=int(heater.set_point),
         min_set_point=int(low),
         max_set_point=int(high),
-        mode=mode.name.lower() if mode is not None else None,
-        enabled=heater.enabled,
+        mode=heater_mode(heater),
+        enabled=_safe(lambda: heater.enabled, None),
         running=is_running(_safe(lambda: heater.running_state, None)),
         connected=bool(heater.connected),
         modes=tuple(m.name.lower() for m in _safe(lambda: heater.modes, [])),
@@ -111,7 +148,55 @@ def heater_from_equipment(heater: WaterHeater) -> RheemHeater:
         wifi=_safe(lambda: heater.wifi_signal, None),
         alerts=int(_safe(lambda: heater.alert_count, 0) or 0),
         activity=_activity(_safe(lambda: heater.running_state, None)),
+        **network_ids(heater),
     )
+
+
+_told: set[str] = set()  # heaters whose field names were logged
+MAC_WITH_SEPARATORS = re.compile(r"^[0-9A-Fa-f]{2}([:-][0-9A-Fa-f]{2}){5}$")
+
+
+def network_ids(heater: WaterHeater) -> dict[str, str | None]:
+    """{"mac", "ip"} of the heater's Wi-Fi module, from what EcoNet sends:
+    its device name when that is a MAC address, else any field named like a
+    MAC (or holding one written with separators), and any field named like
+    an IP holding a private address. Otherwise its field names (never their
+    values) are logged once, so a heater that says neither can be looked into."""
+    info = heater._equipment_info  # noqa: SLF001 - the raw EcoNet values
+    mac = module_mac(info.get("device_name"))
+    ip = None
+    for key, raw in info.items():
+        value = raw.get("value") if isinstance(raw, dict) else raw
+        if not isinstance(value, str):
+            continue
+        name = str(key).lower()
+        if mac is None and ("mac" in name or MAC_WITH_SEPARATORS.match(value.strip())):
+            mac = module_mac(value)
+        if ip is None and re.search(r"(^|[^a-z])ip", name):
+            try:
+                found = ipaddress.ip_address(value.strip())
+            except ValueError:
+                continue
+            if found.is_private and not found.is_loopback:
+                ip = str(found)
+    serial = str(info.get("serial_number"))
+    if mac is None and ip is None and serial not in _told:
+        _told.add(serial)  # once per heater while the server runs
+        log.info(
+            "EcoNet heater %s: no MAC or IP among its fields %s",
+            serial,
+            sorted(str(k) for k in info),
+        )
+    return {"mac": mac, "ip": ip}
+
+
+def module_mac(raw: Any) -> str | None:
+    """EcoNet names a heater's Wi-Fi module by its MAC address
+    ("80-91-33-8A-12-34"): as AA:BB:CC:DD:EE:FF, or None if it is not one."""
+    text = str(raw or "").replace(":", "").replace("-", "").strip().upper()
+    if len(text) != 12 or any(c not in "0123456789ABCDEF" for c in text):
+        return None
+    return ":".join(text[i : i + 2] for i in range(0, 12, 2))
 
 
 IDLE_WORDS = ("idle", "off", "standby", "not running", "waiting", "none", "false")
@@ -214,8 +299,9 @@ class PyeconetClient:
         except (PyeconetError, OSError, TimeoutError) as error:
             raise RheemError(f"EcoNet request failed: {type(error).__name__}") from None
 
-    def _key(self) -> str:
-        return hashlib.sha256(f"{self._email}\0{self._password}".encode()).hexdigest()
+    def _key(self) -> tuple[str, str]:
+        # Kept in memory only, like the login itself; never stored or logged.
+        return (self._email, self._password)
 
     async def _login(self, reuse: bool = True) -> tuple[EcoNetApiInterface, bool]:
         """Return a logged-in API and whether it came from a saved login."""

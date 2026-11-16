@@ -24,6 +24,7 @@ import pyotp
 from playwright.sync_api import expect
 
 from app.auth import verify_password
+from app.features import INTEGRATIONS
 from app.models import Device, DeviceSafetyLimits, HomeMembership, User
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -74,11 +75,35 @@ def next_step_code(secret):
     return pyotp.TOTP(secret).at(int(time.time()) + 30)
 
 
-def ui_login(page, user, code=None):
-    page.get_by_test_id("login-email").fill(user.email)
-    page.get_by_test_id("login-password").fill(user.password)
-    page.get_by_test_id("login-code").fill(code or user.totp.now())
+def submit_login(page, email, password, code=None, remember_device=False):
+    """Screen 1: name and password. Screen 2, if the account asks for a
+    two-factor code: the code. (Changed with the owner's approval when the
+    login became two screens.)"""
+    page.get_by_test_id("login-email").fill(email)
+    page.get_by_test_id("login-password").fill(password)
     page.get_by_test_id("login-submit").click()
+    if code is None:
+        return
+    step2 = page.get_by_test_id("login-step2")
+    page.wait_for_function(
+        """() => ['login-step2', 'app-shell', 'login-error'].some((id) => {
+            const node = document.querySelector(`[data-testid="${id}"]`);
+            return node && !node.hidden && (id !== 'login-error' || node.textContent);
+        })"""
+    )
+    if step2.is_visible():
+        if remember_device:
+            page.get_by_test_id("login-remember-device").check()
+        page.get_by_test_id("login-code").fill(code)
+        page.get_by_test_id("login-code-submit").click()
+        if remember_device:  # then the device needs a name (the suggested one)
+            page.get_by_test_id("device-name-ok").click()
+
+
+def ui_login(page, user, code=None, remember_device=False):
+    submit_login(
+        page, user.email, user.password, code or user.totp.now(), remember_device
+    )
     expect(page.get_by_test_id("app-shell")).to_be_visible()
 
 
@@ -130,10 +155,7 @@ def test_ui_shell_login_and_logout(open_page, owner):
     expect(page.get_by_test_id("login-form")).to_be_visible()
     expect(page.get_by_test_id("app-shell")).to_be_hidden()
 
-    page.get_by_test_id("login-email").fill(owner.email)
-    page.get_by_test_id("login-password").fill("wrong password here")
-    page.get_by_test_id("login-code").fill("000000")
-    page.get_by_test_id("login-submit").click()
+    submit_login(page, owner.email, "wrong password here")
     expect(page.get_by_test_id("login-error")).not_to_be_empty()
     expect(page.get_by_test_id("app-shell")).to_be_hidden()
 
@@ -559,7 +581,7 @@ def test_ui_settings_menu_shows_one_category_at_a_time(open_page, owner):
     )
     assert page.url.endswith("#/settings/admin")
     labels = menu.locator("a").all_inner_texts()
-    assert labels[:2] == ["My account", "Admin"]
+    assert labels[:2] == ["My Account", "Admin"]
     page.reload()
     expect(page.get_by_test_id("settings-members")).to_be_visible()
 
@@ -603,6 +625,23 @@ def integration_row(section, integration_id):
     )
 
 
+def add_integration(page, integration_id):
+    """Turn an integration on from Settings > Integrations > Add integration
+    (changed from its on/off switch with the owner's approval, 2026-11-06:
+    only integrations in use are listed). Returns the Integrations section."""
+    section = go_settings(page, "integrations")
+    section.get_by_test_id("integration-add").select_option(integration_id)
+    expect(integration_row(section, integration_id)).to_be_visible()
+    return section
+
+
+def remove_integration(section, integration_id):
+    row = integration_row(section, integration_id)
+    row.get_by_test_id("integration-remove").click()
+    row.get_by_test_id("integration-remove-confirm").click()
+    expect(row).to_have_count(0)
+
+
 def test_ui_integrations_owner_turns_brands_on_and_off(
     open_page, db, owner, make_device
 ):
@@ -612,23 +651,27 @@ def test_ui_integrations_owner_turns_brands_on_and_off(
     page = open_page()
     ui_login(page, owner)
     section = go_settings(page, "integrations")
-    expect(section.get_by_test_id("integration-row")).to_have_count(5)
-    for integration_id in (
-        "simulated",
-        "cync",
-        "samsung_tv",
-        "rheem_econet",
-        "frigate",
-    ):
-        expect(integration_row(section, integration_id)).to_be_visible()
-    expect(integration_row(section, "cync")).to_contain_text("GE Cync")
-    expect(integration_row(section, "cync")).to_have_attribute("data-available", "true")
+    # Only integrations in use are listed; the rest are in Add integration
+    # (owner's approval, 2026-11-06). Only the demo devices start on.
+    expect(section.get_by_test_id("integration-row")).to_have_count(1)
+    expect(integration_row(section, "simulated")).to_be_visible()
+    choices = section.get_by_test_id("integration-add").locator("option")
+    expect(choices).to_have_count(len(INTEGRATIONS))  # the prompt and the rest
+    for integration_id in ("cync", "samsung_tv", "rheem_econet", "frigate"):
+        expect(integration_row(section, integration_id)).to_have_count(0)
+        expect(
+            section.get_by_test_id("integration-add").locator(
+                f'option[value="{integration_id}"]'
+            )
+        ).to_have_count(1)
     expect(
-        integration_row(section, "cync").get_by_test_id("integration-toggle")
-    ).not_to_be_checked()
+        section.get_by_test_id("integration-add").locator('option[value="cync"]')
+    ).to_have_text("GE Cync")
+
+    # The demo devices are always listed, with a switch (owner's approval,
+    # 2026-11-06).
     demo = integration_row(section, "simulated").get_by_test_id("integration-toggle")
     expect(demo).to_be_checked()
-
     demo.uncheck()
     expect(page.get_by_test_id("status")).to_have_attribute("data-kind", "success")
     db.expire_all()
@@ -642,18 +685,18 @@ def test_ui_integrations_owner_turns_brands_on_and_off(
     page.get_by_test_id("nav-devices").click()  # demo devices were deleted
     expect(page.get_by_test_id("device-card")).to_have_count(0)
 
-    section = go_settings(page, "integrations")
-    integration_row(section, "rheem_econet").get_by_test_id(
-        "integration-toggle"
-    ).check()
+    add_integration(page, "rheem_econet")
     expect(page.get_by_test_id("status")).to_have_attribute("data-kind", "success")
+    section = go_settings(page, "integrations")
     integration_row(section, "simulated").get_by_test_id("integration-toggle").check()
     expect(page.get_by_test_id("status")).to_have_attribute("data-kind", "success")
     page.get_by_test_id("nav-devices").click()
     expect(
         card(page, "Living room lamp").get_by_test_id("power-toggle")
     ).to_be_enabled()
-    expect(page.get_by_test_id("device-card")).to_have_count(5)  # demo devices back
+    # demo devices back; 7 since the garage door and door sensor (owner's
+    # approval, 2026-11-06)
+    expect(page.get_by_test_id("device-card")).to_have_count(7)
     db.expire_all()
     rheem = (
         db.query(HomeIntegration)
@@ -668,10 +711,11 @@ def test_ui_integrations_read_only_for_admin(open_page, owner, make_user):
     page = open_page()
     ui_login(page, admin)
     section = go_settings(page, "integrations")
-    expect(section.get_by_test_id("integration-row")).to_have_count(5)
-    toggles = section.get_by_test_id("integration-toggle")
-    for i in range(5):
-        expect(toggles.nth(i)).to_be_disabled()
+    # Operators see the integrations in use, and cannot add or remove one
+    # (owner's approval, 2026-11-06: no on/off switches any more).
+    expect(section.get_by_test_id("integration-row")).to_have_count(1)
+    expect(section.get_by_test_id("integration-remove")).to_have_count(0)
+    expect(section.get_by_test_id("integration-add")).to_have_count(0)
 
 
 def limits_row(section, device_type):
@@ -1016,10 +1060,7 @@ def test_ui_enroll_new_member(open_page, new_client, owner):
 
     page.get_by_test_id("enroll-done").click()
     expect(page.get_by_test_id("login-form")).to_be_visible()
-    page.get_by_test_id("login-email").fill("newbie@example.com")
-    page.get_by_test_id("login-password").fill(password)
-    page.get_by_test_id("login-code").fill(next_step_code(secret))
-    page.get_by_test_id("login-submit").click()
+    submit_login(page, "newbie@example.com", password, next_step_code(secret))
     expect(page.get_by_test_id("home-name")).to_have_text("Home A")
 
 

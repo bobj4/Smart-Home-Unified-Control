@@ -1,4 +1,4 @@
-# Running Smart Home Control on a headless Linux server
+# Running Smart Home Unified Control on a headless Linux server
 
 The server runs in Docker, using the hardened container already in `deploy/`:
 non-root, read-only files, no extra capabilities. One script,
@@ -93,7 +93,7 @@ Open the address it printed, then press Ctrl+F5 once.
 **First login.** On a new database the installer creates the account
 `admin` with a random password and shows it once at the end (it stays in
 `deploy/.env` as `FIRST_ADMIN_PASSWORD`, used only while the database has no
-accounts). Log in and change it (Settings > My account). Without the
+accounts). Log in and change it (Settings > My Account). Without the
 installer, the first password is `admin`. Locked out?
 `deploy/linux/smarthome reset-login`.
 

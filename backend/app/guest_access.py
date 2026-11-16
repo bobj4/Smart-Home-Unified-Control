@@ -7,11 +7,18 @@ on every request. The server enforces it; the web page only follows it.
 
 What each permission allows:
   light_power     turn lights and plugs on and off
-  light_settings  brightness and colour of lights
+  light_settings  brightness and color of lights
   thermostat_ids  full control of those thermostats (mode, set points, fan,
                   hold), within the safety limits; not their schedule
+  thermostat_settings   those thermostats' Settings window (Early On, the
+                  screen's unit, daylight saving)
+  thermostat_installer  and the installer settings there (system type,
+                  wires, thresholds, calibration...)
   water_heater    control of the water heaters, within the safety limits
-  cameras         the Cameras page (Frigate cameras and events)
+  cameras         the Cameras page (Frigate Cameras and events); with
+  camera_names    only those cameras (empty: every camera)
+  scenes          run the home's scenes (Schedules and Scenes), whatever
+                  their devices; not make or change them
   show_blocked    devices they may not use are shown greyed out (True) or
                   hidden (False); their state is never sent either way
 """
@@ -29,7 +36,16 @@ from app.models import GUEST_ROLE, Device, GuestAccess, Home, HomeMembership, Ro
 LIGHT_POWER_TYPES = ("light", "plug")
 LIGHT_POWER_COMMANDS = ("turn_on", "turn_off")
 LIGHT_SETTING_COMMANDS = ("set_brightness", "set_color_temp", "set_color")
-FLAGS = ("light_power", "light_settings", "cameras", "water_heater", "show_blocked")
+FLAGS = (
+    "light_power",
+    "light_settings",
+    "cameras",
+    "water_heater",
+    "show_blocked",
+    "thermostat_settings",
+    "thermostat_installer",
+    "scenes",
+)
 
 
 def membership(db: Session, user_id: str, home_id: str) -> HomeMembership | None:
@@ -62,7 +78,7 @@ def require_guest(db: Session, user: User, home_id: str) -> GuestAccess:
     if home is not None and home.require_two_factor and not user.is_totp_enabled:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
-            "This home requires two-factor login. Turn it on in My account.",
+            "This home requires two-factor login. Turn it on in My Account.",
         )
     return access_for(db, home_id, user.id)
 
@@ -79,6 +95,7 @@ def access_out(access: GuestAccess) -> dict[str, Any]:
     return {
         **{flag: bool(getattr(access, flag)) for flag in FLAGS},
         "thermostat_ids": thermostats(access),
+        "camera_names": camera_names(access),
     }
 
 
@@ -106,11 +123,23 @@ def allowed(access: GuestAccess, device: Device, command: str) -> bool:
     return False
 
 
-def require_camera_viewer(db: Session, user: User, home_id: str) -> None:
-    """Cameras: operators and up, or a guest allowed to see them."""
+def camera_names(access: GuestAccess) -> list[str]:
+    try:
+        names = json.loads(access.camera_names or "[]")
+    except ValueError:
+        return []
+    return [str(n) for n in names] if isinstance(names, list) else []
+
+
+def require_camera_viewer(db: Session, user: User, home_id: str) -> set[str] | None:
+    """Cameras: operators and up, or a guest allowed to see them. The
+    cameras the caller may see: None for every camera, else those names."""
     member = membership(db, user.id, home_id)
     if member is not None and member.role == GUEST_ROLE:
-        if not require_guest(db, user, home_id).cameras:
+        access = require_guest(db, user, home_id)
+        if not access.cameras:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Forbidden")
-        return
+        names = camera_names(access)
+        return set(names) if names else None
     require_role(db, user.id, home_id, Role.OPERATOR)
+    return None

@@ -129,7 +129,9 @@ def test_ui_samsung_add_pair_control_remove(open_page, owner, tv, secrets_key):
     ui_login(page, owner)
     section = go_settings(page, "integrations")
     expect(section.get_by_test_id("samsung-tvs")).to_have_count(0)
-    samsung_row(section).get_by_test_id("integration-toggle").check()
+    _ui.add_integration(
+        page, "samsung_tv"
+    )  # added from the dropdown (owner's approval, 2026-11-06)
     panel = page.get_by_test_id("samsung-tvs")
     expect(panel).to_be_visible()
 
@@ -169,9 +171,9 @@ def test_ui_samsung_add_pair_control_remove(open_page, owner, tv, secrets_key):
 def test_ui_samsung_legacy_tv(open_page, owner, tv):
     page = open_page()
     ui_login(page, owner)
-    samsung_row(go_settings(page, "integrations")).get_by_test_id(
-        "integration-toggle"
-    ).check()
+    _ui.add_integration(
+        page, "samsung_tv"
+    )  # added from the dropdown (owner's approval, 2026-11-06)
     panel = page.get_by_test_id("samsung-tvs")
     panel.get_by_test_id("samsung-name").fill("Old TV")
     panel.get_by_test_id("samsung-host").fill("192.168.1.60")
@@ -186,9 +188,9 @@ def test_ui_samsung_legacy_tv(open_page, owner, tv):
 def test_ui_samsung_bad_address_shows_error(open_page, owner, tv):
     page = open_page()
     ui_login(page, owner)
-    samsung_row(go_settings(page, "integrations")).get_by_test_id(
-        "integration-toggle"
-    ).check()
+    _ui.add_integration(
+        page, "samsung_tv"
+    )  # added from the dropdown (owner's approval, 2026-11-06)
     panel = page.get_by_test_id("samsung-tvs")
     panel.get_by_test_id("samsung-name").fill("Somewhere TV")
     panel.get_by_test_id("samsung-host").fill("8.8.8.8")

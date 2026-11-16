@@ -18,6 +18,16 @@ const MEDIA_KEYS = [
 // Home and Info sit in their own row under Power; these are the rest.
 const MENU_KEYS = [['back', 'Back'], ['menu', 'Menu'], ['guide', 'Guide']];
 
+/** The power symbol drawn, not the ⏻ character: many phones and Windows
+ * fonts have no glyph for it and show an empty box. */
+function powerButton(button) {
+  button.prepend(svg('svg', { viewBox: '0 0 24 24', width: '18', height: '18', 'aria-hidden': 'true', focusable: 'false', className: 'power-icon' }, [
+    svg('path', { d: 'M12 3v8' }),
+    svg('path', { d: 'M6.3 7.2a8 8 0 1 0 11.4 0' }),
+  ]));
+  return button;
+}
+
 function mediaIcon(path) {
   return svg('svg', { viewBox: '0 0 24 24', width: '18', height: '18', 'aria-hidden': 'true', focusable: 'false' }, [
     svg('path', { d: path, fill: 'currentColor' }),
@@ -40,9 +50,31 @@ class TvRemote {
 
   open(device) {
     this.device = { ...device, state: { ...(device.state || {}) } };
+    this.sources = null;
+    this.sourcesAsked = false;
+    this.liveInput = null;
     this.render();
+    if (device.smartthings) this.loadSources(device.id);
     this.overlay.hidden = false;
     this.overlay.querySelector('[data-testid="remote-power"]').focus();
+  }
+
+  /** A TV linked to SmartThings: its inputs by name (else the fixed list). */
+  async loadSources(deviceId) {
+    this.sourcesAsked = true;
+    try {
+      const found = await this.app.api.getTvSources(this.app.home.id, deviceId);
+      if (!this.device || this.device.id !== deviceId || !found.sources.length) return;
+      this.sources = found.sources.map((s) => [s.id, s.name]);
+      // The TV's real input, until a command here changes the saved one.
+      if (found.current) {
+        this.liveInput = { saved: this.device.state.input, current: found.current };
+        this.device.state.input = found.current;
+      }
+      this.render();
+    } catch (error) {
+      // The fixed inputs still work by key.
+    }
   }
 
   close() {
@@ -55,14 +87,20 @@ class TvRemote {
   /** Keep the open remote in step with a fresh device list. */
   refresh(devices) {
     if (!this.device) return;
-    const fresh = devices.find((d) => d.id === this.device.id);
+    let fresh = devices.find((d) => d.id === this.device.id);
     if (!fresh || !fresh.controllable) {
       this.close();
       return;
     }
+    const live = this.liveInput;
+    if (live && fresh.state && fresh.state.input === live.saved) fresh = { ...fresh, state: { ...fresh.state, input: live.current } };
+    else this.liveInput = null;
     const same = JSON.stringify(fresh.state || {}) === JSON.stringify(this.device.state)
-      && fresh.name === this.device.name;
+      && fresh.name === this.device.name && (fresh.pending || null) === (this.device.pending || null)
+      && JSON.stringify(fresh.quick_apps || []) === JSON.stringify(this.device.quick_apps || [])
+      && JSON.stringify(fresh.input_names || {}) === JSON.stringify(this.device.input_names || {});
     this.device = { ...fresh, state: { ...(fresh.state || {}) } };
+    if (fresh.smartthings && !this.sourcesAsked) this.loadSources(fresh.id);
     // Redraw only when something changed, so the open remote keeps its
     // buttons (and focus) between the 5-second refreshes.
     if (!same) this.render();
@@ -74,16 +112,39 @@ class TvRemote {
       const result = await this.app.api.sendCommand(this.app.home.id, device.id, command, payload);
       if (this.device && this.device.id === device.id) {
         this.device.state = result.state;
+        this.device.pending = result.pending || null;
         this.render();
+        if (result.pending) this.waitForPower();
       }
       this.app.status.success(`${device.name}: ${command.replace(/_/g, ' ')}.`);
     });
+  }
+
+  /** While the TV has not confirmed On or Off, re-read it every 3 seconds
+   * (the page's own refresh pauses while the remote is open). */
+  waitForPower() {
+    clearTimeout(this.powerTimer);
+    this.powerTimer = setTimeout(async () => {
+      if (!this.device || !this.device.pending) return;
+      try {
+        await this.app.devices.load({ live: true });
+      } finally {
+        if (this.device && this.device.pending) this.waitForPower();
+      }
+    }, 3000);
   }
 
   /** 2010-2015 TVs (legacy and encrypted protocols) cannot launch apps. */
   canLaunchApps() {
     const d = this.device;
     return !d || d.integration !== 'samsung_tv' || d.protocol === 'tizen';
+  }
+
+  /** The quick-app buttons: [id, name, command]. The TV's chosen apps (⋯ on its tile), else the usual six. */
+  apps() {
+    const chosen = (this.device && this.device.quick_apps) || [];
+    if (chosen.length) return chosen.map((a) => [a.id, a.name, 'open_app']);
+    return TV_APPS.map(([id, name]) => [id, name, 'launch_app']);
   }
 
   button(testid, text, onclick, { label, className = 'key', always = false } = {}) {
@@ -93,12 +154,21 @@ class TvRemote {
     });
   }
 
+  /** Power, or "Turning on…" (not pressable) until the TV says it is. */
+  powerKey(off) {
+    const pending = this.device && this.device.pending;
+    const text = pending ? `Turning ${pending}…` : 'Power';
+    const button = powerButton(this.button('remote-power', text, () => this.send(off ? 'turn_on' : 'turn_off'), { className: `power${off ? '' : ' on'}${pending ? ' pending' : ''}`, always: true }));
+    button.disabled = Boolean(pending);
+    return button;
+  }
+
   render() {
     const s = this.state;
     const off = !s.on;
     const source = s.app
-      ? TV_APPS.find(([id]) => id === s.app)[1]
-      : (TV_INPUTS.find(([id]) => id === s.input) || [s.input, s.input])[1];
+      ? (this.apps().find(([id]) => id === s.app) || TV_APPS.find(([id]) => id === s.app) || [s.app, 'App'])[1]
+      : ((this.sources || namedTvInputs(this.device)).find(([id]) => id === s.input) || [s.input, s.input])[1];
     const screen = el('div', { className: `tv-screen${off ? ' off' : ''}`, testid: 'remote-screen' }, [
       el('strong', { text: off ? 'Off' : source }),
       el('span', { testid: 'remote-channel', text: off ? '' : `Channel ${s.channel}` }),
@@ -117,10 +187,11 @@ class TvRemote {
       this.send('set_channel', { channel: number });
     };
     channel.addEventListener('keydown', (e) => { if (e.key === 'Enter') goTo(); });
-    const input = el('select', { testid: 'remote-input', disabled: off, 'aria-label': 'Input' },
-      TV_INPUTS.map(([id, name]) => el('option', { value: id, text: name })));
+    const named = Boolean(this.sources);
+    const input = el('select', { testid: 'remote-input', disabled: off, 'aria-label': 'Input', 'data-named': String(named) },
+      (this.sources || namedTvInputs(this.device)).map(([id, name]) => el('option', { value: id, text: name })));
     input.value = s.input;
-    input.addEventListener('change', () => this.send('set_input', { source: input.value }));
+    input.addEventListener('change', () => this.send(named ? 'set_source' : 'set_input', { source: input.value }));
 
     const key = (id, text, label) => this.button(`remote-key-${id}`, text, () => this.send('press_key', { key: id }), { label });
     const panel = el('div', { className: 'remote', testid: 'tv-remote', role: 'dialog', 'aria-label': `${this.device.name} remote` }, [
@@ -130,7 +201,7 @@ class TvRemote {
       ]),
       screen,
       el('div', { className: 'remote-row' }, [
-        this.button('remote-power', '⏻ Power', () => this.send(off ? 'turn_on' : 'turn_off'), { className: `power${off ? '' : ' on'}`, always: true }),
+        this.powerKey(off),
         this.button('remote-mute', s.muted ? 'Unmute' : 'Mute', () => this.send('toggle_mute'), { className: 'key wide' }),
       ]),
       el('div', { className: 'remote-row remote-split', testid: 'remote-home-info' }, [key('home', 'Home', 'Home'), key('info', 'Info', 'Info')]),
@@ -160,7 +231,7 @@ class TvRemote {
       this.device.integration === 'simulated' ? field('Volume', level) : null,
       el('div', { className: 'remote-row' }, [field('Channel', channel), this.button('remote-channel-go', 'Go', goTo, { className: 'key' })]),
       field('Input', input),
-      this.canLaunchApps() ? el('div', { className: 'remote-apps', testid: 'remote-apps' }, TV_APPS.map(([id, name]) => this.button(`remote-app-${id}`, name, () => this.send('launch_app', { app: id }), { className: `app${s.app === id ? ' active' : ''}` }))) : null,
+      this.canLaunchApps() ? el('div', { className: 'remote-apps', testid: 'remote-apps' }, this.apps().map(([id, name, command]) => this.button(`remote-app-${id}`, name, () => this.send(command, command === 'open_app' ? { app_id: id } : { app: id }), { className: `app${s.app === id ? ' active' : ''}` }))) : null,
     ]);
     const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.testid : null;
     this.overlay.replaceChildren(panel);

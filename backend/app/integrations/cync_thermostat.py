@@ -66,12 +66,15 @@ def probe_packet(device_id: int, msg_id: int) -> bytes:
     return packet(PROBE, struct.pack(">IH", device_id, msg_id) + b"\x00")
 
 
-Value = int | str | bytes
+Value = bool | int | str | bytes
 
 
 def entry(index: int, value: Value) -> bytes:
-    """One write entry: ints as 4 bytes (header 0x4004), text as UTF-8
-    (0x9000 | length), bytes as they are (0xA000 | length)."""
+    """One write entry: yes/no as 1 byte (header 0x0001), ints as 4 bytes
+    (0x4004), text as UTF-8 (0x9000 | length), bytes as they are
+    (0xA000 | length)."""
+    if isinstance(value, bool):
+        return bytes([index]) + struct.pack(">HB", 0x0001, int(value))
     if isinstance(value, bytes):
         return bytes([index]) + struct.pack(">H", 0xA000 | len(value)) + value
     if isinstance(value, str):

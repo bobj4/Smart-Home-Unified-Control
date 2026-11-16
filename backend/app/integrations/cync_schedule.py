@@ -20,7 +20,7 @@ Asking for one is writing its name to ReadSetting (point 84); the thermostat
 answers with a push of point 84 holding JSON {name: value}, where value is
 null (nothing stored) or the bytes as a list of numbers, padded with 255
 (confirmed on the owner's thermostat, 2026-10-24). A remote sensor is its
-type byte (1) and its 6-digit PIN code as text, for example 01 "024944".
+type byte (1) and its 6-digit PIN code as text, for example 01 "135790".
 Pure functions only: no network here.
 """
 

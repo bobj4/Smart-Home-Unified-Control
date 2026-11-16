@@ -137,10 +137,7 @@ def test_cync_background_problem(db, owner, monkeypatch):
 def test_ui_frigate_error_under_the_form(open_page, owner, frigate_fake, secrets_key):
     page = open_page()
     _ui.ui_login(page, owner)
-    section = _ui.go_settings(page, "integrations")
-    section.locator(
-        '[data-testid="integration-row"][data-integration="frigate"]'
-    ).get_by_test_id("integration-toggle").check()
+    _ui.add_integration(page, "frigate")
     panel = page.get_by_test_id("frigate-server")
     note = panel.get_by_test_id("frigate-note")
     # Not a URL at all: the server says what it should look like.

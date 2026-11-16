@@ -25,7 +25,7 @@ thermostat = _thermostat.thermostat
 card, ui_login = _ui.card, _ui.ui_login
 CLOUD_ID = _thermostat.CLOUD_ID
 # Temp_Read_Schd_Mon as the thermostat answered it (padded with 255).
-SENSOR_MON = [7, 0, 2, 0, 0, 0, 0, 0, 0, 0, 8, 0, 1, 1, 48, 50, 52, 57, 52, 52]
+SENSOR_MON = [7, 0, 2, 0, 0, 0, 0, 0, 0, 0, 8, 0, 1, 1, 49, 51, 53, 55, 57, 48]
 SENSOR_MON += [14, 0, 2, 0, 0, 0, 0, 0, 0, 0, 22, 30, 0, 0, 0, 0, 0, 0, 0, 0]
 SENSOR_MON += [255] * 60
 
@@ -57,7 +57,7 @@ def test_week_from_the_thermostats_answers():
         "all",
         "thermostat",
     ]
-    assert week["sensors"]["mon"][1]["pin"] == "024944"
+    assert week["sensors"]["mon"][1]["pin"] == "135790"
 
 
 class FakeTcp:
@@ -227,4 +227,4 @@ def test_demo_thermostat_has_no_schedule_button(open_page, db, owner, make_devic
 
 def test_sensor_pins_are_in_the_state():
     report = t.thermostat_state(t.parse_probe_reply(_thermostat.FULL_REPLY))
-    assert [x["pin"] for x in report["sensors"]] == [None, "024944"]
+    assert [x["pin"] for x in report["sensors"]] == [None, "135790"]

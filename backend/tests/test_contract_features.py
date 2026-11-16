@@ -14,7 +14,19 @@ import segno
 from app.models import AuditEvent, Device
 
 ACCOUNT = "/api/v1/account"
-INTEGRATION_IDS = ["simulated", "cync", "samsung_tv", "rheem_econet", "frigate"]
+# Hue, Kasa, LG, Roku and ratgdo added with the owner's approval (new integrations, 2026-11-05).
+INTEGRATION_IDS = [
+    "simulated",
+    "cync",
+    "hue",
+    "kasa",
+    "samsung_tv",
+    "lg_tv",
+    "roku_tv",
+    "rheem_econet",
+    "ratgdo",
+    "frigate",
+]
 
 
 def home_url(home_id, suffix=""):
@@ -142,6 +154,10 @@ def test_turned_off_integration_refuses_commands_and_new_devices(
         "Hall thermostat",
         "Living room TV",
         "Water heater",
+        # A garage door and a door sensor added with the owner's approval
+        # (2026-11-06).
+        "Garage door",
+        "Front door sensor",
     }
     lamp = next(d.id for d in demo if d.type == "light")
     command = home_url(owner.home_id, f"/devices/{lamp}/command")

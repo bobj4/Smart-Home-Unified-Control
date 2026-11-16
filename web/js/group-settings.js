@@ -1,7 +1,9 @@
 /**
- * Settings > Devices, top (operators and admins): rooms and groups — create,
- * delete, and choose a group's room. Which group a device is in is chosen on
- * the device's own row. Changes stay in this app (nothing is sent to Cync).
+ * Settings > Devices, top (operators and admins): rooms and groups, the
+ * same way: each is a chip with ✕ to delete it, with a box to create one
+ * (a group's room, where its tile shows, is chosen when it is created).
+ * Which room or group a device is in is chosen on the device's own row.
+ * Changes stay in this app (nothing is sent to Cync).
  */
 
 class GroupSettings {
@@ -48,17 +50,14 @@ class GroupSettings {
         }) })]),
       el('h3', { text: 'Groups' }),
       el('p', { className: 'muted', text: 'Lights and plugs switched together. Choose each device\'s group on its row below.' }),
-      ...groups.map((g) => {
-        const name = el('input', { type: 'text', testid: 'group-name', maxlength: '100', value: g.name, 'aria-label': 'Group name' });
-        const room = roomSelect(g.room, 'group-room');
-        return el('div', { className: 'row', testid: 'group-row', 'data-group-id': g.id }, [
-          name, room, el('span', { className: 'muted', text: `${g.device_ids.length} device${g.device_ids.length === 1 ? '' : 's'}${g.source === 'cync' ? ' · from Cync' : ''}` }),
-          el('button', { type: 'button', className: 'secondary', testid: 'group-save', text: 'Save',
-            onclick: () => this.app.run(async () => { await this.app.api.changeGroup(homeId, g.id, { name: name.value.trim(), room: room.value }); await this.reload(); this.app.status.success(`${name.value.trim()} saved.`); }) }),
-          el('button', { type: 'button', className: 'danger', testid: 'group-delete', text: 'Delete',
-            onclick: () => this.app.run(async () => { await this.app.api.deleteGroup(homeId, g.id); await this.reload(); this.app.status.success(`${g.name} deleted.`); }) }),
+      el('div', { className: 'chip-list' }, groups.map((g) => {
+        const count = `${g.device_ids.length} device${g.device_ids.length === 1 ? '' : 's'}${g.room ? ` in ${g.room}` : ''}${g.source === 'cync' ? ', from Cync' : ''}`;
+        return el('span', { className: 'chip', testid: 'group-row', 'data-group-id': g.id, title: count }, [
+          el('span', { text: g.name }),
+          el('button', { type: 'button', className: 'icon-button', testid: 'group-delete', text: '✕', 'aria-label': `Delete group ${g.name}`,
+            onclick: () => this.app.run(async () => { await this.app.api.deleteGroup(homeId, g.id); await this.reload(); this.app.status.success(`Group ${g.name} deleted; its devices are on their own now.`); }) }),
         ]);
-      }),
+      })),
       el('div', { className: 'row', testid: 'group-new' }, [newGroup, newGroupRoom, el('button', { type: 'button', testid: 'group-create', text: 'Create group',
         onclick: () => this.app.run(async () => {
           if (!newGroup.value.trim()) throw new Error('Type a name for the group.');

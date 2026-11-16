@@ -25,7 +25,7 @@ class Integration:
 INTEGRATIONS: tuple[Integration, ...] = (
     Integration(
         "simulated",
-        "Demo devices",
+        "Demo Devices",
         "Simulated devices for trying the app without hardware.",
         True,
         True,
@@ -38,7 +38,35 @@ INTEGRATIONS: tuple[Integration, ...] = (
         True,
     ),
     Integration(
+        "hue",
+        "Philips Hue",
+        "Hue lights and smart plugs, through the Hue Bridge on your network.",
+        False,
+        True,
+    ),
+    Integration(
+        "kasa",
+        "TP-Link Kasa",
+        "Kasa plugs, power strips, switches, dimmers and bulbs on your network.",
+        False,
+        True,
+    ),
+    Integration(
         "samsung_tv", "Samsung TV", "Samsung smart TVs on your network.", False, True
+    ),
+    Integration(
+        "lg_tv",
+        "LG TV",
+        "LG webOS smart TVs (2014 and newer) on your network.",
+        False,
+        True,
+    ),
+    Integration(
+        "roku_tv",
+        "Roku TV",
+        "Roku TVs and players on your network (TCL, Hisense, Sharp and more).",
+        False,
+        True,
     ),
     Integration(
         "rheem_econet",
@@ -48,8 +76,15 @@ INTEGRATIONS: tuple[Integration, ...] = (
         True,
     ),
     Integration(
+        "ratgdo",
+        "ratgdo Garage Doors",
+        "Garage door openers with a ratgdo (ESPHome firmware) on your network.",
+        False,
+        True,
+    ),
+    Integration(
         "frigate",
-        "Frigate cameras",
+        "Frigate Cameras",
         "Camera feeds and events from your Frigate server.",
         False,
         True,

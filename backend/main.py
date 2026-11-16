@@ -9,14 +9,26 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from app import backup, cync_live, init_db, refresh
+from app import (
+    alerts,
+    automation,
+    backup,
+    cync_live,
+    federation_site,
+    hue_events,
+    init_db,
+    neighbors,
+    refresh,
+)
 from app.db_config import settings
 from app.headers import SecurityHeadersMiddleware
 from app.routes import (
     account,
     admin,
+    admin_sessions,
     audit_log,
     auth,
+    background,
     cync,
     devices,
     email_admin,
@@ -26,29 +38,48 @@ from app.routes import (
     home_security,
     homes,
     https_admin,
+    hue,
     integrations,
+    kasa,
     layout,
+    lg,
+    login_failures,
     login_times,
     member_access,
+    member_codes,
     members,
+    motd,
+    ratgdo,
     rheem,
+    roku,
     safety_limits,
     samsung,
+    setup_steps,
     thermostat,
+    thermostat_access,
+    tv_scan,
+    tv_sources,
+    user_info,
     verbose,
 )
+from app.routes import alerts as alerts_routes
+from app.routes import automation as automation_routes
+from app.routes import federation as federation_routes
 from app.verbose import VerboseRequestMiddleware
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
-# Only files that exist in web/js and web/css when the app starts are served.
-WEB_SCRIPTS = {p.name for p in (WEB_DIR / "js").glob("*.js")}
-WEB_STYLES = {p.name for p in (WEB_DIR / "css").glob("*.css")}
-WEB_ICONS = {p.name for p in (WEB_DIR / "icons").glob("*.png")}
+# Only files that exist in web/js, web/css and web/icons when the app starts
+# are served, looked up by name: the request never becomes part of a path.
+WEB_SCRIPTS = {p.name: p for p in (WEB_DIR / "js").glob("*.js")}
+WEB_STYLES = {p.name: p for p in (WEB_DIR / "css").glob("*.css")}
+WEB_ICONS = {p.name: p for p in (WEB_DIR / "icons").glob("*.png")}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db()
+    if settings.REFRESH_SECONDS > 0:
+        neighbors.enable()  # Cync IP addresses from their MAC (neighbors.py)
     task = (
         asyncio.create_task(refresh.run_forever(settings.REFRESH_SECONDS))
         if settings.REFRESH_SECONDS > 0
@@ -59,13 +90,37 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if settings.REFRESH_SECONDS > 0
         else None
     )
+    # Homes linked to a main server keep a connection to it (federation_site).
+    sites = (
+        asyncio.create_task(federation_site.run_forever(app))
+        if settings.REFRESH_SECONDS > 0
+        else None
+    )
+    # Alerts: garage left open, devices offline, cameras... (app/alerts.py).
+    watching = (
+        asyncio.create_task(alerts.run_forever())
+        if settings.REFRESH_SECONDS > 0
+        else None
+    )
+    # Hue lights change here at once (the bridge's event stream).
+    hue_stream = (
+        asyncio.create_task(hue_events.run_forever())
+        if settings.REFRESH_SECONDS > 0
+        else None
+    )
+    # Schedules and Scenes: the server runs schedules when they are due.
+    schedules = (
+        asyncio.create_task(automation.run_forever())
+        if settings.REFRESH_SECONDS > 0
+        else None
+    )
     backups = (
         asyncio.create_task(backup.run_forever(settings.BACKUP_HOURS))
         if settings.BACKUP_HOURS > 0 and settings.DATABASE_URL.startswith("sqlite")
         else None
     )
     yield
-    for running in (task, live, backups):
+    for running in (task, live, sites, watching, hue_stream, schedules, backups):
         if running is not None:
             running.cancel()
 
@@ -78,6 +133,9 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+
+# A home whose devices are at another site: its per-home requests go there.
+app.add_middleware(federation_routes.SiteForwarding)
 
 # No origins are allowed unless CORS_ORIGINS lists them (SEC-14).
 app.add_middleware(
@@ -92,6 +150,7 @@ app.add_middleware(VerboseRequestMiddleware)
 
 app.include_router(auth.router)
 app.include_router(homes.router)
+app.include_router(federation_routes.router)
 app.include_router(devices.router)
 app.include_router(groups.router)
 app.include_router(groups.home_router)
@@ -102,6 +161,11 @@ app.include_router(admin.router)
 app.include_router(https_admin.router)
 app.include_router(email_admin.router)
 app.include_router(email_admin.public_router)
+app.include_router(member_codes.router)
+app.include_router(automation_routes.router)
+app.include_router(alerts_routes.router)
+app.include_router(alerts_routes.push_router)
+app.include_router(automation_routes.guest_router)
 app.include_router(members.router)
 app.include_router(members.enroll_router)
 app.include_router(member_access.router)
@@ -111,12 +175,27 @@ app.include_router(rheem.router)
 app.include_router(rheem.usage_router)
 app.include_router(thermostat.router)
 app.include_router(login_times.router)
+app.include_router(admin_sessions.router)
+app.include_router(login_failures.router)
 app.include_router(verbose.router)
 app.include_router(layout.router)
 app.include_router(guest.router)
 app.include_router(cync.router)
 app.include_router(home_security.router)
 app.include_router(samsung.router)
+app.include_router(roku.router)
+app.include_router(hue.router)
+app.include_router(kasa.router)
+app.include_router(lg.router)
+app.include_router(ratgdo.router)
+app.include_router(tv_sources.router)
+app.include_router(tv_sources.callback_router)
+app.include_router(background.router)
+app.include_router(motd.router)
+app.include_router(user_info.router)
+app.include_router(setup_steps.router)
+app.include_router(tv_scan.router)
+app.include_router(thermostat_access.router)
 app.include_router(frigate.settings_router)
 app.include_router(frigate.router)
 
@@ -147,27 +226,34 @@ def web_index() -> FileResponse:
 
 @app.get("/js/{name}", include_in_schema=False)
 def web_script(name: str) -> FileResponse:
-    if name not in WEB_SCRIPTS:
+    path = WEB_SCRIPTS.get(name)
+    if path is None:
         raise HTTPException(status_code=404, detail="Not found")
-    return FileResponse(
-        WEB_DIR / "js" / name, media_type="text/javascript", headers=REVALIDATE
-    )
+    return FileResponse(path, media_type="text/javascript", headers=REVALIDATE)
 
 
 @app.get("/css/{name}", include_in_schema=False)
 def web_style(name: str) -> FileResponse:
-    if name not in WEB_STYLES:
+    path = WEB_STYLES.get(name)
+    if path is None:
         raise HTTPException(status_code=404, detail="Not found")
-    return FileResponse(
-        WEB_DIR / "css" / name, media_type="text/css", headers=REVALIDATE
-    )
+    return FileResponse(path, media_type="text/css", headers=REVALIDATE)
 
 
 @app.get("/icons/{name}", include_in_schema=False)
 def web_icon(name: str) -> FileResponse:
-    if name not in WEB_ICONS:
+    path = WEB_ICONS.get(name)
+    if path is None:
         raise HTTPException(status_code=404, detail="Not found")
-    return FileResponse(WEB_DIR / "icons" / name, media_type="image/png")
+    return FileResponse(path, media_type="image/png")
+
+
+@app.get("/sw.js", include_in_schema=False)
+def web_service_worker() -> FileResponse:
+    """At the site root, so it covers the whole app (installing on phones)."""
+    return FileResponse(
+        WEB_DIR / "sw.js", media_type="text/javascript", headers=REVALIDATE
+    )
 
 
 @app.get("/manifest.json", include_in_schema=False)
