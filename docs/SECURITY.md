@@ -7,7 +7,7 @@ This document outlines the security requirements for the smart home control syst
 Owner decision 2026-10-22
 
 - **SEC-01**: Passwords must be hashed with Argon2id (argon2-cffi). No plaintext storage.
-- **SEC-02**: Two-factor login is each person's choice (My account page); turning it off needs the password and a current code; an owner can require it for everyone in a home, and members without it can then only reach My account; a server-side script resets a locked-out account.
+- **SEC-02**: Two-factor login is each person's choice (My Account page); turning it off needs the password and a current code; an owner can require it for everyone in a home, and members without it can then only reach My Account; a server-side script resets a locked-out account.
 - **SEC-03**: Server-side sessions with idle and absolute timeouts. HttpOnly, Secure, SameSite=Strict cookies.
 - **SEC-04**: CSRF protection on all state-changing requests.
 - **SEC-05**: Rate limiting on login, TOTP, and recovery endpoints per account and IP.

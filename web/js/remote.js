@@ -97,7 +97,8 @@ class TvRemote {
     else this.liveInput = null;
     const same = JSON.stringify(fresh.state || {}) === JSON.stringify(this.device.state)
       && fresh.name === this.device.name && (fresh.pending || null) === (this.device.pending || null)
-      && JSON.stringify(fresh.quick_apps || []) === JSON.stringify(this.device.quick_apps || []);
+      && JSON.stringify(fresh.quick_apps || []) === JSON.stringify(this.device.quick_apps || [])
+      && JSON.stringify(fresh.input_names || {}) === JSON.stringify(this.device.input_names || {});
     this.device = { ...fresh, state: { ...(fresh.state || {}) } };
     if (fresh.smartthings && !this.sourcesAsked) this.loadSources(fresh.id);
     // Redraw only when something changed, so the open remote keeps its
@@ -167,7 +168,7 @@ class TvRemote {
     const off = !s.on;
     const source = s.app
       ? (this.apps().find(([id]) => id === s.app) || TV_APPS.find(([id]) => id === s.app) || [s.app, 'App'])[1]
-      : ((this.sources || TV_INPUTS).find(([id]) => id === s.input) || [s.input, s.input])[1];
+      : ((this.sources || namedTvInputs(this.device)).find(([id]) => id === s.input) || [s.input, s.input])[1];
     const screen = el('div', { className: `tv-screen${off ? ' off' : ''}`, testid: 'remote-screen' }, [
       el('strong', { text: off ? 'Off' : source }),
       el('span', { testid: 'remote-channel', text: off ? '' : `Channel ${s.channel}` }),
@@ -188,7 +189,7 @@ class TvRemote {
     channel.addEventListener('keydown', (e) => { if (e.key === 'Enter') goTo(); });
     const named = Boolean(this.sources);
     const input = el('select', { testid: 'remote-input', disabled: off, 'aria-label': 'Input', 'data-named': String(named) },
-      (this.sources || TV_INPUTS).map(([id, name]) => el('option', { value: id, text: name })));
+      (this.sources || namedTvInputs(this.device)).map(([id, name]) => el('option', { value: id, text: name })));
     input.value = s.input;
     input.addEventListener('change', () => this.send(named ? 'set_source' : 'set_input', { source: input.value }));
 

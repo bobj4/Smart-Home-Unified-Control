@@ -12,6 +12,7 @@ class DevicesView {
     this.integrationsOn = new Set();
     this.remote = new TvRemote(app);
     this.quickApps = new QuickAppsPanel(app);
+    this.tvMenu = new TvMenu(app, this.quickApps);
     this.lightPanel = new LightPanel(app);
     this.groups = new GroupsUI(app);
     this.lastDevices = [];
@@ -161,7 +162,7 @@ class DevicesView {
     }
     if (device.type === 'light' && on) card.style.setProperty('--light', lightColor(state));
     if (device.type === 'tv') {
-      const menu = this.quickApps.menuButton(device);
+      const menu = this.tvMenu.menuButton(device);
       if (menu) card.querySelector('.card-head').append(menu);
       card.append(el('button', {
         type: 'button', className: 'secondary', testid: 'tv-remote-open', text: 'Remote',

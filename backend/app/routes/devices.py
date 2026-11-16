@@ -130,6 +130,10 @@ def _device_out(device: Device) -> dict[str, Any]:
         # A wall switch (Cync): a light or plug by what it does, but shown
         # as a "Switch".
         "switch": bool(caps.get("switch")),
+        # TVs: names people gave the inputs ({"hdmi2": "PlayStation"}).
+        "input_names": dict(caps.get("input_names") or {})
+        if device.type == "tv"
+        else None,
     }
 
 
@@ -354,6 +358,53 @@ def delete_device(
         details={"device_id": device_id},
     )
     return {"detail": "Deleted"}
+
+
+INPUT_NAMED = ("hdmi1", "hdmi2", "hdmi3", "hdmi4", "usb")  # TV inputs people name
+
+
+class InputNamesIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    names: dict[str, str] = Field(max_length=len(INPUT_NAMED))
+
+
+@router.put("/{device_id}/input-names", dependencies=[Depends(require_csrf)])
+def set_input_names(
+    home_id: str,
+    device_id: str,
+    body: InputNamesIn,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Name a TV's inputs (HDMI 2 = "PlayStation"): shown in its remote when
+    SmartThings does not name them. A blank name removes it."""
+    require_role(db, user.id, home_id, Role.OPERATOR)
+    device = _get_device(db, home_id, device_id)
+    if device.type != "tv":
+        raise HTTPException(422, "only TVs have inputs to name")
+    names = {}
+    for key, raw in body.names.items():
+        if key not in INPUT_NAMED:
+            raise HTTPException(422, f"no input called {key}")
+        name = " ".join(str(raw).split())
+        if len(name) > 30:
+            raise HTTPException(422, "an input name is 30 characters at most")
+        if name:
+            names[key] = name
+    caps = json.loads(device.capabilities or "{}")
+    caps["input_names"] = names
+    device.capabilities = json.dumps(caps)
+    db.commit()
+    record_event(
+        db,
+        "tv_input_names_changed",
+        user_id=user.id,
+        home_id=home_id,
+        ip_address=client_ip(request),
+        details={"device_id": device.id, "inputs": sorted(names)},
+    )
+    return _device_out(device)
 
 
 @router.post("/{device_id}/command", dependencies=[Depends(require_csrf)])

@@ -22,13 +22,18 @@ through the backend's permission checks and device safety limits.
   and newer firmware)
 - **Rheem EcoNet** water heaters (set point, modes, away, schedule, usage)
 - **Samsung**, **LG** and **Roku** TVs (remote control, apps, inputs; TVs
-  can be found on the network automatically). Samsung TV inputs by name
-  through SmartThings (optional).
+  can be found on the network automatically). A TV's ⋯ menu names its
+  inputs (HDMI 2 = "PlayStation", switched by remote key on the home
+  network) and picks a Samsung's quick apps. Samsung TV inputs by name
+  through SmartThings are optional (a lasting connection now needs a paid
+  SmartThings API plan).
 - **ratgdo** garage door openers (open, close, stop)
 - **Frigate** cameras and events
 - **Demo Devices** to try the app without hardware
 
 ## Features
+
+How to use each page: [docs/USER-GUIDE.md](docs/USER-GUIDE.md).
 
 - One installable web app (PWA, with its own icon on phones) for all
   devices, grouped by room, with device groups and live state. Every page

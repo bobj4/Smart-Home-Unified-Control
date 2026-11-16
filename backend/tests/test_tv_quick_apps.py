@@ -116,6 +116,7 @@ def test_ui_pick_quick_apps(open_page, db, owner, make_device, monkeypatch):
     _ui.ui_login(page, owner)
     tile = _ui.card(page, "Den TV")
     tile.get_by_test_id("tv-quick-menu").click()
+    page.get_by_test_id("tv-menu-quick-apps").click()  # the ⋯ menu's Quick apps
     panel = page.get_by_test_id("quick-apps-panel")
     for n in range(6):
         panel.get_by_test_id(f"quick-app-app{n}").check()
@@ -160,7 +161,11 @@ def test_ui_no_menu_for_members_or_old_tvs(
     page = open_page()
     _ui.ui_login(page, owner)
     expect(_ui.card(page, "Den TV").get_by_test_id("tv-quick-menu")).to_be_visible()
-    expect(_ui.card(page, "Old TV").get_by_test_id("tv-quick-menu")).to_have_count(0)
+    # A TV that cannot list its apps: the ⋯ menu has Name inputs only.
+    _ui.card(page, "Old TV").get_by_test_id("tv-quick-menu").click()
+    expect(page.get_by_test_id("tv-menu-input-names")).to_be_visible()
+    expect(page.get_by_test_id("tv-menu-quick-apps")).to_have_count(0)
+    page.get_by_test_id("tv-menu-close").click()
     member = make_user(owner.home_id, role="member")
     other = open_page()
     _ui.ui_login(other, member)

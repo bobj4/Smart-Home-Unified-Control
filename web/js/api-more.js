@@ -63,6 +63,9 @@ Object.assign(SmartHomeAPI.prototype, {
   markAlertsSeen(homeId) {
     return this.post(`/homes/${enc(homeId)}/alerts/feed/seen`);
   },
+  setInputNames(homeId, deviceId, names) {
+    return this.put(`/homes/${enc(homeId)}/devices/${enc(deviceId)}/input-names`, { names });
+  },
   dismissAllAlerts(homeId) {
     return this.del(`/homes/${enc(homeId)}/alerts/feed`);
   },
