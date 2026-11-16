@@ -438,6 +438,18 @@ body:has(.overlay:not([hidden])) .layout-open { display: none; }
 .bell-menu h3 { margin: 0 0 4px; }
 .bell-item { padding: 8px 0; border-top: 1px solid var(--border); display: grid; gap: 2px; }
 .bell-item p { margin: 0; }
+/* Dismiss: the X on a computer, a swipe on a phone (alert-bell.js). */
+.bell-item { position: relative; padding-right: 32px; touch-action: pan-y; transition: transform 0.18s ease, opacity 0.18s ease; }
+.bell-item.leaving { pointer-events: none; }
+.bell-menu .bell-dismiss { position: absolute; display: block; justify-content: center; background: transparent; top: 4px; right: 0; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; font-size: 1.2rem; line-height: 28px; color: var(--muted, #9aa0a6); }
+.bell-menu .bell-dismiss:hover { color: var(--text); background: var(--surface-2); }
+.bell-footer { display: flex; justify-content: center; padding-top: 10px; border-top: 1px solid var(--border); }
+.bell-hint { display: none; font-size: 0.8rem; margin: 0 0 4px; }
+@media (hover: none) and (pointer: coarse) {
+  .bell-menu .bell-dismiss { display: none; }
+  .bell-item { padding-right: 0; }
+  .bell-hint { display: block; }
+}
 .bell-item.new strong::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: #d93025; vertical-align: middle; }
 .bell-time { font-size: 0.8rem; }
 .topbar .nav { margin-left: auto; } /* the links sit beside the home's icon */

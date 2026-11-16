@@ -209,6 +209,30 @@ def bell_seen(
     return {"unseen": 0}
 
 
+@router.delete("/feed", dependencies=[Depends(require_csrf)])
+def bell_dismiss_all(
+    home_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """Clear my bell (others still see the alerts)."""
+    require_role(db, user.id, home_id)
+    alerts.dismiss_all(db, user.id, home_id)
+    return alerts.feed(db, user.id, home_id)
+
+
+@router.delete("/feed/{item_id}", dependencies=[Depends(require_csrf)])
+def bell_dismiss(
+    home_id: str,
+    item_id: int,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Take one alert off my bell (others still see it)."""
+    require_role(db, user.id, home_id)
+    if not alerts.dismiss(db, user.id, home_id, item_id):
+        raise HTTPException(404, "That alert is gone")
+    return alerts.feed(db, user.id, home_id)
+
+
 # ------------------------------------------------------------ this browser
 
 

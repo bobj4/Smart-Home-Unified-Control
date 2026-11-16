@@ -1,11 +1,48 @@
 /**
  * The bell at the top right, between Log out and the home's icon: how many
  * of this home's alerts came since you last looked (a red circle), and
- * their list. Opening the list counts them as seen. Checked every
- * CHECK_MS, and at once when another home is opened. Not shown to guests.
+ * their list. Opening the list counts them as seen. Each alert can be
+ * dismissed from your list: its X on a computer, a swipe on a phone, or all
+ * at once with Dismiss All at the bottom (others still see them). Checked every CHECK_MS, and at once when another home is
+ * opened. Not shown to guests.
  */
 
 const BELL_CHECK_MS = 30000;
+const SWIPE_PX = 80; // a swipe this far dismisses
+
+/** Swipe a row sideways (touch or pen) to call done(); short swipes spring back. */
+function swipeToDismiss(row, done) {
+  let start = null;
+  let dx = 0;
+  const reset = () => {
+    start = null;
+    row.style.transition = '';
+    row.style.transform = '';
+    row.style.opacity = '';
+  };
+  row.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' || e.target.closest('button')) return;
+    start = e.clientX;
+    dx = 0;
+    row.style.transition = 'none'; // follow the finger
+  });
+  row.addEventListener('pointermove', (e) => {
+    if (start === null) return;
+    dx = e.clientX - start;
+    row.style.transform = `translateX(${dx}px)`;
+    row.style.opacity = String(Math.max(0.2, 1 - Math.abs(dx) / 240));
+  });
+  row.addEventListener('pointerup', () => {
+    if (start === null) return;
+    if (Math.abs(dx) < SWIPE_PX) return reset();
+    start = null;
+    row.style.transition = '';
+    row.style.transform = `translateX(${dx > 0 ? '' : '-'}110%)`;
+    row.style.opacity = '0';
+    done();
+  });
+  row.addEventListener('pointercancel', reset); // the list scrolled instead
+}
 
 class AlertBell {
   constructor() {
@@ -20,7 +57,7 @@ class AlertBell {
     ]);
     this.menu = el('div', { className: 'home-menu bell-menu', testid: 'alert-bell-menu', role: 'dialog', 'aria-label': 'Alerts', hidden: true });
     this.button.addEventListener('click', () => (this.menu.hidden ? this.open() : this.close()));
-    document.addEventListener('click', (e) => { if (!this.menu.hidden && !this.menu.contains(e.target) && !this.button.contains(e.target)) this.close(); });
+    document.addEventListener('click', (e) => { if (!this.menu.hidden && e.target.isConnected && !this.menu.contains(e.target) && !this.button.contains(e.target)) this.close(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !this.menu.hidden) this.close(); });
     this.slot.append(this.button);
     document.body.append(this.menu);
@@ -66,11 +103,9 @@ class AlertBell {
     const items = (this.feed && this.feed.items) || [];
     this.menu.replaceChildren(
       el('h3', { text: 'Alerts' }),
-      ...(items.length ? items.map((a) => el('div', { className: `bell-item${a.new ? ' new' : ''}`, testid: 'alert-bell-item' }, [
-        el('strong', { text: a.title }),
-        el('p', { className: 'muted', text: a.body }),
-        el('p', { className: 'muted bell-time', text: formatTime(a.at) }),
-      ])) : [el('p', { className: 'muted', testid: 'alert-bell-empty', text: 'No alerts yet. Choose yours in My account > Alerts; the bell beside each device in Settings > Devices sets what it alerts about.' })]),
+      items.length ? el('p', { className: 'muted bell-hint', text: 'Swipe an alert to dismiss it.' }) : '',
+      ...(items.length ? items.map((a) => this.item(a)) : [this.empty()]),
+      items.length ? this.dismissAllButton() : '',
     );
     const box = this.button.getBoundingClientRect();
     this.menu.style.top = `${box.bottom + 6}px`;
@@ -90,6 +125,56 @@ class AlertBell {
 
   close() {
     this.menu.hidden = true;
+  }
+
+  empty() {
+    return el('p', { className: 'muted', testid: 'alert-bell-empty', text: 'No alerts yet. Choose yours in My account > Alerts; the bell beside each device in Settings > Devices sets what it alerts about.' });
+  }
+
+  item(a) {
+    const row = el('div', { className: `bell-item${a.new ? ' new' : ''}`, testid: 'alert-bell-item', 'data-alert-id': String(a.id) });
+    row.append(
+      el('button', { type: 'button', className: 'ghost bell-dismiss', testid: 'alert-bell-dismiss', 'aria-label': `Dismiss: ${a.title}`, text: '\u00d7', onclick: () => this.dismiss(row, a) }),
+      el('strong', { text: a.title }),
+      el('p', { className: 'muted', text: a.body }),
+      el('p', { className: 'muted bell-time', text: formatTime(a.at) }),
+    );
+    swipeToDismiss(row, () => this.dismiss(row, a));
+    return row;
+  }
+
+  dismissAllButton() {
+    return el('div', { className: 'bell-footer' }, [
+      el('button', {
+        type: 'button', className: 'secondary', testid: 'alert-bell-dismiss-all', text: 'Dismiss All',
+        onclick: () => this.app.run(async () => {
+          this.show(await this.app.api.dismissAllAlerts(this.home));
+          this.menu.querySelectorAll('[data-testid="alert-bell-item"], .bell-hint, .bell-footer').forEach((n) => n.remove());
+          this.menu.append(this.empty());
+        }),
+      }),
+    ]);
+  }
+
+  /** Off my list (the server keeps it for the others). */
+  async dismiss(row, a) {
+    row.classList.add('leaving');
+    try {
+      this.show(await this.app.api.dismissAlert(this.home, a.id));
+    } catch (error) {
+      if (error.status !== 404) { // 404: already gone
+        row.classList.remove('leaving');
+        row.style.transform = '';
+        row.style.opacity = '';
+        this.app.status.error(error.message || 'Could not dismiss the alert.');
+        return;
+      }
+    }
+    row.remove();
+    if (!this.menu.querySelector('[data-testid="alert-bell-item"]')) {
+      this.menu.querySelectorAll('.bell-hint, .bell-footer').forEach((n) => n.remove());
+      this.menu.append(this.empty());
+    }
   }
 }
 
