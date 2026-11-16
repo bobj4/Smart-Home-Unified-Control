@@ -8,6 +8,9 @@ refuses logins with HTTP 429 when they come too often.
 
 import asyncio
 import concurrent.futures
+import ipaddress
+import logging
+import re
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
@@ -23,6 +26,7 @@ from pyeconet.errors import (
     PyeconetError,
 )
 
+log = logging.getLogger(__name__)
 TIMEOUT_SECONDS = 30
 SESSION_SECONDS = 6 * 3600
 RATE_LIMITED = "Rheem is refusing logins for now (too many attempts). Wait 15 minutes, then try once."
@@ -61,7 +65,8 @@ class RheemHeater:
     wifi: int | None = None
     alerts: int = 0
     activity: str | None = None  # what Rheem reports the heater is doing
-    mac: str | None = None  # its Wi-Fi module's (EcoNet's "device_name")
+    mac: str | None = None  # its Wi-Fi module's, when EcoNet says (network_ids)
+    ip: str | None = None
 
     @property
     def status(self) -> str:
@@ -79,7 +84,7 @@ class RheemHeater:
             **{
                 k: v
                 for k, v in data.items()
-                if k not in ("serial", "name", "connected", "mac")
+                if k not in ("serial", "name", "connected", "mac", "ip")
             },
             "modes": list(self.modes),
             "status": self.status,
@@ -143,8 +148,46 @@ def heater_from_equipment(heater: WaterHeater) -> RheemHeater:
         wifi=_safe(lambda: heater.wifi_signal, None),
         alerts=int(_safe(lambda: heater.alert_count, 0) or 0),
         activity=_activity(_safe(lambda: heater.running_state, None)),
-        mac=module_mac(_safe(lambda: heater.device_id, None)),
+        **network_ids(heater),
     )
+
+
+_told: set[str] = set()  # heaters whose field names were logged
+MAC_WITH_SEPARATORS = re.compile(r"^[0-9A-Fa-f]{2}([:-][0-9A-Fa-f]{2}){5}$")
+
+
+def network_ids(heater: WaterHeater) -> dict[str, str | None]:
+    """{"mac", "ip"} of the heater's Wi-Fi module, from what EcoNet sends:
+    its device name when that is a MAC address, else any field named like a
+    MAC (or holding one written with separators), and any field named like
+    an IP holding a private address. Otherwise its field names (never their
+    values) are logged once, so a heater that says neither can be looked into."""
+    info = heater._equipment_info  # noqa: SLF001 - the raw EcoNet values
+    mac = module_mac(info.get("device_name"))
+    ip = None
+    for key, raw in info.items():
+        value = raw.get("value") if isinstance(raw, dict) else raw
+        if not isinstance(value, str):
+            continue
+        name = str(key).lower()
+        if mac is None and ("mac" in name or MAC_WITH_SEPARATORS.match(value.strip())):
+            mac = module_mac(value)
+        if ip is None and re.search(r"(^|[^a-z])ip", name):
+            try:
+                found = ipaddress.ip_address(value.strip())
+            except ValueError:
+                continue
+            if found.is_private and not found.is_loopback:
+                ip = str(found)
+    serial = str(info.get("serial_number"))
+    if mac is None and ip is None and serial not in _told:
+        _told.add(serial)  # once per heater while the server runs
+        log.info(
+            "EcoNet heater %s: no MAC or IP among its fields %s",
+            serial,
+            sorted(str(k) for k in info),
+        )
+    return {"mac": mac, "ip": ip}
 
 
 def module_mac(raw: Any) -> str | None:
