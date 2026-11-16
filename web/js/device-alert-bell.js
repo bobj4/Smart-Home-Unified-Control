@@ -3,7 +3,7 @@
  * Light grey: its alerts are on; red with a line through: off. A plain bell
  * only turns them on and off (a light, say); a bell with a plus opens the
  * device's alert settings (garage doors, water heaters, thermostats).
- * Each person still picks which alerts reach them in My account > Alerts.
+ * Each person still picks which alerts reach them in My Account > Alerts.
  */
 
 const ALERT_FIELDS = {
@@ -89,7 +89,7 @@ function openDeviceAlerts(app, device, cfg, draw) {
     ]),
     settingRow('Alerts for this device', 'Off: nothing about it is sent, whatever is set below.', master),
     settings,
-    el('p', { className: 'muted', text: 'Who gets them, and how: each person in My account > Alerts.' }),
+    el('p', { className: 'muted', text: 'Who gets them, and how: each person in My Account > Alerts.' }),
     note,
     el('button', { type: 'submit', testid: 'device-alerts-save', text: 'Save' }),
   ]);

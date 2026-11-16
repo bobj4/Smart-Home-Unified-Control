@@ -1,4 +1,4 @@
-"""A person's own picture behind the dashboard (My account > Appearance):
+"""A person's own picture behind the dashboard (My Account > Appearance):
 upload one (JPEG, PNG or WebP, up to 3 MB), switch it on or off, remove it."""
 
 import base64

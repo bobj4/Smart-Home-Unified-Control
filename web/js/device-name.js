@@ -28,7 +28,7 @@ class DeviceNamePopup {
     const error = el('p', { className: 'error', role: 'alert' });
     const form = el('form', { className: 'remote device-name-popup', testid: 'device-name-popup', role: 'dialog', 'aria-label': 'Name this device' }, [
       el('h2', { text: 'Name this device' }),
-      el('p', { className: 'muted', text: 'This device now skips the two-factor code. Give it a name you will recognise in My account > Approved devices.' }),
+      el('p', { className: 'muted', text: 'This device now skips the two-factor code. Give it a name you will recognise in My Account > Approved devices.' }),
       field('Name', name),
       error,
       el('button', { type: 'submit', testid: 'device-name-ok', text: 'Save name' }),

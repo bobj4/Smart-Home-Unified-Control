@@ -1,5 +1,5 @@
 /**
- * My account > Appearance > Background picture: a person's own picture
+ * My Account > Appearance > Background picture: a person's own picture
  * behind the app, switched on and off without losing it. Each person has
  * their own; it is only sent to them.
  */

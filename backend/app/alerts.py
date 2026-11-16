@@ -12,7 +12,7 @@ see app/device_alerts.py; camera labels are in Integrations > Frigate):
   temperature   a thermostat reads below too_cold or above too_hot
   camera        Frigate sees one of frigate_labels (a person, say)
 
-Each person picks the kinds they want and how (My account > Alerts):
+Each person picks the kinds they want and how (My Account > Alerts):
 nothing is sent until they do. One alert per episode: a door left open
 alerts once until it closes again. What is being watched lives in memory,
 so a restart starts each clock again.

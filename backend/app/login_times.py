@@ -30,7 +30,7 @@ from app.models import SystemSettings, TrustedDevice
 
 DAY = 24 * 60 * 60
 DEVICE_COOKIE = "trusted_device"
-DEVICE_PATH = "/api/v1"  # login, and My account (to mark "this device")
+DEVICE_PATH = "/api/v1"  # login, and My Account (to mark "this device")
 FOREVER_SECONDS = 10 * 365 * DAY  # "never expires": a cookie needs some max-age
 MAX_DAYS = 100_000  # any positive number, within what a date can hold
 TIMES = ("keep_logged_in_days", "remember_me_days", "remember_device_days")

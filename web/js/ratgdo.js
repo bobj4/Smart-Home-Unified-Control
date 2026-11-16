@@ -11,7 +11,7 @@ class RatgdoPanel {
   async render(container) {
     this.list = el('div', { className: 'member-list' });
     container.append(el('div', { className: 'subpanel', testid: 'ratgdo-doors' }, [
-      el('h3', { text: 'Garage doors (ratgdo)' }),
+      el('h3', { text: 'Garage Doors (ratgdo)' }),
       el('p', { className: 'muted', text: 'For a ratgdo running ESPHome, with its web server on and no web login. Its address is shown in your router or the ESPHome dashboard.' }),
       this.list,
       this.addForm(),

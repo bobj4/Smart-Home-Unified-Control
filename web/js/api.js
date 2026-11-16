@@ -211,7 +211,7 @@ class SmartHomeAPI {
     return this.get(`/homes/${enc(homeId)}/cameras/events?limit=24${query}`);
   }
 
-  // Activity log (owner only)
+  // Activity Log (owner only)
   getActivity(homeId, limit = 50) { return this.get(`/homes/${enc(homeId)}/audit?limit=${limit}`); }
 
   // Own account

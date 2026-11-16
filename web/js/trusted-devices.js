@@ -1,6 +1,6 @@
 /**
  * Approved devices ("Remember this device" at login: no two-factor code
- * needed there). My account lists your own; Admin lists everyone's in your
+ * needed there). My Account lists your own; Admin lists everyone's in your
  * homes, with whose each one is. Removing one means the code is asked for
  * again on that device.
  */

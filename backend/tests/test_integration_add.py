@@ -52,7 +52,7 @@ def test_ui_demo_devices_are_always_listed(open_page, owner):
     section = _ui.go_settings(page, "integrations")
     demo = _ui.integration_row(section, "simulated")
     demo.get_by_test_id("integration-toggle").uncheck()
-    expect(page.get_by_test_id("status")).to_contain_text("Demo devices off")
+    expect(page.get_by_test_id("status")).to_contain_text("Demo Devices off")
     page.reload()
     section = page.get_by_test_id("settings-integrations")
     expect(_ui.integration_row(section, "simulated")).to_be_visible()  # still listed

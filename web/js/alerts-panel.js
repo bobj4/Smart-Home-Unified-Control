@@ -1,5 +1,5 @@
 /**
- * My account > Alerts: which of this home's alerts I get, by email and as
+ * My Account > Alerts: which of this home's alerts I get, by email and as
  * notifications on this phone or computer. What each device alerts about
  * is set with its bell in Settings > Devices; cameras in Integrations >
  * Frigate.

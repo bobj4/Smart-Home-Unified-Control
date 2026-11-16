@@ -415,11 +415,11 @@ class SystemSettings(Base):
     )
     cert_import_source: Mapped[str | None] = mapped_column(String(300))
     cert_imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # People may change their own name and email (My account).
+    # People may change their own name and email (My Account).
     users_edit_own_info: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa_false()
     )
-    # Settings > Activity log: also record integration detail (app/verbose.py).
+    # Settings > Activity Log: also record integration detail (app/verbose.py).
     verbose_logging: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa_false()
     )
@@ -599,7 +599,7 @@ class GuestAccess(Base):
         Boolean, default=False, server_default=sa_false()
     )
     thermostat_ids: Mapped[str] = mapped_column(Text, default="[]")  # JSON list
-    # With cameras: only these Frigate cameras (JSON list; empty: every one).
+    # With cameras: only these Frigate Cameras (JSON list; empty: every one).
     camera_names: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
     # Run the home's scenes (Schedules and Scenes), whatever their devices.
     scenes: Mapped[bool] = mapped_column(
@@ -735,7 +735,7 @@ class DeviceAlert(Base):
 
 
 class AlertPrefs(Base):
-    """What one person wants from a home's alerts (My account > Alerts):
+    """What one person wants from a home's alerts (My Account > Alerts):
     kinds is a JSON list (see app/alerts.py KINDS); nothing until chosen."""
 
     __tablename__ = "alert_prefs"

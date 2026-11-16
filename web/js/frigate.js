@@ -48,7 +48,7 @@ class FrigatePanel {
       });
     });
     box.replaceChildren(
-      el('h3', { text: 'Frigate server' }),
+      el('h3', { text: 'Frigate Server' }),
       el('p', { className: 'muted', testid: 'frigate-configured', text: server.configured ? `Connected to ${server.url}${server.username ? ` as ${server.username}` : ''}` : 'Not set up yet.' }),
       form,
       await this.alertLabels(),
@@ -67,7 +67,7 @@ class FrigatePanel {
 }
 
 /** Camera alerts: what Frigate must see (alerts.py; each person picks
- * "A camera sees someone" in My account > Alerts). */
+ * "A camera sees someone" in My Account > Alerts). */
 FrigatePanel.prototype.alertLabels = async function alertLabels() {
   const data = await this.app.api.getAlerts(this.app.home.id).catch(() => null);
   if (!data) return '';
