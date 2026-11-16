@@ -26,6 +26,26 @@ class SmartThingsDenied(SmartThingsError):
     """The token is wrong, expired or lacks a permission."""
 
 
+class SmartThingsBusy(SmartThingsError):
+    """SmartThings is limiting requests (HTTP 429): too many for now."""
+
+
+def _busy(response: requests.Response) -> SmartThingsBusy:
+    """What to tell the person when SmartThings answers 429, with how long
+    to wait when it says (Retry-After, in seconds)."""
+    wait = "a few minutes"
+    try:
+        seconds = int(response.headers.get("Retry-After", ""))
+    except ValueError:
+        seconds = 0
+    if seconds > 0:
+        minutes = max(1, round(seconds / 60))
+        wait = f"about {minutes} minute{'s' if minutes != 1 else ''}"
+    return SmartThingsBusy(
+        f"SmartThings is limiting requests for now (too many): try again in {wait}"
+    )
+
+
 def _call(method: str, path: str, token: str, body: Any = None) -> Any:
     try:
         response = requests.request(
@@ -41,6 +61,8 @@ def _call(method: str, path: str, token: str, body: Any = None) -> Any:
         ) from None
     if response.status_code in (401, 403):
         raise SmartThingsDenied("SmartThings refused the token")
+    if response.status_code == 429:
+        raise _busy(response)
     if response.status_code >= 400:
         raise SmartThingsError(f"SmartThings answered {response.status_code}")
     return response.json() if response.content else None
@@ -159,6 +181,8 @@ def token_request(
         raise SmartThingsDenied(
             "SmartThings refused the sign-in: connect SmartThings again"
         )
+    if response.status_code == 429:
+        raise _busy(response)
     if response.status_code >= 400:
         raise SmartThingsError(f"SmartThings answered {response.status_code}")
     try:
@@ -221,6 +245,8 @@ def register_app(token: str, redirect_uri: str, suffix: str) -> dict[str, str]:
         raise SmartThingsError(
             f"could not reach SmartThings: {type(error).__name__}"
         ) from None
+    if response.status_code == 429:
+        raise _busy(response)
     if response.status_code in (401, 403):
         why = _detail(response)  # Samsung's own words, to tell the cases apart
         raise SmartThingsDenied(

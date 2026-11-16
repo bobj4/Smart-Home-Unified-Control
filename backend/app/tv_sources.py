@@ -36,6 +36,8 @@ def _guard(action: Any) -> Any:
             if str(error) in ours
             else "SmartThings refused the sign-in: connect it again in Settings > Integrations",
         ) from None
+    except smartthings.SmartThingsBusy as error:
+        raise SourcesUnavailable(429, str(error)) from None
     except smartthings.SmartThingsError as error:
         raise SourcesUnavailable(502, str(error)) from None
 
@@ -71,6 +73,7 @@ def connect(db: Session, home_id: str, token: str) -> list[dict[str, str]]:
 
 def disconnect(db: Session, home_id: str) -> None:
     credentials.remove(db, home_id, CREDENTIAL)
+    _listed.pop(home_id, None)
 
 
 def _call(db: Session, home_id: str, action: Any) -> Any:
@@ -85,15 +88,35 @@ def _call(db: Session, home_id: str, action: Any) -> Any:
             token = smartthings_oauth.rejected(db, home_id, token)
         except smartthings.SmartThingsDenied as why:
             raise SourcesUnavailable(409, str(why)) from None
+        except smartthings.SmartThingsBusy as error:
+            raise SourcesUnavailable(429, str(error)) from None
         except smartthings.SmartThingsError as error:
             raise SourcesUnavailable(502, str(error)) from None
         return _guard(lambda: action(token))
+    except smartthings.SmartThingsBusy as error:
+        raise SourcesUnavailable(429, str(error)) from None
     except smartthings.SmartThingsError as error:
         raise SourcesUnavailable(502, str(error)) from None
 
 
+LIST_SECONDS = 60  # the account's TV list, reused this long (pages redraw often)
+# home id -> (when listed, with which token, the TVs)
+_listed: dict[str, tuple[float, str, list[dict[str, str]]]] = {}
+
+
 def smartthings_tvs(db: Session, home_id: str) -> list[dict[str, str]]:
-    return list(_call(db, home_id, smartthings.tvs))
+    """The account's TVs. Reused for LIST_SECONDS with the same token: Settings
+    redraws every few seconds, and SmartThings limits how often it is asked."""
+
+    def tvs(token: str) -> list[dict[str, str]]:
+        seen = _listed.get(home_id)
+        if seen and seen[1] == token and time.monotonic() - seen[0] < LIST_SECONDS:
+            return list(seen[2])
+        found = list(smartthings.tvs(token))
+        _listed[home_id] = (time.monotonic(), token, found)
+        return found
+
+    return list(_call(db, home_id, tvs))
 
 
 def linked_id(device: Device) -> str | None:
