@@ -8,10 +8,12 @@ import concurrent.futures
 import ipaddress
 import re
 import socket
+from pathlib import Path
 from typing import Any
 
 import requests
 
+from app import neighbors
 from app.integrations import roku
 
 PORTS = (8001, 8060, 3001, 3000)
@@ -25,16 +27,37 @@ class ScanError(Exception):
     """The network given cannot be searched."""
 
 
+DOCKER_NETWORKS = ipaddress.IPv4Network("172.16.0.0/12")
+
+
+def server_network() -> ipaddress.IPv4Network | None:
+    """The /24 the server itself is on, when that is the home network
+    (installed directly, or Docker sharing the host's network); None inside
+    Docker's own network, where there are no TVs."""
+    net = neighbors.own_network()
+    if net is None:
+        return None
+    if Path("/.dockerenv").exists() and net.subnet_of(DOCKER_NETWORKS):
+        return None
+    return net
+
+
 def network_for(text: str | None, client: str | None) -> ipaddress.IPv4Network:
     """The network to search: the one given, else the /24 of the browser's
-    address when it is on the home network."""
+    address when it is on the home network, else the server's own (the
+    browser reached it through a VPN, the internet or a proxy)."""
     try:
         if text:
             net = ipaddress.ip_network(text.strip(), strict=False)
         elif client:
             net = ipaddress.ip_network(f"{client}/24", strict=False)
         else:
-            raise ScanError("give the network to search, for example 192.168.1.0/24")
+            found = server_network()
+            if found is None:
+                raise ScanError(
+                    "give the network to search, for example 192.168.1.0/24"
+                )
+            net = found
     except ValueError:
         raise ScanError("not a network: use the form 192.168.1.0/24") from None
     if (

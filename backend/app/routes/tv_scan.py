@@ -38,7 +38,10 @@ def find_tvs(
     require_role(db, user.id, home_id, Role.OPERATOR)
     ip = client_ip(request)
     try:
-        client = ip if ip and ipaddress.ip_address(ip).is_private else None
+        address = ipaddress.ip_address(ip) if ip else None
+        # On the home network: not this server itself (behind its own proxy).
+        home = address is not None and address.is_private and not address.is_loopback
+        client = ip if home else None
     except ValueError:  # not an address (a test client, a proxy's name)
         client = None
     try:
