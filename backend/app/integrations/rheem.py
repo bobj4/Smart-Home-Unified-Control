@@ -61,6 +61,7 @@ class RheemHeater:
     wifi: int | None = None
     alerts: int = 0
     activity: str | None = None  # what Rheem reports the heater is doing
+    mac: str | None = None  # its Wi-Fi module's (EcoNet's "device_name")
 
     @property
     def status(self) -> str:
@@ -78,7 +79,7 @@ class RheemHeater:
             **{
                 k: v
                 for k, v in data.items()
-                if k not in ("serial", "name", "connected")
+                if k not in ("serial", "name", "connected", "mac")
             },
             "modes": list(self.modes),
             "status": self.status,
@@ -142,7 +143,17 @@ def heater_from_equipment(heater: WaterHeater) -> RheemHeater:
         wifi=_safe(lambda: heater.wifi_signal, None),
         alerts=int(_safe(lambda: heater.alert_count, 0) or 0),
         activity=_activity(_safe(lambda: heater.running_state, None)),
+        mac=module_mac(_safe(lambda: heater.device_id, None)),
     )
+
+
+def module_mac(raw: Any) -> str | None:
+    """EcoNet names a heater's Wi-Fi module by its MAC address
+    ("80-91-33-8A-12-34"): as AA:BB:CC:DD:EE:FF, or None if it is not one."""
+    text = str(raw or "").replace(":", "").replace("-", "").strip().upper()
+    if len(text) != 12 or any(c not in "0123456789ABCDEF" for c in text):
+        return None
+    return ":".join(text[i : i + 2] for i in range(0, 12, 2))
 
 
 IDLE_WORDS = ("idle", "off", "standby", "not running", "waiting", "none", "false")

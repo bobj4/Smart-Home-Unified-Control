@@ -1,6 +1,6 @@
 """Cync: a bulb whose wall switch is turned off (or on again) shows offline
 (or back) within seconds, from the live connection's reports; wall switches
-show as "Light Switch"."""
+show as "Switch"."""
 
 import json
 from types import SimpleNamespace
@@ -124,11 +124,12 @@ def test_ui_light_switch_label(open_page, db, owner, make_device):
     hall = hall.id
     page = open_page()
     _ui.ui_login(page, owner)
-    expect(_ui.card(page, "Hall switch")).to_contain_text("Light Switch")
+    expect(_ui.card(page, "Hall switch")).to_contain_text("Switch")
+    expect(_ui.card(page, "Hall switch")).not_to_contain_text("Plug")
     panel = _ui.go_settings(page, "devices")
     row = panel.locator(f'[data-testid="device-row"][data-device-id="{hall}"]')
-    expect(row.locator(".device-kind")).to_contain_text("Light Switch")
+    expect(row.locator(".device-kind")).to_contain_text("Switch")
     panel.get_by_test_id("device-filter").select_option("switch")
     expect(panel.locator('[data-testid="device-row"]:visible')).to_have_count(1)
-    panel.get_by_test_id("device-search").fill("light switch")
+    panel.get_by_test_id("device-search").fill("switch")
     expect(row).to_be_visible()

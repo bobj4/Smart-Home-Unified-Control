@@ -65,7 +65,7 @@ class CyncDeviceInfo:
     color: bool
     mac: str | None = None
     cloud_id: int | None = None  # the thermostat's id in Cync's cloud
-    switch: bool = False  # a wall switch or dimmer ("Light Switch")
+    switch: bool = False  # a wall switch or dimmer (shown as "Switch")
 
 
 def _tokens(user: Any) -> dict[str, Any]:

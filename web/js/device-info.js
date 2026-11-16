@@ -12,7 +12,7 @@ class DeviceInfoPanel {
     const net = device.network || {};
     const line = (label, value, missing = 'not reported by the device') => el('div', { className: 'info-line' }, [el('dt', { text: label }), el('dd', { text: value || missing })]);
     // Brands without an address of their own on the network.
-    const noAddress = { cync: 'not found (Cync reports only the MAC)', hue: 'none (Zigbee, through the Hue Bridge)', rheem_econet: 'not reported (EcoNet cloud)', simulated: 'not reported by the device (demo)' };
+    const noAddress = { cync: 'not found (Cync reports only the MAC)', hue: 'none (Zigbee, through the Hue Bridge)', simulated: 'not reported by the device (demo)' };
     this.overlay.replaceChildren(el('div', { className: 'remote info-panel', testid: 'device-info-panel', role: 'dialog', 'aria-label': `${device.name} network details` }, [
       el('div', { className: 'remote-head' }, [
         el('h2', { text: device.name }),
