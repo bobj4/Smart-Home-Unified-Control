@@ -96,9 +96,12 @@ def sync(db: Session, home_id: str, keep_when_empty: bool = True) -> dict[str, i
         else:
             updated += 1
         device.state = json.dumps(heater.state())
-        if heater.mac:  # the IP is then found from it (routes/devices._network)
+        # Its Wi-Fi module's addresses, when EcoNet says (the IP is otherwise
+        # found from the MAC: routes/devices._network).
+        found = {k: v for k, v in (("mac", heater.mac), ("ip", heater.ip)) if v}
+        if found:
             caps = json.loads(device.capabilities or "{}")
-            device.capabilities = json.dumps({**caps, "mac": heater.mac})
+            device.capabilities = json.dumps({**caps, **found})
         device.online = heater.connected
         device.last_updated = utcnow()
     for device in existing.values():
