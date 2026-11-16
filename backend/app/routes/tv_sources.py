@@ -105,7 +105,7 @@ def get_smartthings(
         try:
             found = smartthings_tvs(db, home_id)
         except SourcesUnavailable as error:
-            if error.status_code != 409:
+            if error.status_code not in (409, 429):  # 429: SmartThings busy for now
                 raise HTTPException(error.status_code, error.reason) from None
             how = {
                 **status(saved_login(db, home_id)),
