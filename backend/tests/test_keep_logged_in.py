@@ -129,3 +129,12 @@ def test_ui_remember_me_and_keep_logged_in(open_page, db, owner):
     expect(page.get_by_test_id("login-page")).to_be_visible()
     page.reload()
     expect(page.get_by_test_id("login-email")).to_have_value("")
+
+
+def test_remember_me_keeps_the_accounts_own_login_name(client, owner):
+    """The cookie holds the account's email as saved, not what was typed
+    (logins match without regard to case or spaces)."""
+    typed = {**body(owner, owner.totp.now(), remember_me=True)}
+    typed["email"] = f"  {owner.email.upper()} "
+    assert client.post(LOGIN, json=typed).status_code == 200
+    assert client.get("/api/v1/auth/remembered").json()["login"] == owner.email

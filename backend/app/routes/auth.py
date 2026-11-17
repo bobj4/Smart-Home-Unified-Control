@@ -171,9 +171,11 @@ def login(
             samesite="strict",
         )
     if body.remember_me and remember_for is not None:
+        # The account's own login name, from the database (not what was typed:
+        # matched without regard to case, and never request data in a cookie).
         response.set_cookie(
             REMEMBER_COOKIE,
-            body.email.strip(),
+            user.email,
             max_age=remember_for,
             path="/api/v1/auth",
             secure=True,
