@@ -7,7 +7,8 @@
 #
 # One-time setup (see packaging/README.md): the secrets PACKAGE_GPG_KEY (an
 # armored private key) and PACKAGE_GPG_PASSPHRASE, and Pages set to deploy
-# from the gh-pages branch.
+# from the gh-pages branch. Until the key is there (or in a fork), the run
+# says so and builds nothing, instead of failing.
 name: packages
 
 on:
@@ -27,9 +28,23 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
+      - name: Signing key set up?
+        id: ready
+        env:
+          KEY: ${{ secrets.PACKAGE_GPG_KEY }}
+        run: |
+          if [[ -n "$KEY" ]]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Packages not built::No PACKAGE_GPG_KEY secret yet: see packaging/README.md (One-time setup)."
+          fi
+
       - uses: actions/checkout@v5
+        if: steps.ready.outputs.ok == 'true'
 
       - name: Version and channel
+        if: steps.ready.outputs.ok == 'true'
         id: version
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
@@ -41,6 +56,7 @@ jobs:
           fi
 
       - name: Signing key
+        if: steps.ready.outputs.ok == 'true'
         env:
           KEY: ${{ secrets.PACKAGE_GPG_KEY }}
         run: |
@@ -48,6 +64,7 @@ jobs:
           gpg --batch --import "$RUNNER_TEMP/key.asc"
 
       - name: Build packages
+        if: steps.ready.outputs.ok == 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
           RELEASE: "1"
@@ -63,6 +80,7 @@ jobs:
           ls -l dist
 
       - name: Repository metadata
+        if: steps.ready.outputs.ok == 'true'
         env:
           CHANNEL: ${{ steps.version.outputs.channel }}
           PASSPHRASE: ${{ secrets.PACKAGE_GPG_PASSPHRASE }}
@@ -84,6 +102,7 @@ jobs:
           echo "site=$site" >> "$GITHUB_ENV"
 
       - name: Publish to GitHub Pages
+        if: steps.ready.outputs.ok == 'true'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
