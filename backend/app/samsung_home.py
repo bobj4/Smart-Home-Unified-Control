@@ -214,6 +214,12 @@ def send_tv_command(
     try:
         if command in ("turn_on", "turn_off"):  # one key both ways: see tv_power
             state = tv_power.power_state(host, protocol)
+            if (
+                state == "on"
+                and tv_power.unreported(device)
+                and not tv_power.shown_on(device)
+            ):
+                state = "standby"  # says "on" even when off: off as the app left it
             step = tv_power.plan(command, state, settings["mac"])
             # Not answering at all (off, not in network standby): Samsung's
             # cloud as well, as a wake-up packet often cannot reach the TV.

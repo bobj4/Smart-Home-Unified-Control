@@ -30,6 +30,9 @@ backs up the database, rebuilds the app and restarts it.
 4. Settings > Pages > Build and deployment: Deploy from a branch,
    `gh-pages`, `/ (root)`.
 
+Until step 2 is done the workflow builds nothing: its run passes with a
+note saying the signing key is missing (so it never fails a pull request).
+
 ## Installing on a server
 
     curl -fsSL https://bobj4.github.io/Smart-Home-Unified-Control/install.sh | sudo bash -s -- dev

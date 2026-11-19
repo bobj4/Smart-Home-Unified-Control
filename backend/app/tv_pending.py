@@ -15,6 +15,7 @@ from collections.abc import Iterable
 
 from sqlalchemy.orm import Session
 
+from app import tv_power
 from app.integrations import lg, roku, samsung
 from app.models import Device, utcnow
 
@@ -30,6 +31,8 @@ _pending: dict[str, tuple[bool, float, float]] = {}
 
 def start(device: Device, command: str) -> None:
     """After a power command was sent to a real TV."""
+    if command == "turn_off" and tv_power.unreported(device):
+        return  # it cannot say it is off (tv_power): the command's "off" stands
     if device.integration in REAL and command in ("turn_on", "turn_off"):
         now = time.monotonic()
         _pending[device.id] = (command == "turn_on", now, now)
@@ -51,6 +54,28 @@ def pending(device_id: str) -> str | None:
         _pending.pop(device_id, None)  # the TV never said: its real state shows
         return None
     return "on" if entry[0] else "off"
+
+
+def learned(device: Device, on: bool | None) -> bool:
+    """A Samsung TV turned off by the app that still says "on" after
+    LEARN_SECONDS does not report off (tv_power): noted, shown off as the
+    command left it, and the wait ends. Returns whether that happened."""
+    entry = _pending.get(device.id)
+    if (
+        entry is None
+        or entry[0]
+        or on is not True
+        or device.integration != "samsung_tv"
+        or time.monotonic() - entry[1] < tv_power.LEARN_SECONDS
+    ):
+        return False
+    tv_power.note_unreported(device, True)
+    state = json.loads(device.state or "{}")
+    device.state = json.dumps({**state, "on": False, "reachable": True})
+    device.last_updated = utcnow()
+    _pending.pop(device.id, None)
+    log.info("%s says on while off: its power state now follows the app", device.name)
+    return True
 
 
 def _is_on(device: Device) -> bool | None:
@@ -87,6 +112,8 @@ def check(db: Session, devices: Iterable[Device]) -> None:
             device.state = json.dumps({**state, "on": on, "reachable": True})
             device.last_updated = utcnow()
             _pending.pop(device.id, None)
+            changed = True
+        elif learned(device, on):
             changed = True
     if changed:
         db.commit()

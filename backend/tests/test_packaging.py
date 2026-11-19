@@ -28,6 +28,12 @@ def test_workflow_publishes_both_channels():
     assert "branches: [dev]" in text and 'tags: ["v*"]' in text
     assert "createrepo_c" in text and "InRelease" in text and "KEY.asc" in text
     assert "keep_files: true" in text  # one channel never wipes the other
+    # Without the signing key (not set up yet, or a fork) it builds nothing
+    # and says so, instead of failing every push.
+    steps = text.split("\n      - ")[1:]
+    assert steps[0].startswith("name: Signing key set up?")
+    for step in steps[1:]:
+        assert "if: steps.ready.outputs.ok == 'true'" in step, step.splitlines()[0]
     # Every action is pinned to a version.
     for uses in re.findall(r"uses: (\S+)", text):
         assert re.search(r"@v\d", uses), uses

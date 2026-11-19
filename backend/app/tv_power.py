@@ -9,19 +9,48 @@ it will do the right thing:
 - off: a TV in standby gets the key (it wakes at once); one that does not
   answer at all gets the Wake-on-LAN packet when its MAC address is known.
 
+Some TVs (a 2020 TU7000, for one) say "on" even when turned off with the
+power key, in a state that wakes with the same key. Once the app has turned
+one off and it still says "on" after LEARN_SECONDS, it is noted as one that
+does not report off ("power_unreported"): from then on its on/off is what
+the app's own power button made it (it stops answering at all: off; it
+says "standby" after all: noted again as reporting).
+
 The Wake-on-LAN packet goes to the whole network (255.255.255.255), to the
 TV's own subnet (a.b.c.255) and to the TV itself: from inside Docker the
 first one stays inside the container's network, the other two reach the TV.
 """
 
 import ipaddress
+import json
 import socket
 
 import requests
 
 from app.integrations import samsung
+from app.models import Device
 
 STATE_SECONDS = 1.5
+LEARN_SECONDS = 20  # turned off, still "on" this long: it does not report off
+
+
+def unreported(device: Device) -> bool:
+    """Whether this TV was found to say "on" even when off."""
+    return bool(json.loads(device.capabilities or "{}").get("power_unreported"))
+
+
+def note_unreported(device: Device, value: bool) -> None:
+    caps = json.loads(device.capabilities or "{}")
+    if bool(caps.get("power_unreported")) != value:
+        if value:
+            caps["power_unreported"] = True
+        else:
+            caps.pop("power_unreported", None)
+        device.capabilities = json.dumps(caps)
+
+
+def shown_on(device: Device) -> bool:
+    return bool(json.loads(device.state or "{}").get("on"))
 
 
 def power_state(host: str, protocol: str) -> str | None:
