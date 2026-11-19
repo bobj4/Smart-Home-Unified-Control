@@ -54,13 +54,27 @@ def refresh_tvs(db: Session, home_id: str) -> int:
             continue
         host, protocol = str(tv.external_id), settings["protocol"]
         on = samsung.is_on(host, protocol)
+        if tv_pending.learned(tv, on):
+            changed += 1
+            continue
+        said = None
+        if tv_power.unreported(tv):
+            # Says "on" even when off (tv_power): as the app's power button
+            # left it, while it answers; "standby" after all means it
+            # reports off again.
+            said = tv_power.power_state(host, protocol)
+            if said == "standby":
+                tv_power.note_unreported(tv, False)
+            elif on:
+                on = tv_power.shown_on(tv)
         # Off but answering (2018+ network standby), or not answering but
         # still online in SmartThings (it can turn it on): only a TV neither
         # way is greyed out. It stays "online", as one that can be woken
         # (Wake-on-LAN) still takes the power button.
         reachable = (
             on
-            or tv_power.power_state(host, protocol) == "standby"
+            or said == "on"  # one that says "on" even when off: it answers
+            or (said or tv_power.power_state(host, protocol)) == "standby"
             or tv_sources.cloud_online(db, tv)
         )
         tv_pending.seen(tv.id, on)
