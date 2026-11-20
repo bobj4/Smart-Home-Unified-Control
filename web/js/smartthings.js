@@ -113,7 +113,7 @@ class SmartThingsPanel {
   }
 
   draw(info, tvs) {
-    const intro = el('p', { className: 'muted', text: 'Optional. Lets each TV\'s remote list its inputs by name and switch to one directly.' });
+    const intro = el('p', { className: 'muted', text: 'Optional. Lets each TV\'s remote list its inputs by name and switch to one directly. SmartThings now needs a paid SmartThings API plan to stay connected; without it, name the inputs yourself in the TV\'s ⋯ menu (Name inputs).' });
     const problem = info.problem ? el('p', { className: 'error', testid: 'smartthings-problem', text: info.problem }) : '';
     if (!info.connected) {
       const token = el('input', { type: 'password', testid: 'smartthings-token', autocomplete: 'off', required: true, minlength: '10', maxlength: '200' });

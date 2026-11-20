@@ -42,7 +42,7 @@ def require_role(
     ):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
-            "This home requires two-factor login. Turn it on in My account.",
+            "This home requires two-factor login. Turn it on in My Account.",
         )
     return membership
 
