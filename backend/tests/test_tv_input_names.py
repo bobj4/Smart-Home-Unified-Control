@@ -66,6 +66,7 @@ def test_ui_name_inputs_and_switch(open_page, db, owner, make_device):
     remote = _ui.open_remote(page, "Living room TV")
     remote.get_by_test_id("remote-power").click()
     choice = remote.get_by_test_id("remote-input")
+    expect(choice).to_be_enabled(timeout=15000)  # on (a slower computer: give it time)
     expect(choice.locator('option[value="hdmi2"]')).to_have_text("PlayStation (HDMI 2)")
     expect(choice.locator('option[value="hdmi1"]')).to_have_text("HDMI 1")
     choice.select_option("hdmi2")
