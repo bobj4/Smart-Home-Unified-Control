@@ -8,7 +8,9 @@ password, then click **Log in**.
 - **Two-factor login**: if you have it on (or the home requires it), enter
   the code from your authenticator app, or one of your recovery codes.
 - **Remember this device**: tick it to skip the code on this device; it
-  then shows, with a name you choose, in **My Account › Approved devices**.
+  then shows, with a name you choose (suggested as your name and the
+  device, such as "Vulture's Samsung S26"), in **My Account › Approved
+  devices**.
 - **Keep me logged in**: stay logged in on this device for as long as an
   admin allows.
 - **Forgot your password?**: ask an admin for a reset code, then follow
@@ -28,7 +30,11 @@ password, then click **Log in**.
 - **Bell**: your alerts, with a red count of the ones you have not seen.
   Dismiss one with its **×** (on a computer) or by swiping it left or
   right (on a phone); **Dismiss All** at the bottom clears your list. Only
-  your list: everyone else still sees them.
+  your list: everyone else still sees them. With nothing in it, it says
+  "No notifications".
+- **Air filter due**: a thermostat's filter reminder stays at the top of the
+  bell (it cannot be dismissed) until the filter is changed. Operators and
+  admins press **Changed Filter** in it to start the count again.
 - **Home**: switch between homes (when you have more than one).
 
 ## Devices
@@ -44,7 +50,9 @@ layout**, separately for phones and wide screens) and filtered by type or
 - **Groups**: lights and plugs switched together; the group's **⋯**
   reaches each device in it.
 - **Thermostats and water heaters**: on a page of their own. Targets stay
-  within the home's safety limits.
+  within the home's safety limits. A Cync thermostat's **Settings** has an
+  **Air filter** reminder among its installer settings (after so many run
+  hours or days); its Info shows the time left.
 - **Garage doors** (ratgdo): open, close and stop on the Doors page, with
   the opener light, remote lockout, obstruction warning and, on a ratgdo32
   disco, the parking-assist laser.

@@ -443,6 +443,7 @@ body:has(.overlay:not([hidden])) .layout-open { display: none; }
 .bell-item.leaving { pointer-events: none; }
 .bell-menu .bell-dismiss { position: absolute; display: block; justify-content: center; background: transparent; top: 4px; right: 0; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; font-size: 1.2rem; line-height: 28px; color: var(--muted, #9aa0a6); }
 .bell-menu .bell-dismiss:hover { color: var(--text); background: var(--surface-2); }
+.bell-item.sticky { border-left: 3px solid var(--warning, #d9822b); padding-left: 8px; display: grid; gap: 4px; justify-items: start; }
 .bell-footer { display: flex; justify-content: center; padding-top: 10px; border-top: 1px solid var(--border); }
 .bell-hint { display: none; font-size: 0.8rem; margin: 0 0 4px; }
 @media (hover: none) and (pointer: coarse) {

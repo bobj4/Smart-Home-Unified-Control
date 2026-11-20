@@ -734,6 +734,29 @@ class DeviceAlert(Base):
     )
 
 
+class FilterReminder(Base):
+    """A thermostat's air-filter reminder (its installer settings): every so
+    many run hours or days since the filter was last changed. When due, the
+    bell shows it until someone presses Changed Filter (app/filter_reminders.py)."""
+
+    __tablename__ = "filter_reminders"
+
+    device_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("devices.id", ondelete="CASCADE"), primary_key=True
+    )
+    mode: Mapped[str] = mapped_column(String(10), default="off")  # off, hours, days
+    every: Mapped[int] = mapped_column(Integer, default=90)
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+    # The thermostat's own filter run-time counter when it was changed.
+    runtime_at_change: Mapped[float | None] = mapped_column(Float, nullable=True)
+    notified: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
 class AlertPrefs(Base):
     """What one person wants from a home's alerts (My Account > Alerts):
     kinds is a JSON list (see app/alerts.py KINDS); nothing until chosen."""

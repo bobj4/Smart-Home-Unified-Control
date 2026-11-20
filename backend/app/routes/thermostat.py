@@ -14,12 +14,13 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, Stri
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import filter_reminders
 from app.audit import record_event
 from app.authorization import require_role
 from app.cync_home import CyncUnavailable
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
-from app.models import Device, User
+from app.models import Device, Role, User
 from app.routes.devices import CommandRejected, _device_bounds, _limits
 from app.routes.thermostat_access import may_change_installer
 from app.thermostat_history import history
@@ -168,7 +169,11 @@ def thermostat_settings(
         result = read_settings(db, device, refresh)
     except CyncUnavailable as error:
         raise HTTPException(error.status_code, error.reason) from None
-    return {**result, "installer_allowed": may_change_installer(db, user, home_id)}
+    return {
+        **result,
+        "installer_allowed": may_change_installer(db, user, home_id),
+        "filter": filter_reminders.for_device(db, device),
+    }
 
 
 @router.put("/{device_id}/settings", dependencies=[Depends(require_csrf)])
@@ -213,7 +218,96 @@ def save_thermostat_settings(
         ip_address=client_ip(request),
         details=details,
     )
-    return {**result, "installer_allowed": may_change_installer(db, user, home_id)}
+    return {
+        **result,
+        "installer_allowed": may_change_installer(db, user, home_id),
+        "filter": filter_reminders.for_device(db, device),
+    }
+
+
+def _any_thermostat(db: Session, home_id: str, device_id: str) -> Device:
+    device = db.scalars(
+        select(Device).where(Device.id == device_id, Device.home_id == home_id)
+    ).first()
+    if device is None or device.type != "thermostat":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    return device
+
+
+class FilterIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["off", "hours", "days"]
+    every: StrictInt | None = None
+
+
+@router.get("/{device_id}/filter")
+def get_filter(
+    home_id: str,
+    device_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """The air-filter reminder and the time left (filter_reminders.py)."""
+    require_role(db, user.id, home_id)
+    return filter_reminders.for_device(db, _any_thermostat(db, home_id, device_id))
+
+
+@router.put("/{device_id}/filter", dependencies=[Depends(require_csrf)])
+def save_filter(
+    home_id: str,
+    device_id: str,
+    body: FilterIn,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """An installer setting: who may is chosen in Safety Settings."""
+    require_role(db, user.id, home_id)
+    device = _any_thermostat(db, home_id, device_id)
+    if not may_change_installer(db, user, home_id):
+        raise HTTPException(
+            403, "Only people allowed in Settings > Safety Settings can change this"
+        )
+    try:
+        shown = filter_reminders.save(db, device, body.mode, body.every)
+    except filter_reminders.FilterError as error:
+        raise HTTPException(422, str(error)) from None
+    record_event(
+        db,
+        "filter_reminder_saved",
+        user_id=user.id,
+        home_id=home_id,
+        ip_address=client_ip(request),
+        details={"device_id": device.id, "mode": body.mode, "every": shown["every"]},
+    )
+    return shown
+
+
+@router.post("/{device_id}/filter/changed", dependencies=[Depends(require_csrf)])
+def filter_changed(
+    home_id: str,
+    device_id: str,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Changed Filter (operators and admins): counting starts again, and the
+    bell's notice goes."""
+    require_role(db, user.id, home_id, Role.OPERATOR)
+    device = _any_thermostat(db, home_id, device_id)
+    try:
+        shown = filter_reminders.changed(db, device)
+    except filter_reminders.FilterError as error:
+        raise HTTPException(409, str(error)) from None
+    record_event(
+        db,
+        "filter_changed",
+        user_id=user.id,
+        home_id=home_id,
+        ip_address=client_ip(request),
+        details={"device_id": device.id},
+    )
+    return shown
 
 
 @router.get("/{device_id}/history")

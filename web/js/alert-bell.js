@@ -1,7 +1,9 @@
 /**
  * The bell at the top right, between Log out and the home's icon: how many
  * of this home's alerts came since you last looked (a red circle), and
- * their list. Opening the list counts them as seen. Each alert can be
+ * their list. Opening the list counts them as seen. Standing notices (a
+ * thermostat's air filter due) come first and stay until dealt with
+ * (Changed Filter, for operators and admins). Each alert can be
  * dismissed from your list: its X on a computer, a swipe on a phone, or all
  * at once with Dismiss All at the bottom (others still see them). Checked every CHECK_MS, and at once when another home is
  * opened. Not shown to guests.
@@ -100,13 +102,7 @@ class AlertBell {
     const home = this.home;
     if (!home) return;
     await this.check(home);
-    const items = (this.feed && this.feed.items) || [];
-    this.menu.replaceChildren(
-      el('h3', { text: 'Alerts' }),
-      items.length ? el('p', { className: 'muted bell-hint', text: 'Swipe an alert to dismiss it.' }) : '',
-      ...(items.length ? items.map((a) => this.item(a)) : [this.empty()]),
-      items.length ? this.dismissAllButton() : '',
-    );
+    this.fill((this.feed && this.feed.items) || []);
     const box = this.button.getBoundingClientRect();
     this.menu.style.top = `${box.bottom + 6}px`;
     this.menu.hidden = false;
@@ -127,8 +123,37 @@ class AlertBell {
     this.menu.hidden = true;
   }
 
+  /** The list: standing notices (a filter due) first, then the alerts. */
+  fill(items) {
+    const loose = items.filter((a) => !a.sticky);
+    this.menu.replaceChildren(
+      el('h3', { text: 'Notifications' }),
+      loose.length ? el('p', { className: 'muted bell-hint', text: 'Swipe an alert to dismiss it.' }) : '',
+      ...(items.length ? items.map((a) => (a.sticky ? this.standing(a) : this.item(a))) : [this.empty()]),
+      loose.length ? this.dismissAllButton() : '',
+    );
+  }
+
   empty() {
-    return el('p', { className: 'muted', testid: 'alert-bell-empty', text: 'No alerts yet. Choose yours in My Account > Alerts; the bell beside each device in Settings > Devices sets what it alerts about.' });
+    return el('p', { className: 'muted', testid: 'alert-bell-empty', text: 'No notifications' });
+  }
+
+  /** A notice that stays until it is dealt with (a thermostat's air filter
+   * due): no X or swipe; operators and admins press Changed Filter. */
+  standing(a) {
+    return el('div', { className: 'bell-item sticky', testid: 'alert-bell-standing', 'data-alert-id': a.id }, [
+      el('strong', { text: a.title }),
+      el('p', { className: 'muted', text: a.body }),
+      a.kind === 'filter' && this.app.can('operator') ? el('button', {
+        type: 'button', className: 'secondary', testid: 'alert-bell-filter-changed', text: 'Changed Filter',
+        onclick: () => this.app.run(async () => {
+          await this.app.api.filterChanged(this.home, a.device_id);
+          this.app.status.success('Filter change noted.');
+          await this.check(this.home);
+          this.fill(this.feed.items);
+        }),
+      }) : '',
+    ]);
   }
 
   item(a) {
@@ -148,9 +173,9 @@ class AlertBell {
       el('button', {
         type: 'button', className: 'secondary', testid: 'alert-bell-dismiss-all', text: 'Dismiss All',
         onclick: () => this.app.run(async () => {
-          this.show(await this.app.api.dismissAllAlerts(this.home));
-          this.menu.querySelectorAll('[data-testid="alert-bell-item"], .bell-hint, .bell-footer').forEach((n) => n.remove());
-          this.menu.append(this.empty());
+          const feed = await this.app.api.dismissAllAlerts(this.home);
+          this.show(feed);
+          this.fill(feed.items); // standing notices stay
         }),
       }),
     ]);
@@ -173,7 +198,7 @@ class AlertBell {
     row.remove();
     if (!this.menu.querySelector('[data-testid="alert-bell-item"]')) {
       this.menu.querySelectorAll('.bell-hint, .bell-footer').forEach((n) => n.remove());
-      this.menu.append(this.empty());
+      if (!this.menu.querySelector('[data-testid="alert-bell-standing"]')) this.menu.append(this.empty());
     }
   }
 }
