@@ -62,6 +62,15 @@ function settingNumber(value) {
   return found ? Number(found[1]) : null;
 }
 
+/** "120 run hours left", "23 days left", "Due now"; null when off. */
+function filterLeftText(filter) {
+  if (!filter || filter.mode === 'off') return null;
+  if (filter.left === null || filter.left === undefined) return 'Waiting for the thermostat to report its run time';
+  if (filter.due) return 'Due now';
+  const unit = filter.mode === 'days' ? 'day' : 'run hour';
+  return `${filter.left} ${unit}${filter.left === 1 ? '' : 's'} left`;
+}
+
 class ThermostatSettingsPanel {
   constructor(view) {
     this.view = view;
@@ -176,19 +185,65 @@ class ThermostatSettingsPanel {
     const canEdit = this.device.controllable;
     return el('div', { className: 'stack' }, [
       ...THERMO_SWITCHES.map((row) => this.switchRow(settings, canEdit, row)),
-      this.infoBox(),
+      this.infoBox(data.filter),
       canEdit ? null : el('p', { className: 'muted', text: 'The thermostat is offline or its integration is off: settings can be read, not changed.' }),
       el('h3', { text: 'Installer settings' }),
       el('p', { className: 'muted', text: 'Set when the thermostat was put in. Change them only if you know the system needs it.' }),
       data.installer_allowed === false ? el('p', { className: 'muted', testid: 'thermo-installer-locked', text: this.view.app.isGuest() ? 'Your access does not include these.' : 'Your role cannot change these (Settings > Safety Settings).' }) : null,
       ...THERMO_INSTALLER_GROUPS.map((group) => this.installerGroup(data, canEdit, group)),
+      this.filterGroup(data),
       (data.missing || []).length ? el('p', { className: 'warning', testid: 'thermo-settings-missing', text: `The thermostat did not answer for ${data.missing.length} of the settings; read again to ask once more.` }) : null,
     ]);
   }
 
-  /** The thermostat's Info (system, filter, firmware, Wi-Fi), from its report. */
-  infoBox() {
-    return el('div', { className: 'settings-info', testid: 'thermo-settings-info' }, [el('h3', { text: 'Info' }), thermostatInfoList(this.device)]);
+  /** The thermostat's Info (system, filter, firmware, Wi-Fi), from its
+   * report, and the time left before the air filter is due. */
+  infoBox(filter = null) {
+    const left = filterLeftText(filter);
+    return el('div', { className: 'settings-info', testid: 'thermo-settings-info' }, [
+      el('h3', { text: 'Info' }),
+      thermostatInfoList(this.device),
+      left ? el('dl', {}, [el('div', { className: 'info-line', testid: 'thermo-filter-left' }, [el('dt', { text: 'Filter change' }), el('dd', { text: left })])]) : null,
+    ]);
+  }
+
+  /** Installer settings > Air filter: a reminder every so many run hours or
+   * days (filter_reminders.py). Kept by this server, so it works offline. */
+  filterGroup(data) {
+    const filter = data.filter;
+    if (!filter) return null; // guests
+    const canEdit = data.installer_allowed !== false;
+    const mode = el('select', { testid: 'thermo-filter-mode', disabled: !canEdit, 'aria-label': 'Filter reminder' },
+      [['off', 'Off'], ['hours', 'After run hours'], ['days', 'After days']].map(([value, text]) => el('option', { value, text })));
+    mode.value = filter.mode;
+    const every = el('input', { type: 'number', testid: 'thermo-filter-every', min: '1', step: '1', value: String(filter.every || ''), disabled: !canEdit, 'aria-label': 'Every' });
+    const unit = el('span', { className: 'muted' });
+    const shape = () => {
+      every.hidden = mode.value === 'off';
+      unit.hidden = every.hidden;
+      unit.textContent = mode.value === 'days' ? 'days' : 'run hours';
+      if (mode.value !== 'off' && mode.value !== filter.mode) every.value = mode.value === 'days' ? '90' : '500';
+      if (mode.value === filter.mode) every.value = String(filter.every || '');
+    };
+    mode.addEventListener('change', shape);
+    shape();
+    const save = el('button', { type: 'submit', className: 'secondary', testid: 'thermo-filter-save', text: 'Save', disabled: !canEdit });
+    const form = el('form', { className: 'row choice-row' }, [mode, every, unit, save]);
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      this.view.app.run(async () => {
+        data.filter = await this.view.app.api.saveFilterReminder(this.view.app.home.id, this.device.id, { mode: mode.value, every: mode.value === 'off' ? null : Number(every.value) });
+        this.opened.add('filter');
+        this.render(this.body(data));
+        this.view.app.status.success('Filter reminder saved.');
+      });
+    });
+    const box = el('details', { className: 'settings-group', testid: 'thermo-group-filter', open: this.opened.has('filter') }, [
+      el('summary', { text: 'Air filter' }),
+      settingRow('Filter change reminder', 'A notification when the air filter is due, after so many hours of heating or cooling or so many days. It stays until someone presses Changed Filter.', form),
+    ]);
+    box.addEventListener('toggle', () => { if (box.open) this.opened.add('filter'); else this.opened.delete('filter'); });
+    return box;
   }
 
   /** Send one change; on failure put the control back (undo). */

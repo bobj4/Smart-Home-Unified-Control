@@ -66,6 +66,12 @@ Object.assign(SmartHomeAPI.prototype, {
   setInputNames(homeId, deviceId, names) {
     return this.put(`/homes/${enc(homeId)}/devices/${enc(deviceId)}/input-names`, { names });
   },
+  filterChanged(homeId, deviceId) {
+    return this.post(`/homes/${enc(homeId)}/devices/${enc(deviceId)}/filter/changed`);
+  },
+  saveFilterReminder(homeId, deviceId, body) {
+    return this.put(`/homes/${enc(homeId)}/devices/${enc(deviceId)}/filter`, body);
+  },
   dismissAllAlerts(homeId) {
     return this.del(`/homes/${enc(homeId)}/alerts/feed`);
   },

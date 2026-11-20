@@ -30,7 +30,7 @@ from urllib.parse import urlsplit
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app import device_alerts, mailer, vault, webpush
+from app import device_alerts, filter_reminders, mailer, vault, webpush
 from app.audit import record_event
 from app.db_config import SessionLocal
 from app.features import integration_enabled
@@ -62,6 +62,7 @@ KINDS = {
     "temperature": "A thermostat reads too hot or too cold",
     "camera": "A camera sees someone",
     "smartthings": "SmartThings needs a new token or sign-in (TV inputs, turning TVs on)",
+    "filter": "A thermostat's air filter needs changing",
 }
 PUSH_KEY = "webpush"
 # Push services browsers use; nothing else is ever sent a notification.
@@ -244,9 +245,12 @@ def feed(db: Session, user_id: str, home_id: str, limit: int = 30) -> dict[str, 
     unseen = select(func.count(AlertItem.id)).where(mine)
     if since is not None:
         unseen = unseen.where(AlertItem.created_at > since)
+    # Filters due: first, counted until changed, and not dismissed.
+    standing = filter_reminders.notices(db, home_id)
     return {
-        "unseen": int(db.scalar(unseen) or 0),
-        "items": [
+        "unseen": int(db.scalar(unseen) or 0) + len(standing),
+        "items": standing
+        + [
             {
                 "id": i.id,
                 "kind": i.kind,
@@ -296,11 +300,19 @@ def mark_seen(db: Session, user_id: str, home_id: str) -> None:
 
 
 def deliver(
-    db: Session, home_id: str, kind: str, title: str, body: str, tag: str
+    db: Session,
+    home_id: str,
+    kind: str,
+    title: str,
+    body: str,
+    tag: str,
+    keep: bool = True,
 ) -> int:
-    """Keep the alert for the bell, and send it to everyone in the home who
-    wants this kind; returns how many it reached by email or notification."""
-    remember(db, home_id, kind, title, body)
+    """Keep the alert for the bell (unless keep is False: the bell shows it
+    another way), and send it to everyone in the home who wants this kind;
+    returns how many it reached by email or notification."""
+    if keep:
+        remember(db, home_id, kind, title, body)
     reached = 0
     rows = db.execute(
         select(User, HomeMembership)
@@ -476,6 +488,34 @@ def check_home(
             )
     sent += _check_cameras(db, home_id, row, where, watch)
     sent += _check_smartthings(db, home_id, where, watch)
+    sent += _check_filters(db, home_id, where)
+    return sent
+
+
+def _check_filters(db: Session, home_id: str, where: str) -> int:
+    """A thermostat's air filter due: sent once (the bell keeps showing it
+    until Changed Filter; filter_reminders.py)."""
+    sent = 0
+    for device, row, shown in filter_reminders.due(db, home_id):
+        if row.notified:
+            continue
+        row.notified = True
+        db.commit()
+        when = (
+            f"after {shown['every']} run hours"
+            if shown["mode"] == "hours"
+            else f"every {shown['every']} days"
+        )
+        sent += deliver(
+            db,
+            home_id,
+            "filter",
+            f"{device.name}: change the air filter",
+            f"{where}: the air filter of {device.name} is due ({when}). "
+            "Press Changed Filter in the app once it is replaced.",
+            f"filter-{device.id}",
+            keep=False,
+        )
     return sent
 
 

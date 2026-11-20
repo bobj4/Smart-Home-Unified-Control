@@ -1,8 +1,6 @@
 """Approved devices get a name of the person's choosing: asked when
 "Remember this device" is ticked at login, and changeable in My account."""
 
-import re
-
 from playwright.sync_api import expect
 
 from app.models import AuditEvent, TrustedDevice
@@ -70,10 +68,12 @@ def test_ui_name_popup_and_rename(open_page, db, owner):
     page.get_by_test_id("login-code-submit").click()
     expect(page.get_by_test_id("app-shell")).to_be_visible()
     expect(popup).to_be_visible()
-    # Browser and system as this machine reports them ("Chrome on Windows").
-    expect(popup.get_by_test_id("device-name-input")).to_have_value(
-        re.compile(r"^\w+ on \w+")
-    )
+    # Whose and what ("Vulture's Samsung S26"): no name, so the email's start.
+    who = owner.email.split("@")[0]
+    # What this machine is: "Windows PC", "Linux PC".
+    kind = page.evaluate("deviceKind()")
+    assert kind
+    expect(popup.get_by_test_id("device-name-input")).to_have_value(f"{who}'s {kind}")
     expect(popup.get_by_test_id("device-name-cancel")).to_have_count(0)  # required
     page.keyboard.press("Escape")
     expect(popup).to_be_visible()

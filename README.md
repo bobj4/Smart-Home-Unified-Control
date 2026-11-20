@@ -61,7 +61,12 @@ How to use each page: [docs/USER-GUIDE.md](docs/USER-GUIDE.md).
   they get, and can dismiss an alert from their bell (its × on a computer,
   a swipe on a phone) or all of them (Dismiss All). Notifications need
   HTTPS and SECRETS_KEY; on an iPhone, add the app to the Home Screen.
-  A bell at the top right counts the alerts you have not seen yet.
+  A bell at the top right counts the alerts you have not seen yet, and
+  says "No notifications" when there are none.
+- Air filter reminders (Cync thermostats): set in the thermostat's
+  installer settings (Air filter: after run hours or after days), with the
+  time left in its Info. When it is due, a notification stays in everyone's
+  bell until an operator or admin presses **Changed Filter**.
 - Energy: power now and use today from Kasa plugs that measure it, and
   water heaters' use today (the ⚡ button on the Devices page).
 - Network details (the ⓘ beside each device): IP and MAC address, type
