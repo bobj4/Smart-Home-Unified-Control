@@ -75,6 +75,12 @@ layout**, separately for phones and wide screens) and filtered by type or
 - **Schedules** run on the server at a time of day, or at sunrise or sunset
   (minutes before or after), on the days you choose.
 - **Scenes** switch devices, groups (and Hue scenes) together with one press.
+  A color step has color samples to pick from (or any color with its
+  picker).
+- **Reset** (on a scene that has run): puts back what the scene changed,
+  only that (a brightness step: the brightness), and only where it still
+  differs. Running the scene again within 12 hours keeps the first
+  "before". Anyone who can run the scene can reset it.
 
 Admins choose who may make and change them, the home's time zone and
 location (typed in, or **Use the home's address**), and can pause every

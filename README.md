@@ -44,7 +44,7 @@ How to use each page: [docs/USER-GUIDE.md](docs/USER-GUIDE.md).
 - Thermostats and water heaters on a page of their own, and garage doors
   on a Doors page, shown while their integration is on.
 - Schedules and Scenes (its own tab): scenes switch devices and groups
-  together with one press; schedules run on this server at a time of day,
+  together with one press (and **Reset** puts back what one changed); schedules run on this server at a time of day,
   or at sunrise or sunset (minutes before or after), on chosen days, in the
   home's time zone. Admins set the time zone, location (typed in, or from
   the home's address, which it then follows), who may edit, and can pause

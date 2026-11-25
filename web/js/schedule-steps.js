@@ -13,11 +13,31 @@ const STEP_COMMANDS = {
   water_heater: [['set_temperature', 'Set to', 'temperature'], ['turn_on', 'On'], ['turn_off', 'Off'], ['set_away', 'Away', 'away'], ['resume_schedule', 'Follow its schedule']],
 };
 const GROUP_STEP_COMMANDS = STEP_COMMANDS.light;
+// Color samples beside a step's color (and its own picker for any other).
+const STEP_SWATCHES = [
+  ['#ff0000', 'Red'], ['#ff6a00', 'Orange'], ['#ffb000', 'Amber'], ['#ffe600', 'Yellow'],
+  ['#7cff00', 'Lime'], ['#00c853', 'Green'], ['#00e5ff', 'Cyan'], ['#2962ff', 'Blue'],
+  ['#7c4dff', 'Purple'], ['#e040fb', 'Magenta'], ['#ff4081', 'Pink'], ['#ffaa55', 'Warm glow'],
+];
 const STEP_CHOICES = {
   fan: [['auto', 'Auto'], ['on', 'On']],
   hold: [['schedule', 'Follow schedule'], ['temporary', 'Until next change'], ['permanent', 'Permanent']],
   away: [['true', 'Away'], ['false', 'Home']],
 };
+
+/** A color input with its samples; the input keeps the value (data-key). */
+function colorWithSwatches(value) {
+  const input = el('input', { type: 'color', value, 'aria-label': 'Color' });
+  const swatches = STEP_SWATCHES.map(([hex, name]) => el('button', {
+    type: 'button', className: 'step-swatch', testid: 'step-swatch', title: name, 'aria-label': name, 'data-color': hex,
+    onclick: () => { input.value = hex; mark(); },
+  }));
+  const mark = () => swatches.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.color === input.value.toLowerCase())));
+  swatches.forEach((b) => b.style.setProperty('--swatch', b.dataset.color));
+  input.addEventListener('input', mark);
+  mark();
+  return { input, box: el('span', { className: 'step-color' }, [input, el('span', { className: 'step-swatches', role: 'group', 'aria-label': 'Color samples' }, swatches)]) };
+}
 
 function stepChoice(options, value, testid) {
   const select = el('select', { testid }, options.map(([v, label]) => el('option', { value: v, text: label })));
@@ -67,15 +87,16 @@ class StepList {
       const key = chosen && chosen[2];
       const device = this.target(target.value).device;
       let input = null;
+      let shown = null; // what goes in the row when it is not the input itself
       if (key === 'brightness') input = el('input', { type: 'number', min: '0', max: '100', value: String(payload.brightness ?? 50), 'aria-label': 'Brightness %' });
       if (key === 'kelvin') input = el('input', { type: 'number', min: '2000', max: '6500', step: '100', value: String(payload.kelvin ?? 2700), 'aria-label': 'White (kelvin)' });
-      if (key === 'color') input = el('input', { type: 'color', value: payload.color || '#ffaa55', 'aria-label': 'Color' });
+      if (key === 'color') ({ input, box: shown } = colorWithSwatches(payload.color || '#ffaa55'));
       if (key === 'temperature') input = el('input', { type: 'number', step: '1', value: String(payload.temperature ?? 70), 'aria-label': 'Temperature' });
       if (key === 'mode') input = stepChoice(((device && device.state.modes) || ['off', 'heat', 'cool', 'auto']).map((m) => [m, m]), payload.mode, 'step-choice');
       if (STEP_CHOICES[key]) input = stepChoice(STEP_CHOICES[key], payload[key], 'step-choice');
       if (input) input.dataset.key = key;
       if (input && !input.dataset.testid) input.dataset.testid = 'step-value';
-      value.replaceChildren(input || '');
+      value.replaceChildren(shown || input || '');
     };
     const fillCommands = (chosen, payload) => {
       command.replaceChildren(...this.target(target.value).commands.map(([c, label]) => el('option', { value: c, text: label })));

@@ -623,6 +623,12 @@ class Scene(Base):
     )
     name: Mapped[str] = mapped_column(String(100))
     steps: Mapped[str] = mapped_column(Text, default="[]")
+    # Its Reset (app/scene_reset.py): what the devices were like before it
+    # ran, JSON {device id: {"aspects", "state"}}; None when nothing to undo.
+    before: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ran_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL")
     )

@@ -341,8 +341,13 @@ def test_guests_run_scenes_only_when_allowed(
         headers=csrf(client),
     )
     assert r.status_code == 200, r.text
-    assert them.get(guest_base).json() == [{"id": scene["id"], "name": "Lamp on"}]
+    listed = [{"id": scene["id"], "name": "Lamp on", "can_reset": False}]
+    assert them.get(guest_base).json() == listed
     r = them.post(f"{guest_base}/{scene['id']}/run", headers=csrf(them))
+    assert r.json() == {"done": 1, "failed": 0}
+    # They can put it back too.
+    assert them.get(guest_base).json()[0]["can_reset"] is True
+    r = them.post(f"{guest_base}/{scene['id']}/reset", headers=csrf(them))
     assert r.json() == {"done": 1, "failed": 0}
 
 
