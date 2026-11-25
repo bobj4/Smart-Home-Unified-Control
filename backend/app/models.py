@@ -52,6 +52,15 @@ class Home(Base):
     show_grouped_devices: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa_false()
     )
+    # Set by admins, for everyone in the home (and every screen): thermostats
+    # and water heaters only on their own page (#/devices/thermostats), and
+    # remote doors only on theirs (#/devices/doors), not on the Devices page.
+    thermostats_apart: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
+    doors_apart: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false()
+    )
     require_two_factor: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa_false()
     )
@@ -541,14 +550,7 @@ class RoomLayout(Base):
     filters: Mapped[str | None] = mapped_column(Text)  # JSON {"text", "type", "on"}
     # Rooms side by side: JSON {"columns": 1-4, "sizes": {room: columns wide}}.
     grid: Mapped[str | None] = mapped_column(Text)
-    # Thermostats only on their own page (#/devices/thermostats), not with the rest.
-    thermostats_apart: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default=sa_false()
-    )
-    # Remote doors (garage doors) only on their own page (#/devices/doors).
-    doors_apart: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default=sa_false()
-    )
+    # (Thermostats and doors only on their own pages: the home's, Home.)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )

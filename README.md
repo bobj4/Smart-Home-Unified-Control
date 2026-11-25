@@ -42,7 +42,8 @@ How to use each page: [docs/USER-GUIDE.md](docs/USER-GUIDE.md).
   (separately for phones and wide screens); rooms fold shut; search and
   filters by type or "on only".
 - Thermostats and water heaters on a page of their own, and garage doors
-  on a Doors page, shown while their integration is on.
+  on a Doors page, shown while their integration is on. Admins can keep
+  them only on those pages, for everyone (Settings › Admin › Devices page).
 - Schedules and Scenes (its own tab): scenes switch devices and groups
   together with one press (and **Reset** puts back what one changed); schedules run on this server at a time of day,
   or at sunrise or sunset (minutes before or after), on chosen days, in the
