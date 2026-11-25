@@ -30,7 +30,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import geocode, sun
+from app import geocode, scene_reset, sun
 from app.audit import record_event
 from app.authorization import require_role
 from app.db_config import SessionLocal
@@ -319,12 +319,15 @@ def scene_out(scene: Scene) -> dict[str, Any]:
         "id": scene.id,
         "name": scene.name,
         "steps": json.loads(scene.steps or "[]"),
+        "can_reset": scene_reset.can_reset(scene),
     }
 
 
 def run_scene(
     db: Session, scene: Scene, user_id: str | None, why: str
 ) -> dict[str, Any]:
+    """Run it, noting first what its Reset puts back (app/scene_reset.py)."""
+    scene_reset.note_before(db, scene)
     return run_steps(db, scene.home_id, json.loads(scene.steps or "[]"), user_id, why)
 
 

@@ -74,12 +74,23 @@ class SchedulesView {
     return first ? `${name}: ${result.done} done; ${first.name}: ${first.reason}` : `${name}: ${result.done} done, ${count} failed.`;
   }
 
+  resetText(name, result) {
+    const count = Array.isArray(result.failed) ? result.failed.length : Number(result.failed || 0);
+    if (!count) return `${name}: put back as before (${result.done} ${result.done === 1 ? 'change' : 'changes'}).`;
+    const first = Array.isArray(result.failed) ? result.failed[0] : null;
+    return first ? `${name}: ${result.done} put back; ${first.name}: ${first.reason}. Reset again to retry.` : `${name}: ${result.done} put back, ${count} failed. Reset again to retry.`;
+  }
+
   scenesPanel(scenes, canEdit) {
     const home = this.app.home.id;
     const cards = scenes.map((s) => el('div', { className: 'device-card scene-card', testid: 'scene-card', 'data-scene-id': s.id }, [
       el('h3', { text: s.name }),
       s.steps ? el('p', { className: 'muted', text: `${s.steps.length} ${s.steps.length === 1 ? 'step' : 'steps'}` }) : '',
-      el('button', { type: 'button', testid: 'scene-run', text: 'Run', onclick: () => this.act(() => this.app.api.runScene(home, s.id), (r) => this.ranText(s.name, r)) }),
+      el('div', { className: 'row' }, [
+        el('button', { type: 'button', testid: 'scene-run', text: 'Run', onclick: () => this.act(() => this.app.api.runScene(home, s.id), (r) => this.ranText(s.name, r)) }),
+        // Reset: put back what its last run changed (until it is used).
+        s.can_reset ? el('button', { type: 'button', className: 'secondary', testid: 'scene-reset', text: 'Reset', title: 'Put back what this scene changed', onclick: () => this.act(() => this.app.api.resetScene(home, s.id), (r) => this.resetText(s.name, r)) }) : '',
+      ]),
       canEdit ? el('div', { className: 'row' }, [
         el('button', { type: 'button', className: 'secondary', testid: 'scene-edit', text: 'Change', onclick: () => this.editor.scene(s) }),
         el('button', { type: 'button', className: 'ghost', testid: 'scene-delete', text: 'Delete', onclick: () => this.confirmDelete(s.name, () => this.app.api.deleteScene(home, s.id)) }),

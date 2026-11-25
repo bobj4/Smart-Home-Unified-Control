@@ -488,6 +488,11 @@ svg.home-icon { padding: 3px; background: var(--surface-2); }
 .step-value { flex: 1 1 90px; min-width: 0; display: flex; }
 .step-value > * { width: 100%; min-width: 0; }
 .step-value:empty { display: none; }
+.step-color { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.step-color > input[type="color"] { width: 44px; height: 32px; padding: 0; flex: none; }
+.step-swatches { display: flex; flex-wrap: wrap; gap: 4px; }
+.step-swatch { width: 24px; height: 24px; min-height: 0; padding: 0; border-radius: 50%; border: 2px solid var(--border); background: var(--swatch); flex: none; }
+.step-swatch[aria-pressed="true"] { border-color: var(--text, #e8eaed); box-shadow: 0 0 0 2px var(--accent, #4f8cff); }
 .step-row > .ghost, .automation-editor .remote-head .ghost { color: #e8eaed; flex: none; }
 .scenes-actions, [data-testid="scene-new"], [data-testid="schedule-new"] { margin-top: 12px; justify-self: start; }
 .day-choices { display: flex; flex-wrap: wrap; gap: 6px 12px; }

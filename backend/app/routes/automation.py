@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import automation
+from app import automation, scene_reset
 from app.audit import record_event
 from app.authorization import require_role
 from app.automation import AutomationError
@@ -185,6 +185,21 @@ def run_scene(
     return automation.run_scene(db, scene, user.id, f"scene {scene.name}")
 
 
+@router.post("/scenes/{scene_id}/reset", dependencies=[Depends(require_csrf)])
+def reset_scene(
+    home_id: str,
+    scene_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Put back what the scene's last run changed (app/scene_reset.py)."""
+    require_role(db, user.id, home_id)
+    scene = automation.home_scene(db, home_id, scene_id)
+    if not scene_reset.can_reset(scene):
+        raise HTTPException(409, "nothing to put back: the scene has not run since")
+    return scene_reset.reset(db, scene, user.id)
+
+
 # ------------------------------------------------------------ schedules
 
 
@@ -329,7 +344,10 @@ def guest_scenes(
     scenes = db.scalars(
         select(Scene).where(Scene.home_id == home_id).order_by(Scene.name)
     )
-    return [{"id": s.id, "name": s.name} for s in scenes]
+    return [
+        {"id": s.id, "name": s.name, "can_reset": scene_reset.can_reset(s)}
+        for s in scenes
+    ]
 
 
 @guest_router.post("/scenes/{scene_id}/run", dependencies=[Depends(require_csrf)])
@@ -345,4 +363,21 @@ def guest_run_scene(
         raise HTTPException(403, "Forbidden")
     scene = automation.home_scene(db, home_id, scene_id)
     result = automation.run_scene(db, scene, user.id, f"scene {scene.name} (guest)")
+    return {"done": result["done"], "failed": len(result["failed"])}
+
+
+@guest_router.post("/scenes/{scene_id}/reset", dependencies=[Depends(require_csrf)])
+def guest_reset_scene(
+    home_id: str,
+    scene_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """A guest allowed to run scenes can put one back too."""
+    if not require_guest(db, user, home_id).scenes:
+        raise HTTPException(403, "Forbidden")
+    scene = automation.home_scene(db, home_id, scene_id)
+    if not scene_reset.can_reset(scene):
+        raise HTTPException(409, "nothing to put back: the scene has not run since")
+    result = scene_reset.reset(db, scene, user.id)
     return {"done": result["done"], "failed": len(result["failed"])}
