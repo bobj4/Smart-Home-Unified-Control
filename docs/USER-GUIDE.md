@@ -34,7 +34,8 @@ password, then click **Log in**.
   "No notifications".
 - **Air filter due**: a thermostat's filter reminder stays at the top of the
   bell (it cannot be dismissed) until the filter is changed. Operators and
-  admins press **Changed Filter** in it to start the count again.
+  admins press **Changed Filter** in it to start the count again (the
+  thermostat's own count too).
 - **Home**: switch between homes (when you have more than one).
 
 ## Devices
@@ -51,8 +52,9 @@ layout**, separately for phones and wide screens) and filtered by type or
   reaches each device in it.
 - **Thermostats and water heaters**: on a page of their own. Targets stay
   within the home's safety limits. A Cync thermostat's **Settings** has an
-  **Air filter** reminder among its installer settings (after so many run
-  hours or days); its Info shows the time left.
+  **Air filter** reminder among its installer settings: the thermostat's
+  own, the same one the Cync app shows (after 100 to 1500 run hours, or 1
+  to 12 months). Its Info shows the time left.
 - **Garage doors** (ratgdo): open, close and stop on the Doors page, with
   the opener light, remote lockout, obstruction warning and, on a ratgdo32
   disco, the parking-assist laser.

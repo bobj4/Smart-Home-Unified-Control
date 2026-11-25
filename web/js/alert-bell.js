@@ -135,7 +135,7 @@ class AlertBell {
   }
 
   empty() {
-    return el('p', { className: 'muted', testid: 'alert-bell-empty', text: 'No notifications' });
+    return el('p', { className: 'muted bell-empty', testid: 'alert-bell-empty', text: 'No notifications' });
   }
 
   /** A notice that stays until it is dealt with (a thermostat's air filter
@@ -147,8 +147,8 @@ class AlertBell {
       a.kind === 'filter' && this.app.can('operator') ? el('button', {
         type: 'button', className: 'secondary', testid: 'alert-bell-filter-changed', text: 'Changed Filter',
         onclick: () => this.app.run(async () => {
-          await this.app.api.filterChanged(this.home, a.device_id);
-          this.app.status.success('Filter change noted.');
+          const done = await this.app.api.filterChanged(this.home, a.device_id);
+          this.app.status.success(done.thermostat_reset === false ? 'Filter change noted here; the thermostat could not be reached to reset its own count.' : 'Filter change noted.');
           await this.check(this.home);
           this.fill(this.feed.items);
         }),

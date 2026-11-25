@@ -63,10 +63,12 @@ How to use each page: [docs/USER-GUIDE.md](docs/USER-GUIDE.md).
   HTTPS and SECRETS_KEY; on an iPhone, add the app to the Home Screen.
   A bell at the top right counts the alerts you have not seen yet, and
   says "No notifications" when there are none.
-- Air filter reminders (Cync thermostats): set in the thermostat's
-  installer settings (Air filter: after run hours or after days), with the
-  time left in its Info. When it is due, a notification stays in everyone's
-  bell until an operator or admin presses **Changed Filter**.
+- Air filter reminders (Cync thermostats): the thermostat's own reminder,
+  as in the Cync app (after 100 to 1500 run hours, or 1 to 12 months), read
+  from and set on the thermostat in its installer settings, with the time
+  left in its Info. When it is due, a notification stays in everyone's bell
+  until an operator or admin presses **Changed Filter**, which also resets
+  the thermostat's filter count.
 - Energy: power now and use today from Kasa plugs that measure it, and
   water heaters' use today (the ⚡ button on the Devices page).
 - Network details (the ⓘ beside each device): IP and MAC address, type
