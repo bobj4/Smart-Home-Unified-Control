@@ -69,12 +69,13 @@ Device types: 122 (Gen 2), 224 (Gen 1), both data-point protocol. W = written by
 | 56 | Event_Notification_En | bool | |
 | 57 / 58 | Minimum / Maximum_Temperature | string | notification thresholds |
 | 59 / 60 | Minimum / Maximum_Humidity | int | notification thresholds |
-| 61 | Filter_Replacement_Method | bytes | |
+| 54 | Event_Filter_Replacement_En | bool | the air-filter reminder is on (see Air filter) |
+| 61 | Filter_Replacement_Method | bytes | see Air filter |
 | 62 | Auto_OTA_En | bool | |
 | 84 | ReadSetting | string | write a setting name to request it; reply is JSON `{name: value}` |
 | 86 | EnergyReportStatus | bytes | heating/cooling start or stop (see Energy reports) |
 | 87 | SensorRawDataReport | string | JSON `sensorsData:[...]` |
-| 88 | Filter_Replacement_Reset | bool | |
+| 88 | Filter_Replacement_Reset | bool | W: the app writes false when the filter is replaced |
 | 89 / 90 | OtaUpdateControl / Status | string | do not touch |
 | 91 | CoolSetpointStatus | string | R |
 | 92 | Setpoint_cool_set | string | W |
@@ -83,7 +84,7 @@ Device types: 122 (Gen 2), 224 (Gen 1), both data-point protocol. W = written by
 | 98 | Aux_Furnace_Type_set | int | |
 | 104 | FanRunModeStatus | int | R |
 | 105 | RelayStatus | bytes | R, exactly 6 bytes, each 0 OFF, 1 ON, 2 NOT_USED (terminal order not decoded) |
-| 106 | FilterInfoStatus | string | R, JSON `{resetDate, runtimeHours}` |
+| 106 | FilterInfoStatus | string | R, JSON `{"ResetData": "2026-06-17T18:25:45", "Runtime": 984}` |
 | 107 | Date_Time_Set | string | |
 | 108 | CountdownStatus | bytes | R: b0 work mode (cool/heat), b1 type (min runtime / min timeout), b2-7 year, month, day, hour, minute, second, b8-9 duration (big-endian) |
 | 115 | Zipcode | string | |
@@ -133,6 +134,21 @@ same period bytes as above, or `FF` to clear the day. The app (`app/thermostat_s
 asks for each written day by name and only reports success when the answer holds exactly what
 was sent. Up to 6 set point periods a day are accepted here (the app's limit is not in the
 decompiled code; the sensor schedule answer is padded to 10 periods).
+
+## Air filter (from the Cync app 6.20)
+
+Source: FilterReplacementMethodSetDataPoint, ThermostatEventNotificationSetDataPoint
+(FILTER_REPLACEMENT), FilterReplacementResetDataPoint (its key read from the bytecode),
+GEThermostatFilterReplacementObserver. Code: `app/thermostat_filter.py`, `app/filter_reminders.py`.
+
+- Event_Filter_Replacement_En (54) and Filter_Replacement_Method (61) have the "setting" role:
+  asked for by name through ReadSetting, like the schedules.
+- Filter_Replacement_Method is 3 bytes: 0 calendar months or 1 run hours, then the number
+  (2 bytes, big-endian). The app allows months 1 to 12 and run hours 100 to 1500 in hundreds.
+- The time left, as the app works it out: months, ResetData plus the months; run hours, the
+  hours less Runtime (both from FilterInfoStatus, 106).
+- Replaced: the app writes Filter_Replacement_Reset (88) = false; the thermostat starts its
+  count again (ResetData now, Runtime 0).
 
 ## Energy reports (run history)
 

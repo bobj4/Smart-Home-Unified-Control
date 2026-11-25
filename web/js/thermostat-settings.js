@@ -62,13 +62,17 @@ function settingNumber(value) {
   return found ? Number(found[1]) : null;
 }
 
-/** "120 run hours left", "23 days left", "Due now"; null when off. */
+// The Cync thermostat's own choices: [label, unit, default, min, max, step].
+const FILTER_MODES = { hours: ['After run hours', 'run hours', 500, 100, 1500, 100], months: ['After months', 'months', 3, 1, 12, 1] };
+
+/** "120 run hours left", "23 days left (due Mar 3)", "Due now"; null when off. */
 function filterLeftText(filter) {
   if (!filter || filter.mode === 'off') return null;
   if (filter.left === null || filter.left === undefined) return 'Waiting for the thermostat to report its run time';
   if (filter.due) return 'Due now';
-  const unit = filter.mode === 'days' ? 'day' : 'run hour';
-  return `${filter.left} ${unit}${filter.left === 1 ? '' : 's'} left`;
+  const unit = filter.mode === 'hours' ? 'run hour' : 'day';
+  const on = filter.due_at ? ` (due ${new Date(filter.due_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })})` : '';
+  return `${filter.left} ${unit}${filter.left === 1 ? '' : 's'} left${on}`;
 }
 
 class ThermostatSettingsPanel {
@@ -207,22 +211,24 @@ class ThermostatSettingsPanel {
     ]);
   }
 
-  /** Installer settings > Air filter: a reminder every so many run hours or
-   * days (filter_reminders.py). Kept by this server, so it works offline. */
+  /** Installer settings > Air filter: the thermostat's own reminder (as in
+   * the Cync app), every so many run hours or months (thermostat_filter.py). */
   filterGroup(data) {
     const filter = data.filter;
     if (!filter) return null; // guests
     const canEdit = data.installer_allowed !== false;
     const mode = el('select', { testid: 'thermo-filter-mode', disabled: !canEdit, 'aria-label': 'Filter reminder' },
-      [['off', 'Off'], ['hours', 'After run hours'], ['days', 'After days']].map(([value, text]) => el('option', { value, text })));
+      [['off', 'Off'], ...Object.entries(FILTER_MODES).map(([value, [text]]) => [value, text])].map(([value, text]) => el('option', { value, text })));
     mode.value = filter.mode;
-    const every = el('input', { type: 'number', testid: 'thermo-filter-every', min: '1', step: '1', value: String(filter.every || ''), disabled: !canEdit, 'aria-label': 'Every' });
+    const every = el('input', { type: 'number', testid: 'thermo-filter-every', value: String(filter.every || ''), disabled: !canEdit, 'aria-label': 'Every' });
     const unit = el('span', { className: 'muted' });
     const shape = () => {
       every.hidden = mode.value === 'off';
       unit.hidden = every.hidden;
-      unit.textContent = mode.value === 'days' ? 'days' : 'run hours';
-      if (mode.value !== 'off' && mode.value !== filter.mode) every.value = mode.value === 'days' ? '90' : '500';
+      const [, label, , low, high, step] = FILTER_MODES[mode.value] || [];
+      unit.textContent = label || '';
+      if (label) Object.assign(every, { min: String(low), max: String(high), step: String(step) });
+      if (mode.value !== 'off' && mode.value !== filter.mode) every.value = String(FILTER_MODES[mode.value][2]);
       if (mode.value === filter.mode) every.value = String(filter.every || '');
     };
     mode.addEventListener('change', shape);
@@ -240,7 +246,7 @@ class ThermostatSettingsPanel {
     });
     const box = el('details', { className: 'settings-group', testid: 'thermo-group-filter', open: this.opened.has('filter') }, [
       el('summary', { text: 'Air filter' }),
-      settingRow('Filter change reminder', 'A notification when the air filter is due, after so many hours of heating or cooling or so many days. It stays until someone presses Changed Filter.', form),
+      settingRow('Filter change reminder', 'A notification when the air filter is due, after so many hours of heating or cooling or so many months, set on the thermostat as in the Cync app. It stays until someone presses Changed Filter.', form),
     ]);
     box.addEventListener('toggle', () => { if (box.open) this.opened.add('filter'); else this.opened.delete('filter'); });
     return box;

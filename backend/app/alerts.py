@@ -495,17 +495,16 @@ def check_home(
 def _check_filters(db: Session, home_id: str, where: str) -> int:
     """A thermostat's air filter due: sent once (the bell keeps showing it
     until Changed Filter; filter_reminders.py)."""
+    from app import thermostat_filter
+
+    thermostat_filter.sync(db, home_id)  # a change made in the Cync app
     sent = 0
     for device, row, shown in filter_reminders.due(db, home_id):
         if row.notified:
             continue
         row.notified = True
         db.commit()
-        when = (
-            f"after {shown['every']} run hours"
-            if shown["mode"] == "hours"
-            else f"every {shown['every']} days"
-        )
+        when = filter_reminders.every_text(shown)
         sent += deliver(
             db,
             home_id,

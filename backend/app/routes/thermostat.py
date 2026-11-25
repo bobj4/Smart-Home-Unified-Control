@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, Stri
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import filter_reminders
+from app import filter_reminders, thermostat_filter
 from app.audit import record_event
 from app.authorization import require_role
 from app.cync_home import CyncUnavailable
@@ -236,7 +236,7 @@ def _any_thermostat(db: Session, home_id: str, device_id: str) -> Device:
 
 class FilterIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    mode: Literal["off", "hours", "days"]
+    mode: Literal["off", "hours", "months"]
     every: StrictInt | None = None
 
 
@@ -269,9 +269,11 @@ def save_filter(
             403, "Only people allowed in Settings > Safety Settings can change this"
         )
     try:
-        shown = filter_reminders.save(db, device, body.mode, body.every)
+        shown = thermostat_filter.write(db, device, body.mode, body.every)
     except filter_reminders.FilterError as error:
         raise HTTPException(422, str(error)) from None
+    except CyncUnavailable as error:
+        raise HTTPException(error.status_code, error.reason) from None
     record_event(
         db,
         "filter_reminder_saved",
@@ -291,10 +293,14 @@ def filter_changed(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """Changed Filter (operators and admins): counting starts again, and the
-    bell's notice goes."""
+    """Changed Filter (operators and admins): the thermostat starts its own
+    count again (when it can be reached), counting starts again here, and
+    the bell's notice goes."""
     require_role(db, user.id, home_id, Role.OPERATOR)
     device = _any_thermostat(db, home_id, device_id)
+    if filter_reminders.for_device(db, device)["mode"] == "off":
+        raise HTTPException(409, "this thermostat has no filter reminder")
+    on_thermostat = thermostat_filter.reset(db, device)
     try:
         shown = filter_reminders.changed(db, device)
     except filter_reminders.FilterError as error:
@@ -305,9 +311,9 @@ def filter_changed(
         user_id=user.id,
         home_id=home_id,
         ip_address=client_ip(request),
-        details={"device_id": device.id},
+        details={"device_id": device.id, "thermostat_reset": on_thermostat},
     )
-    return shown
+    return {**shown, "thermostat_reset": on_thermostat}
 
 
 @router.get("/{device_id}/history")

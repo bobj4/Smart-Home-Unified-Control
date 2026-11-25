@@ -21,6 +21,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app import thermostat_filter
 from app.cync_home import CyncUnavailable, _call
 from app.integrations import cync, cync_thermostat
 from app.models import Device
@@ -136,10 +137,11 @@ def read_settings(db: Session, device: Device, refresh: bool = False) -> dict[st
     if cached and not refresh and time.monotonic() - cached[0] < CACHE_SECONDS:
         return _with_system(device, cached[1])
     api, loop, cloud_id = _connection(db, device)
-    names = [name for name, _, _ in SETTINGS.values()]
+    names = [name for name, _, _ in SETTINGS.values()] + thermostat_filter.NAMES
     values = _call(lambda: cync.thermostat_settings_on_open(api, loop, cloud_id, names))
     if not values:
         raise CyncUnavailable(502, "the thermostat did not answer")
+    thermostat_filter.store(db, device, values)  # its air-filter reminder
     result = _result(values)
     _cache[device.id] = (time.monotonic(), result)
     return _with_system(device, result)
