@@ -18,6 +18,12 @@ Object.assign(SmartHomeAPI.prototype, {
   runScene(homeId, id) {
     return this.post(this.guest ? `/homes/${enc(homeId)}/guest/scenes/${enc(id)}/run` : `/homes/${enc(homeId)}/automation/scenes/${enc(id)}/run`);
   },
+  getDevicePages(homeId) {
+    return this.get(`/homes/${enc(homeId)}/device-pages`);
+  },
+  setDevicePages(homeId, body) {
+    return this.put(`/homes/${enc(homeId)}/device-pages`, body);
+  },
   resetScene(homeId, id) {
     return this.post(this.guest ? `/homes/${enc(homeId)}/guest/scenes/${enc(id)}/reset` : `/homes/${enc(homeId)}/automation/scenes/${enc(id)}/reset`);
   },

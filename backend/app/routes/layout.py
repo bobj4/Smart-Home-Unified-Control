@@ -5,7 +5,9 @@
 
 Stored per user, home and screen type ("phone" or "wide"), with the rooms
 the user folded shut; it changes nothing for anyone
-else. The thermostats are shown in their own room, "Thermostats", which
+else. Except thermostats_apart and doors_apart (thermostats, or doors, only
+on their own page): the home's, set by admins for everyone and every screen;
+they come with the layout so everyone's Devices page follows them. The thermostats are shown in their own room, "Thermostats", which
 starts at the top until the user moves it. Rooms missing from the list
 (new ones) follow the listed rooms in name order.
 """
@@ -23,7 +25,7 @@ from app.authorization import require_role
 from app.db_config import get_db
 from app.dependencies import client_ip, current_user, require_csrf
 from app.guest_access import membership, require_guest
-from app.models import GUEST_ROLE, Role, RoomLayout, User
+from app.models import GUEST_ROLE, Home, Role, RoomLayout, User
 
 router = APIRouter(prefix="/api/v1/homes/{home_id}/layout", tags=["layout"])
 THERMOSTATS_ROOM = "Thermostats"
@@ -99,6 +101,47 @@ def _names(names: list[str]) -> list[str]:
     return out
 
 
+def _pages(db: Session, home_id: str) -> dict[str, bool]:
+    home = db.get(Home, home_id)
+    return {
+        "thermostats_apart": bool(home and home.thermostats_apart),
+        "doors_apart": bool(home and home.doors_apart),
+    }
+
+
+def set_pages(
+    db: Session,
+    user: User,
+    home_id: str,
+    request: Request,
+    thermostats: bool | None,
+    doors: bool | None,
+) -> dict[str, bool]:
+    """Change the home's thermostats/doors pages (admins); sending what they
+    already are changes nothing and needs no admin."""
+    now = _pages(db, home_id)
+    wanted = {"thermostats_apart": thermostats, "doors_apart": doors}
+    changes = {k: v for k, v in wanted.items() if v is not None and v != now[k]}
+    if not changes:
+        return now
+    require_role(db, user.id, home_id, Role.ADMIN)
+    home = db.get(Home, home_id)
+    if home is None:
+        raise HTTPException(404, "Not found")
+    for key, value in changes.items():
+        setattr(home, key, value)
+    db.commit()
+    record_event(
+        db,
+        "device_pages_changed",
+        user_id=user.id,
+        home_id=home_id,
+        ip_address=client_ip(request),
+        details=changes,
+    )
+    return _pages(db, home_id)
+
+
 def _out(db: Session, user_id: str, home_id: str, screen: str) -> dict[str, Any]:
     row = _row(db, user_id, home_id, screen)
     # A phone with no layout of its own starts from the wide-screen order.
@@ -112,11 +155,43 @@ def _out(db: Session, user_id: str, home_id: str, screen: str) -> dict[str, Any]
         if row and row.filters
         else Filters().model_dump(),
         "screen": screen,
-        "thermostats_apart": bool(row.thermostats_apart) if row else False,
-        "doors_apart": bool(row.doors_apart) if row else False,
+        **_pages(db, home_id),
         "grid": json.loads(row.grid) if row and row.grid else _default_grid(screen),
         "thermostats_room": THERMOSTATS_ROOM,
     }
+
+
+class Pages(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    thermostats_apart: StrictBool | None = None
+    doors_apart: StrictBool | None = None
+
+
+pages_router = APIRouter(prefix="/api/v1/homes/{home_id}/device-pages", tags=["layout"])
+
+
+@pages_router.get("")
+def get_pages(
+    home_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict[str, bool]:
+    """Thermostats, and doors, only on their own pages (the home's)."""
+    _require_member_or_guest(db, user, home_id)
+    return _pages(db, home_id)
+
+
+@pages_router.put("", dependencies=[Depends(require_csrf)])
+def put_pages(
+    home_id: str,
+    body: Pages,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    """Admins: for everyone in the home (Settings > Admin > Devices page)."""
+    require_role(db, user.id, home_id, Role.ADMIN)
+    return set_pages(
+        db, user, home_id, request, body.thermostats_apart, body.doors_apart
+    )
 
 
 @router.get("")
@@ -153,6 +228,10 @@ def set_layout(
             422,
             "Send room_order, collapsed, filters, thermostats_apart or doors_apart",
         )
+    set_pages(db, user, home_id, request, body.thermostats_apart, body.doors_apart)
+    mine = (body.room_order, body.collapsed, body.filters, body.grid)
+    if all(change is None for change in mine):
+        return _out(db, user.id, home_id, body.screen)
     current = _out(db, user.id, home_id, body.screen)
     row = _row(db, user.id, home_id, body.screen)
     if row is None:
@@ -169,10 +248,6 @@ def set_layout(
         row.collapsed = json.dumps(_names(body.collapsed))
     if body.filters is not None:
         row.filters = json.dumps(body.filters.model_dump())
-    if body.thermostats_apart is not None:
-        row.thermostats_apart = body.thermostats_apart
-    if body.doors_apart is not None:
-        row.doors_apart = body.doors_apart
     if body.grid is not None:
         row.grid = json.dumps(_grid(body.grid))
     db.commit()

@@ -1,4 +1,5 @@
-"""Thermostats on a page of their own, and optionally only there."""
+"""Thermostats on a page of their own, and optionally only there: the
+home's choice, set by admins for everyone and every screen."""
 
 from playwright.sync_api import expect
 
@@ -11,15 +12,52 @@ def _home(db, owner, make_device):
     make_device(owner.home_id, device_type="thermostat", name="Hallway")
 
 
-def test_api_thermostats_apart(client, owner, login, csrf):
+def test_api_thermostats_apart(client, new_client, owner, make_user, login, csrf):
     assert login(client, owner).status_code == 200
     url = f"/api/v1/homes/{owner.home_id}/layout"
+    pages = f"/api/v1/homes/{owner.home_id}/device-pages"
     assert client.get(url).json()["thermostats_apart"] is False
     r = client.put(url, json={"thermostats_apart": True}, headers=csrf(client))
     assert r.status_code == 200 and r.json()["thermostats_apart"] is True
-    assert client.get(f"{url}?screen=phone").json()["thermostats_apart"] is False
+    # The home's: every screen, everyone.
+    assert client.get(f"{url}?screen=phone").json()["thermostats_apart"] is True
     bad = client.put(url, json={"thermostats_apart": "yes"}, headers=csrf(client))
     assert bad.status_code == 422
+    member = make_user(owner.home_id, role="member")
+    them = new_client()
+    assert login(them, member).status_code == 200
+    assert them.get(url).json()["thermostats_apart"] is True
+    assert them.get(pages).json() == {"thermostats_apart": True, "doors_apart": False}
+    # Only admins change it; sending what it already is is fine.
+    off = {"thermostats_apart": False}
+    assert them.put(url, json=off, headers=csrf(them)).status_code == 403
+    assert them.put(pages, json=off, headers=csrf(them)).status_code == 403
+    same = {"thermostats_apart": True, "room_order": ["Lab"]}
+    assert them.put(url, json=same, headers=csrf(them)).status_code == 200
+    r = client.put(pages, json=off, headers=csrf(client))
+    assert r.json() == {"thermostats_apart": False, "doors_apart": False}
+    assert them.get(url).json()["thermostats_apart"] is False
+
+
+def test_ui_admin_sets_it_for_everyone(open_page, db, owner, make_user, make_device):
+    _home(db, owner, make_device)
+    page = open_page()
+    _ui.ui_login(page, owner)
+    section = _ui.go_settings(page, "admin")
+    section.get_by_test_id("pages-thermostats-apart").check()
+    expect(page.get_by_test_id("status")).to_contain_text(
+        "Everyone now sees them only on the Thermostats page"
+    )
+    member = make_user(owner.home_id, role="member")
+    other = open_page()
+    _ui.ui_login(other, member)
+    expect(_ui.card(other, "Lamp")).to_be_visible()
+    expect(_ui.card(other, "Hallway")).to_have_count(0)
+    other.get_by_test_id("layout-open").click()
+    expect(other.get_by_test_id("layout-thermostats-apart")).to_have_count(0)
+    other.get_by_test_id("layout-cancel").click()
+    other.get_by_test_id("nav-thermostats").click()
+    expect(_ui.card(other, "Hallway")).to_be_visible()
 
 
 def test_ui_thermostats_page(open_page, db, owner, make_device):

@@ -3,8 +3,9 @@
  * "Devices": Thermostats (#/devices/thermostats, with water heaters: anything
  * set by temperature) and Doors (#/devices/doors: remote doors such as
  * garage doors). A link shows only while the home has such a device from an
- * integration that is on. Each person can also keep them off the Devices
- * page (Edit layout > "... only on their own page").
+ * integration that is on. Admins can keep them off everyone's Devices page
+ * (Settings > Admin > Devices page, or Edit layout > "... only on their own
+ * page"): the home's thermostats_apart and doors_apart.
  */
 
 const THERMOSTAT_PAGE_TYPES = ['thermostat', 'water_heater'];

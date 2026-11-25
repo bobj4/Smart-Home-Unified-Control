@@ -1,6 +1,6 @@
 """Remote doors (garage doors) on a page of their own, like the thermostats:
 the Doors link shows only while the home has a door from an integration
-that is on, and each person can keep the doors only on that page."""
+that is on, and admins can keep the doors only on that page, for everyone."""
 
 from playwright.sync_api import expect
 
@@ -16,7 +16,7 @@ def test_api_doors_apart(client, owner, login, csrf):
     r = client.put(url, json={"doors_apart": True}, headers=csrf(client))
     assert r.status_code == 200 and r.json()["doors_apart"] is True
     assert r.json()["thermostats_apart"] is False
-    assert client.get(f"{url}?screen=phone").json()["doors_apart"] is False
+    assert client.get(f"{url}?screen=phone").json()["doors_apart"] is True
     bad = client.put(url, json={"doors_apart": "yes"}, headers=csrf(client))
     assert bad.status_code == 422
 

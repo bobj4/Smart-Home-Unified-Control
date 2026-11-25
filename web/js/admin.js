@@ -22,13 +22,14 @@ class AdminSection {
   }
 
   async render(container) {
-    const [policy, security, https, email, display] = await Promise.all([
+    const [policy, security, https, email, display, pages] = await Promise.all([
       this.app.api.getLoginPolicy(),
       this.app.api.getSecurityPolicy(this.app.home.id),
       this.app.api.getHttps(),
       this.app.api.getEmailServer(),
       // At another site with its server not connected: drawn without it.
       this.app.api.getDisplay(this.app.home.id).catch(() => null),
+      this.app.api.getDevicePages(this.app.home.id).catch(() => null),
     ]);
     this.httpsBox = el('div', { className: 'subpanel', testid: 'https-box' });
     this.fillHttps(https);
@@ -37,7 +38,7 @@ class AdminSection {
     const twoFactor = this.twoFactor(security);
     // Login rules: accounts and passwords, failed logins, login times.
     const rules = groupSections('Login rules', 'login-rules', [this.policyForm(policy)]);
-    container.append(new HomesPanel(this.app).render(), display ? this.displayBox(display) : '', twoFactor, rules);
+    container.append(new HomesPanel(this.app).render(), display ? this.displayBox(display, pages) : '', twoFactor, rules);
     await new LoginFailuresPanel(this.app).render(rules);
     await times.render(rules);
     await times.renderDevices(twoFactor);
@@ -152,7 +153,23 @@ class AdminSection {
     );
   }
 
-  displayBox(display) {
+  /** Thermostats (or doors) only on their own page: for everyone in the home. */
+  pageSwitch(pages, key, testid, title, page) {
+    const toggle = switchInput(testid, pages[key], title);
+    toggle.addEventListener('change', () => this.app.run(async () => {
+      try {
+        await this.app.api.setDevicePages(this.app.home.id, { [key]: toggle.checked });
+        this.app.devices.layoutHome = null; // the Devices page reads it again
+      } catch (error) {
+        toggle.checked = !toggle.checked;
+        throw error;
+      }
+      this.app.status.success(toggle.checked ? `Everyone now sees them only on the ${page} page.` : 'Everyone now sees them on the Devices page too.');
+    }));
+    return settingRow(title, `For everyone in this home, on every screen. Off: they are on the Devices page and the ${page} page.`, toggle);
+  }
+
+  displayBox(display, pages) {
     const toggle = switchInput('show-grouped-toggle', display.show_grouped_devices, 'Show grouped devices separately');
     toggle.addEventListener('change', () => this.app.run(async () => {
       try {
@@ -168,6 +185,8 @@ class AdminSection {
     return el('div', { className: 'subpanel' }, [
       el('h3', { text: 'Devices page' }),
       settingRow('Show grouped devices separately', 'Off: a group is one tile in its room and its devices are hidden there. On: groups get their own section and every device is also listed in its room.', toggle),
+      pages ? this.pageSwitch(pages, 'thermostats_apart', 'pages-thermostats-apart', 'Thermostats and water heaters only on their own page', 'Thermostats') : '',
+      pages ? this.pageSwitch(pages, 'doors_apart', 'pages-doors-apart', 'Doors only on their own page', 'Doors') : '',
     ]);
   }
 

@@ -50,7 +50,10 @@ layout**, separately for phones and wide screens) and filtered by type or
   dimmer switch has a brightness slider.
 - **Groups**: lights and plugs switched together; the group's **⋯**
   reaches each device in it.
-- **Thermostats and water heaters**: on a page of their own. Targets stay
+- **Thermostats and water heaters**: on a page of their own (and only
+  there, for everyone, when an admin turns on **Thermostats and water
+  heaters only on their own page** in Settings › Admin › Devices page;
+  **Doors only on their own page** does the same for garage doors). Targets stay
   within the home's safety limits. A Cync thermostat's **Settings** has an
   **Air filter** reminder among its installer settings: the thermostat's
   own, the same one the Cync app shows (after 100 to 1500 run hours, or 1
@@ -106,8 +109,9 @@ the clip.
 
 Admins only: people (add, edit, roles, enrollment and reset codes), homes
 (name, address, icon, Add a Home), login rules and password requirements,
-two-factor for everyone, the message of the day, Schedules and Scenes,
-the email server and HTTPS.
+the Devices page for everyone (grouped devices, thermostats and doors only
+on their own pages), two-factor for everyone, the message of the day,
+Schedules and Scenes, the email server and HTTPS.
 
 ## Settings › Devices
 

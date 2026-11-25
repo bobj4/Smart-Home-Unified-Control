@@ -95,16 +95,18 @@ class RoomLayoutEditor {
     return select;
   }
 
-  /** Only for homes with thermostats (or doors): keep them on their own page. */
+  /** Admins, in homes with thermostats (or doors): keep them on their own
+   * page, for everyone (also in Settings > Admin > Devices page). */
   thermostatsChoice() {
+    if (!this.view.app.can('admin')) return null;
     const have = (types) => (this.view.lastDevices || []).some((d) => types.includes(d.type));
     const choice = (types, testid, now, text) => {
       if (!have(types)) return null;
       const box = el('input', { type: 'checkbox', testid, checked: Boolean(now) });
       return { box, label: el('label', { className: 'check' }, [box, text]) };
     };
-    const thermostats = choice(THERMOSTAT_PAGE_TYPES, 'layout-thermostats-apart', this.view.thermostatsApart, ' Thermostats and water heaters only on their own page (the Thermostats link)');
-    const doors = choice(DOOR_PAGE_TYPES, 'layout-doors-apart', this.view.doorsApart, ' Doors only on their own page (the Doors link)');
+    const thermostats = choice(THERMOSTAT_PAGE_TYPES, 'layout-thermostats-apart', this.view.thermostatsApart, ' Thermostats and water heaters only on their own page (the Thermostats link), for everyone');
+    const doors = choice(DOOR_PAGE_TYPES, 'layout-doors-apart', this.view.doorsApart, ' Doors only on their own page (the Doors link), for everyone');
     this.apart = thermostats && thermostats.box;
     this.doorsApart = doors && doors.box;
     const labels = [thermostats, doors].filter(Boolean).map((c) => c.label);
@@ -114,9 +116,10 @@ class RoomLayoutEditor {
   save(order) {
     const { app } = this.view;
     return app.run(async () => {
-      const apart = this.apart ? this.apart.checked : this.view.thermostatsApart;
-      const doors = this.doorsApart ? this.doorsApart.checked : this.view.doorsApart;
-      const layout = { room_order: order, screen: this.view.layoutScreen, thermostats_apart: apart, doors_apart: doors };
+      const layout = { room_order: order, screen: this.view.layoutScreen };
+      // The home's (admins only): sent only when shown.
+      if (this.apart) layout.thermostats_apart = this.apart.checked;
+      if (this.doorsApart) layout.doors_apart = this.doorsApart.checked;
       if (this.wide()) {
         const sizes = Object.fromEntries(Object.entries(this.sizes).filter(([room, span]) => order.includes(room) && span > 1));
         layout.grid = { columns: this.columns, sizes };
@@ -149,7 +152,12 @@ async function loadLayout(view, homeId) {
     PHONE_SCREEN.addEventListener('change', () => { if (view.app.home) view.load().catch((e) => view.app.handleError(e)); });
   }
   const screen = screenType();
-  if (view.layoutHome === homeId && view.layoutScreen === screen) return;
+  if (view.layoutHome === homeId && view.layoutScreen === screen) {
+    // The home's own-page choices (an admin may change them): read each time.
+    const pages = await view.app.api.getDevicePages(homeId).catch(() => null);
+    if (pages) Object.assign(view, { thermostatsApart: pages.thermostats_apart, doorsApart: pages.doors_apart });
+    return;
+  }
   try {
     const layout = await view.app.api.getLayout(homeId, screen);
     view.roomOrder = layout.room_order;
