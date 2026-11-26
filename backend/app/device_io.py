@@ -15,6 +15,8 @@ from app.kasa_home import send_command as send_kasa_command
 from app.lg_home import LgUnavailable
 from app.lg_home import send_tv_command as send_lg_command
 from app.models import Device
+from app.nest_home import NestUnavailable
+from app.nest_home import send_command as send_nest_command
 from app.ratgdo_home import RatgdoUnavailable
 from app.ratgdo_home import send_command as send_ratgdo_command
 from app.rheem_home import RheemUnavailable
@@ -49,6 +51,7 @@ def send_to_device(
         "kasa",
         "ratgdo",
         "cync",
+        "google_nest",
     ):
         return  # simulated: nothing to send
     start = time.monotonic()
@@ -123,4 +126,9 @@ def _send(
         try:
             send_cync_command(db, device, command, state)
         except CyncUnavailable as error:
+            raise DeviceUnavailable(error.status_code, error.reason) from None
+    elif device.integration == "google_nest":
+        try:
+            send_nest_command(db, device, command, payload, state)
+        except NestUnavailable as error:
             raise DeviceUnavailable(error.status_code, error.reason) from None

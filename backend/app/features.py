@@ -89,6 +89,14 @@ INTEGRATIONS: tuple[Integration, ...] = (
         False,
         True,
     ),
+    Integration(
+        "google_nest",
+        "Google Nest",
+        "Nest thermostats, and camera and doorbell alerts, through Google's Device"
+        " Access (Google charges a one-time, non-refundable US$5 to register).",
+        False,
+        True,
+    ),
 )
 BY_ID = {i.id: i for i in INTEGRATIONS}
 

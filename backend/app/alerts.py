@@ -10,7 +10,10 @@ see app/device_alerts.py; camera labels are in Integrations > Frigate):
   offline       a device offline longer than its offline_minutes
   water_heater  a water heater reports a new alert (Rheem EcoNet)
   temperature   a thermostat reads below too_cold or above too_hot
-  camera        Frigate sees one of frigate_labels (a person, say)
+  camera        Frigate sees one of frigate_labels (a person, say), or a
+                Nest camera sees a person, motion or sound (its bell)
+  doorbell      a Nest doorbell rings (app/nest_home.handle)
+  nest          the Google Nest sign-in stopped working
 
 Each person picks the kinds they want and how (My Account > Alerts):
 nothing is sent until they do. One alert per episode: a door left open
@@ -63,6 +66,8 @@ KINDS = {
     "camera": "A camera sees someone",
     "smartthings": "SmartThings needs a new token or sign-in (TV inputs, turning TVs on)",
     "filter": "A thermostat's air filter needs changing",
+    "doorbell": "Someone rings a doorbell (Google Nest)",
+    "nest": "Google Nest needs signing in again",
 }
 PUSH_KEY = "webpush"
 # Push services browsers use; nothing else is ever sent a notification.
@@ -488,6 +493,7 @@ def check_home(
             )
     sent += _check_cameras(db, home_id, row, where, watch)
     sent += _check_smartthings(db, home_id, where, watch)
+    sent += _check_nest(db, home_id, where, watch)
     sent += _check_filters(db, home_id, where)
     return sent
 
@@ -516,6 +522,31 @@ def _check_filters(db: Session, home_id: str, where: str) -> int:
             keep=False,
         )
     return sent
+
+
+def _check_nest(db: Session, home_id: str, where: str, watch: Watch) -> int:
+    """Once when the Google Nest sign-in stops working, again after it is
+    fixed and stops again."""
+    from app import nest_home
+
+    if not integration_enabled(db, home_id, nest_home.INTEGRATION):
+        return 0
+    problem = nest_home.health(db, home_id)
+    key = (home_id, "nest-signin")
+    if problem is None:
+        watch.alerted.discard(key)
+        return 0
+    if key in watch.alerted:
+        return 0
+    watch.alerted.add(key)
+    return deliver(
+        db,
+        home_id,
+        "nest",
+        "Google Nest needs signing in again",
+        f"{where}: {problem}.",
+        key[1],
+    )
 
 
 def _check_smartthings(db: Session, home_id: str, where: str, watch: Watch) -> int:

@@ -3,7 +3,8 @@
 Samsung TVs are probed every pass (a quick local request). Rheem EcoNet is
 read at most every RHEEM_SECONDS per home, because EcoNet refuses accounts
 that log in too often. Frigate is read by the browser when the Cameras page
-is open, so it is not polled here.
+is open, so it is not polled here. Google Nest: its events each pass, its
+devices now and then (app/nest_home.refresh).
 """
 
 import asyncio
@@ -20,6 +21,7 @@ from app import (
     integration_status,
     kasa_home,
     lg_home,
+    nest_home,
     ratgdo_home,
     rheem_home,
     roku_home,
@@ -162,6 +164,7 @@ def refresh_all(db: Session) -> None:
             (refresh_rheem, "rheem_econet"),
             (refresh_cync, "cync"),
             (smartthings_oauth.keep_fresh, "smartthings"),
+            (nest_home.refresh, "google_nest"),
         )
         for step, integration in steps:
             start = time.monotonic()

@@ -49,6 +49,7 @@ from app.routes import (
     member_codes,
     members,
     motd,
+    nest,
     ratgdo,
     rheem,
     roku,
@@ -172,6 +173,7 @@ app.include_router(member_access.router)
 app.include_router(audit_log.router)
 app.include_router(integrations.router)
 app.include_router(rheem.router)
+app.include_router(nest.router)
 app.include_router(rheem.usage_router)
 app.include_router(thermostat.router)
 app.include_router(login_times.router)

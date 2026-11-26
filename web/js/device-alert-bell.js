@@ -17,6 +17,13 @@ const ALERT_FIELDS = {
     ['problems', 'bool', 'It reports a problem'],
     ['offline_minutes', 'minutes', 'Offline longer than (minutes, 0: never)'],
   ],
+  camera: [ // Google Nest cameras and doorbells
+    ['person', 'bool', 'It sees a person'],
+    ['motion', 'bool', 'It sees motion'],
+    ['sound', 'bool', 'It hears a sound'],
+    ['doorbell', 'bool', 'The doorbell rings'],
+    ['offline_minutes', 'minutes', 'Offline longer than (minutes, 0: never)'],
+  ],
   thermostat: [
     ['too_cold', 'degrees', 'Too cold: below (°, empty: never)'],
     ['too_hot', 'degrees', 'Too hot: above (°, empty: never)'],

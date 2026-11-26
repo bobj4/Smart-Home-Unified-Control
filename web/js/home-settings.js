@@ -232,6 +232,8 @@ class HomeSettings {
     if (ratgdoRow && ratgdoRow.enabled && this.app.can('operator')) {
       await new RatgdoPanel(this.app).render(container);
     }
+    const nestRow = rows.find((row) => row.id === 'google_nest');
+    if (nestRow && nestRow.enabled && this.app.can('operator')) await new NestPanel(this.app).render(container);
     const rokuRow = rows.find((row) => row.id === 'roku_tv');
     if (rokuRow && rokuRow.enabled && this.app.can('operator')) {
       await new RokuPanel(this.app).render(container);

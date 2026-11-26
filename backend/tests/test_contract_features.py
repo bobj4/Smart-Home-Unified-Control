@@ -26,6 +26,7 @@ INTEGRATION_IDS = [
     "rheem_econet",
     "ratgdo",
     "frigate",
+    "google_nest",
 ]
 
 

@@ -142,6 +142,13 @@ devices):
   through Samsung's cloud. SmartThings now needs a paid SmartThings API
   plan for a lasting connection; without it, a personal token works for 24
   hours. Named inputs (above) need no SmartThings.
+- **Google Nest**: Nest thermostats (on the Thermostats page), and Nest
+  cameras, doorbells and displays (what they last saw on their card, and
+  alerts: their bell in Settings › Devices picks person, motion, sound and
+  doorbell). Google charges a one-time, non-refundable US$5 to register for
+  Device Access, the only way in. Setup (about 15 minutes) is in the panel
+  and in docs/NEST.md; then **Sign in with Google** and paste back the
+  address Google lands on.
 - **ratgdo garage doors**: added by address.
 - **Frigate cameras**: the Frigate server's address and login, and which
   detections send a camera alert.
