@@ -7,8 +7,13 @@ whether it was on). Reset then sends what puts each device back, only
 where it still differs (a light already back as it was gets nothing), and
 forgets it. A device that could not be put back is kept for another try.
 
-A Hue scene changes lights the bridge chooses: every Hue light is noted,
-and only those that changed get anything back.
+Only what the scene did is put back: what each device was left like is
+noted too (after the run), and a part someone changed since (the lamp they
+dimmed by hand) is left as it is.
+
+A Hue scene: the lights it sets (asked of the bridge), their power and
+brightness (what the app follows of Hue lights), with what the scene sets
+them to as "after".
 
 Running the scene again within KEEP_FOR keeps what was noted first, so
 Reset still goes back to before the first run; later, a run notes afresh.
@@ -97,16 +102,65 @@ def _state(device: Device) -> dict[str, Any]:
     return {**defaults, **json.loads(device.state or "{}")}
 
 
-def _targets(db: Session, scene: Scene) -> dict[str, tuple[Device, set[str]]]:
-    """device id -> (device, what the scene changes on it)."""
-    found: dict[str, tuple[Device, set[str]]] = {}
+# what each aspect is, in a device's state
+ASPECT_KEYS = {
+    "power": ("on",),
+    "brightness": ("brightness",),
+    "color": ("color_mode", "color", "color_temp"),
+    "door": ("door",),
+    "light": ("light",),
+    "laser": ("laser",),
+    "locked": ("locked",),
+    "mode": ("mode", "enabled"),
+    "setpoints": ("heat_setpoint", "cool_setpoint", "target_temperature"),
+    "fan": ("fan",),
+    "hold": ("hold",),
+    "target": ("target_temperature",),
+    "away": ("away",),
+}
+DOOR_WAY = {"opening": "open", "closing": "closed"}
 
-    def note(device: Device | None, command: str) -> None:
+
+def _part(aspect: str, state: dict[str, Any]) -> tuple[Any, ...]:
+    values = tuple(state.get(key) for key in ASPECT_KEYS[aspect])
+    if aspect == "door":
+        return tuple(DOOR_WAY.get(str(v), v) for v in values)
+    if aspect == "color":  # only what its mode uses
+        mode = state.get("color_mode")
+        return (mode, state.get("color") if mode == "rgb" else state.get("color_temp"))
+    return values
+
+
+def _untouched(entry: dict[str, Any], now: dict[str, Any]) -> set[str]:
+    """The aspects still as the scene left them (all, for a note with no
+    "after", or a part the scene's "after" does not cover)."""
+    after = entry.get("after")
+    if after is None:
+        return set(entry["aspects"])
+    return {
+        aspect
+        for aspect in entry["aspects"]
+        if not any(key in after for key in ASPECT_KEYS[aspect])
+        or _part(aspect, after) == _part(aspect, now)
+    }
+
+
+def _targets(
+    db: Session, scene: Scene
+) -> dict[str, tuple[Device, set[str], dict[str, Any] | None]]:
+    """device id -> (device, what the scene changes on it, what a Hue scene
+    sets it to)."""
+    found: dict[str, tuple[Device, set[str], dict[str, Any] | None]] = {}
+
+    def note(
+        device: Device | None, command: str, sets: dict[str, Any] | None = None
+    ) -> None:
         if device is None or device.home_id != scene.home_id:
             return
         aspects = ASPECTS.get(device.type, {}).get(command)
         if aspects:
-            found.setdefault(device.id, (device, set()))[1].update(aspects)
+            entry = found.setdefault(device.id, (device, set(), sets))
+            entry[1].update(aspects)
 
     for step in json.loads(scene.steps or "[]"):
         if step["kind"] == "device":
@@ -119,9 +173,16 @@ def _targets(db: Session, scene: Scene) -> dict[str, tuple[Device, set[str]]]:
         elif step["kind"] == "hue_scene":
             from app import hue_home
 
-            for device in hue_home.list_lights(db, scene.home_id):
-                for command in ("set_brightness", "set_color"):
-                    note(device, command)
+            try:
+                sets = hue_home.scene_states(db, scene.home_id, step["id"])
+            except hue_home.HueUnavailable:
+                continue  # its run fails the same way: nothing to put back
+            for device_id, values in sets.items():
+                commands = ["turn_on"] + (
+                    ["set_brightness"] if "brightness" in values else []
+                )
+                for command in commands:
+                    note(db.get(Device, device_id), command, values)
     return found
 
 
@@ -130,7 +191,7 @@ def note_before(db: Session, scene: Scene) -> None:
     kept: dict[str, Any] = {}
     if scene.before and scene.ran_at and utcnow() - _aware(scene.ran_at) < KEEP_FOR:
         kept = json.loads(scene.before)
-    for device_id, (device, aspects) in _targets(db, scene).items():
+    for device_id, (device, aspects, sets) in _targets(db, scene).items():
         state = _state(device)
         entry = kept.setdefault(
             device_id,
@@ -140,8 +201,25 @@ def note_before(db: Session, scene: Scene) -> None:
         for key in KEYS:  # something it lacked at the first run
             if key in state:
                 entry["state"].setdefault(key, state[key])
+        # A Hue scene's lights: what it sets them to. Others: after the run.
+        entry["after"] = dict(sets) if sets is not None else None
     scene.before = json.dumps(kept) if kept else None
     scene.ran_at = utcnow()
+    db.commit()
+
+
+def note_after(db: Session, scene: Scene) -> None:
+    """After a run: what it left each device like (a Hue scene's lights
+    already have theirs), so Reset leaves alone what someone changes later."""
+    kept: dict[str, Any] = json.loads(scene.before or "{}")
+    for device_id, entry in kept.items():
+        if entry.get("after") is not None:
+            continue
+        device = db.get(Device, device_id)
+        if device is not None:
+            state = _state(device)
+            entry["after"] = {k: state[k] for k in KEYS if k in state}
+    scene.before = json.dumps(kept) if kept else None
     db.commit()
 
 
@@ -157,6 +235,8 @@ def _light(before: dict[str, Any], now: dict[str, Any], aspects: set[str]) -> Co
     was_on, is_on = before.get("on"), now.get("on")
     if was_on is False and is_on is False:
         return commands  # off then and now: its color does not show
+    if is_on is False and "power" not in aspects:
+        return commands  # turned off since, by someone: a color would turn it on
     if "color" in aspects:
         mode = before.get("color_mode")
         if (
@@ -314,8 +394,9 @@ def reset(db: Session, scene: Scene, user_id: str | None) -> dict[str, Any]:
         device = db.get(Device, device_id)
         if device is None or device.home_id != scene.home_id:
             continue  # removed since
+        now = _state(device)
         commands = commands_back(
-            device.type, entry["state"], _state(device), set(entry["aspects"])
+            device.type, entry["state"], now, _untouched(entry, now)
         )
         for command, payload in commands:
             try:

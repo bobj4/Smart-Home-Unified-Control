@@ -488,6 +488,9 @@ svg.home-icon { padding: 3px; background: var(--surface-2); }
 .step-value { flex: 1 1 90px; min-width: 0; display: flex; }
 .step-value > * { width: 100%; min-width: 0; }
 .step-value:empty { display: none; }
+.step-flash { display: flex; flex-wrap: wrap; gap: 8px; }
+.step-flash-part { display: grid; gap: 2px; font-size: 0.85em; flex: 1 1 80px; }
+.step-flash-part input { width: 100%; }
 .step-color { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .step-color > input[type="color"] { width: 44px; height: 32px; padding: 0; flex: none; }
 .step-swatches { display: flex; flex-wrap: wrap; gap: 4px; }

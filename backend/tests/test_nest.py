@@ -433,3 +433,39 @@ def test_ui_camera_card_and_its_bell(open_page, db, owner, secrets_key, google):
     section = _ui.go_settings(page, "devices")
     row = section.locator('[data-testid="device-alert-bell"][data-popup="true"]').first
     expect(row).to_be_visible()
+
+
+def test_events_trouble_still_reads_the_devices(
+    client, db, owner, login, csrf, secrets_key, google, monkeypatch
+):
+    signed_in(client, db, owner, login, csrf)
+
+    def broken(token, subscription, most=50):
+        raise nest.NestError("Resource not found (resource=nest-events)")
+
+    monkeypatch.setattr(nest, "pull", broken)
+    google["devices"] = [thermostat_item(mode="OFF", hvac="OFF"), DOORBELL]
+    nest_home._read_at[owner.home_id] = 0
+    nest_home.refresh(db, owner.home_id, now=nest_home.POLL_SECONDS + 1)
+    assert json.loads(nest_device(db, owner.home_id, "THERMO1").state)["mode"] == "off"
+
+
+def test_a_pull_held_open_means_nothing_waits(monkeypatch):
+    def slow(*args, **kwargs):
+        raise nest.requests.ReadTimeout("held")
+
+    monkeypatch.setattr(nest.requests, "request", slow)
+    assert nest.pull("a1", SUBSCRIPTION) == []
+    with pytest.raises(nest.NestError):
+        nest.list_devices("a1", PROJECT)
+
+
+def test_an_old_event_keeps_its_time(
+    client, db, owner, login, csrf, secrets_key, google
+):
+    signed_in(client, db, owner, login, csrf)
+    google["events"] = [event("BELL1", "CameraPerson.Person", "old", ago=7200)]
+    nest_home.refresh(db, owner.home_id, now=0)
+    seen = json.loads(nest_device(db, owner.home_id, "BELL1").state)["last_event"]
+    at = datetime.fromisoformat(seen["at"])
+    assert timedelta(minutes=110) < datetime.now(UTC) - at < timedelta(minutes=130)

@@ -22,7 +22,7 @@ import json
 import logging
 import secrets
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -510,7 +510,8 @@ def handle(db: Session, home_id: str, event: dict[str, Any]) -> int:
             continue
         _seen_events[key] = time.time()
         state = json.loads(device.state or "{}")
-        state["last_event"] = {"kind": kind, "at": utcnow().isoformat()}
+        when = utcnow() - timedelta(seconds=max(0.0, _age(event)))
+        state["last_event"] = {"kind": kind, "at": when.isoformat()}
         device.state = json.dumps(state)
         db.commit()
         if _age(event) > EVENT_MAX_AGE:
@@ -579,9 +580,17 @@ def refresh(db: Session, home_id: str, now: float | None = None) -> bool | int:
     now = time.monotonic() if now is None else now
     every = EVENTS_POLL_SECONDS if data.get("subscription") else POLL_SECONDS
     asked: bool | int = False
-    try:
-        if data.get("subscription"):
+    events_problem = None
+    if data.get("subscription"):
+        try:
             asked = pull_events(db, home_id) or True
+        except NestUnavailable as error:
+            # Events not coming (a wrong subscription, say): the devices
+            # are still read, as often as without events.
+            db.rollback()
+            events_problem = f"events: {error.reason}"
+            every = POLL_SECONDS
+    try:
         last = _read_at.get(home_id)
         if last is None or now - last >= every:
             _read_at[home_id] = now
@@ -591,5 +600,8 @@ def refresh(db: Session, home_id: str, now: float | None = None) -> bool | int:
         db.rollback()
         integration_status.failed(home_id, INTEGRATION, error.reason)
         return False
-    integration_status.worked(home_id, INTEGRATION)
+    if events_problem:
+        integration_status.failed(home_id, INTEGRATION, events_problem)
+    else:
+        integration_status.worked(home_id, INTEGRATION)
     return asked

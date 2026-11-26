@@ -221,3 +221,66 @@ def test_ui_reset_and_color_samples(open_page, db, owner, make_device):
     expect(
         page.get_by_test_id("scene-editor").get_by_role("button", name="Blue")
     ).to_have_attribute("aria-pressed", "true")
+
+
+def test_reset_leaves_what_someone_changed_since(
+    client, db, owner, login, csrf, make_device
+):
+    lamp = make_device(owner.home_id, name="Lamp")
+    fan = make_device(owner.home_id, device_type="plug", name="Fan")
+    put_state(db, lamp, on=True, brightness=90)
+    put_state(db, fan, on=False)
+    assert login(client, owner).status_code == 200
+    made = scene(
+        client,
+        csrf,
+        owner.home_id,
+        [step(lamp, "set_brightness", brightness=20), step(fan, "turn_on")],
+    )
+    client.post(base(owner.home_id, f"/scenes/{made['id']}/run"), headers=csrf(client))
+    put_state(db, lamp, brightness=55)  # dimmed by hand afterwards
+    r = client.post(
+        base(owner.home_id, f"/scenes/{made['id']}/reset"), headers=csrf(client)
+    )
+    assert r.json() == {"done": 1, "failed": []}
+    assert state(db, lamp)["brightness"] == 55  # left as they set it
+    assert state(db, fan)["on"] is False  # the scene's own change: put back
+
+
+def test_hue_scene_resets_only_its_own_lights(
+    client, db, owner, login, csrf, make_device, monkeypatch
+):
+    from app import features, hue_home
+
+    features.set_integration(db, owner.home_id, "hue", True, None, None)
+    desk = make_device(owner.home_id, name="Desk")
+    hall = make_device(owner.home_id, name="Hall")
+    other = make_device(owner.home_id, name="Porch")
+    for device_id in (desk, hall, other):
+        put_state(db, device_id, on=False, brightness=40)
+    sets = {desk: {"on": True, "brightness": 80}, hall: {"on": True, "brightness": 30}}
+
+    def recall(db_, home_id, ref):  # the bridge shows the scene
+        for device_id, values in sets.items():
+            put_state(db_, device_id, **values)
+
+    monkeypatch.setattr(hue_home, "scene_states", lambda db_, home_id, ref: sets)
+    monkeypatch.setattr(hue_home, "recall_scene", recall)
+    assert login(client, owner).status_code == 200
+    made = scene(
+        client,
+        csrf,
+        owner.home_id,
+        [{"kind": "hue_scene", "id": "3/AbC-123", "command": "recall", "payload": {}}],
+    )
+    client.post(base(owner.home_id, f"/scenes/{made['id']}/run"), headers=csrf(client))
+    put_state(db, other, on=True)  # not in the scene: turned on by hand
+    put_state(db, hall, brightness=70)  # in it, but dimmed by hand since
+    r = client.post(
+        base(owner.home_id, f"/scenes/{made['id']}/reset"), headers=csrf(client)
+    )
+    assert r.status_code == 200, r.text
+    assert state(db, desk) == {**state(db, desk), "on": False}
+    assert state(db, desk)["brightness"] == 40
+    assert state(db, hall)["on"] is False and state(db, hall)["brightness"] == 70
+    assert state(db, other)["on"] is True

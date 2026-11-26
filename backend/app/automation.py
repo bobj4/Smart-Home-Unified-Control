@@ -11,7 +11,8 @@ A step is checked when saved (the device or group is in the home and the
 command fits, each step seeing the state the earlier ones leave) and again
 when it runs, through the same path as a command from the app
 (apply_command: limits, integrations off, the audit log). One failing step
-does not stop the others.
+does not stop the others. A "flash" step (a light or a group's lights)
+starts after the rest, in the background (app/flash.py).
 
 The scheduler wakes every TICK_SECONDS, runs what is due, and works out
 each schedule's next run. A run missed by more than MISSED_GRACE (the
@@ -22,6 +23,7 @@ import asyncio
 import json
 import logging
 import re
+from collections.abc import Callable
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
@@ -30,7 +32,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import geocode, scene_reset, sun
+from app import flash, geocode, scene_reset, sun
 from app.audit import record_event
 from app.authorization import require_role
 from app.db_config import SessionLocal
@@ -199,7 +201,9 @@ def check_steps(
         command, payload = str(step.get("command", "")), step.get("payload") or {}
         if not isinstance(payload, dict):
             raise AutomationError(422, f"step {number}: payload must be an object")
-        if kind == "hue_scene":
+        if command == flash.COMMAND and kind in ("device", "group"):
+            payload = _check_flash(db, home_id, number, kind, target, payload)
+        elif kind == "hue_scene":
             if (
                 not re.fullmatch(r"\d{1,4}/[A-Za-z0-9-]{1,40}", target)
                 or command != "recall"
@@ -245,19 +249,60 @@ def check_steps(
     return out
 
 
+def _check_flash(
+    db: Session,
+    home_id: str,
+    number: int,
+    kind: str,
+    target: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """A flash step: a light, or a group (its lights flash)."""
+    if kind == "group":
+        group = db.get(DeviceGroup, target)
+        if group is None or group.home_id != home_id:
+            raise AutomationError(422, f"step {number}: no such group in this home")
+    else:
+        device = db.get(Device, target)
+        if device is None or device.home_id != home_id:
+            raise AutomationError(422, f"step {number}: no such device in this home")
+        if device.type != "light":
+            raise AutomationError(422, f"step {number}: only lights flash")
+    try:
+        return flash.check(payload)
+    except flash.FlashError as error:
+        raise AutomationError(422, f"step {number}: {error}") from None
+
+
+def _flash_lights(db: Session, home_id: str, step: dict[str, Any]) -> list[Device]:
+    if step["kind"] == "group":
+        group = db.get(DeviceGroup, step["id"])
+        if group is None or group.home_id != home_id:
+            return []
+        return [d for d in members(db, group) if d.type == "light"]
+    device = db.get(Device, step["id"])
+    ok = device is not None and device.home_id == home_id and device.type == "light"
+    return [device] if ok and device is not None else []
+
+
 def run_steps(
     db: Session,
     home_id: str,
     steps: list[dict[str, Any]],
     user_id: str | None,
     why: str,
+    before_flashing: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
-    """Run each step; {"done": n, "failed": [{"name", "reason"}]}."""
+    """Run each step; {"done": n, "failed": [{"name", "reason"}]}. Flash
+    steps start last (before_flashing runs first: Reset's "after")."""
     from app.routes.devices import CommandRejected, apply_command
 
     audit = {"user_id": user_id, "home_id": home_id, "ip_address": None}
     done, failed = 0, []
+    flashes = [s for s in steps if s["command"] == flash.COMMAND]
     for step in steps:
+        if step["command"] == flash.COMMAND:
+            continue  # after the rest (app/flash.py)
         if step["kind"] == "hue_scene":  # shown by the Hue Bridge itself
             from app import hue_home
 
@@ -292,6 +337,22 @@ def run_steps(
             except CommandRejected as rejected:
                 db.rollback()
                 failed.append({"name": device.name, "reason": rejected.reason})
+    if before_flashing is not None:
+        before_flashing()
+    # Steps with the same timing flash together, in step.
+    together: dict[str, list[str]] = {}
+    for step in flashes:
+        lights = _flash_lights(db, home_id, step)
+        if not lights:
+            failed.append({"name": "a flash", "reason": "no lights to flash"})
+            continue
+        key = json.dumps(step["payload"], sort_keys=True)
+        together.setdefault(key, []).extend(d.id for d in lights)
+    for key, ids in together.items():
+        try:
+            done += len(flash.start(home_id, ids, json.loads(key), user_id))
+        except flash.FlashError as error:
+            failed.append({"name": "a flash", "reason": str(error)})
     record_event(
         db,
         "automation_run",
@@ -328,7 +389,14 @@ def run_scene(
 ) -> dict[str, Any]:
     """Run it, noting first what its Reset puts back (app/scene_reset.py)."""
     scene_reset.note_before(db, scene)
-    return run_steps(db, scene.home_id, json.loads(scene.steps or "[]"), user_id, why)
+    return run_steps(
+        db,
+        scene.home_id,
+        json.loads(scene.steps or "[]"),
+        user_id,
+        why,
+        before_flashing=lambda: scene_reset.note_after(db, scene),
+    )
 
 
 # ------------------------------------------------------------ schedules

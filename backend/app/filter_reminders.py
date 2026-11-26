@@ -18,13 +18,14 @@ that sends no filter report is counted here the same way.
 
 import json
 import math
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
-from app.models import Device, FilterReminder, utcnow
+from app.models import Device, FilterReminder, ScheduleSettings, utcnow
 
 MODES = ("off", "hours", "months")
 LIMITS = {"hours": (100, 1500), "months": (1, 12)}  # the Cync app's ranges
@@ -67,18 +68,37 @@ def reset_date(device: Device) -> date | None:
         return None
 
 
+def local_zone(device: Device) -> tzinfo:
+    """The home's time zone (Settings > Admin > Schedules and Scenes), else
+    the server's own: the thermostat reports its reset day in local time."""
+    session = object_session(device)
+    settings = session.get(ScheduleSettings, device.home_id) if session else None
+    if settings is not None and settings.time_zone and settings.time_zone != "UTC":
+        try:
+            return ZoneInfo(settings.time_zone)
+        except (ZoneInfoNotFoundError, ValueError):
+            pass
+    return datetime.now().astimezone().tzinfo or UTC
+
+
+def _day_start(day: date, zone: tzinfo) -> datetime:
+    return datetime(day.year, day.month, day.day, tzinfo=zone)
+
+
 def _counted_here(device: Device, row: FilterReminder) -> bool:
     """True when the last change was pressed here after the thermostat's own
     last reset (it could not be reset), or it reports no filter count."""
     reset = reset_date(device)
-    return reset is None or _aware(row.changed_at).date() > reset
+    if reset is None:
+        return True
+    return _aware(row.changed_at).astimezone(local_zone(device)).date() > reset
 
 
 def _start(device: Device, row: FilterReminder) -> datetime:
     reset = reset_date(device)
     if _counted_here(device, row) or reset is None:
         return _aware(row.changed_at)
-    return datetime(reset.year, reset.month, reset.day, tzinfo=UTC)
+    return _day_start(reset, local_zone(device))
 
 
 def due_at(device: Device, row: FilterReminder) -> datetime | None:
@@ -157,11 +177,7 @@ def _row(db: Session, device: Device) -> FilterReminder:
             device_id=device.id,
             mode="off",
             every=DEFAULTS["months"],
-            changed_at=(
-                datetime(reset.year, reset.month, reset.day, tzinfo=UTC)
-                if reset
-                else utcnow()
-            ),
+            changed_at=(_day_start(reset, local_zone(device)) if reset else utcnow()),
             runtime_at_change=None if reset else runtime(device),
             notified=False,
         )

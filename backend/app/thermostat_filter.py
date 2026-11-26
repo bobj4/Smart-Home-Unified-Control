@@ -150,10 +150,20 @@ def reset(db: Session, device: Device) -> bool | None:
     if cync_thermostat.FILTER not in points:
         return False
     state = json.loads(device.state or "{}")
+    before = (state.get("filter_reset"), state.get("filter_hours"))
     state.update(cync_thermostat.thermostat_state(points))
     device.state = json.dumps(state)
     db.commit()
-    return True
+    # Taken when its count started again: a new reset day, fewer hours, or none.
+    hours = state.get("filter_hours")
+    if not isinstance(hours, int | float):
+        return state.get("filter_reset") != before[0]
+    was = before[1] if isinstance(before[1], int | float) else None
+    return (
+        state.get("filter_reset") != before[0]
+        or hours == 0
+        or (was is not None and hours < was)
+    )
 
 
 def sync(db: Session, home_id: str, now: float | None = None) -> None:

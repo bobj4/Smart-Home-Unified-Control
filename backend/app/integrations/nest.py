@@ -30,6 +30,7 @@ SCOPES = (
     "https://www.googleapis.com/auth/pubsub",  # camera and doorbell events
 )
 TIMEOUT_SECONDS = 15
+PULL_SECONDS = 8  # a pull that waits longer has nothing (it runs every pass)
 TRAIT = "sdm.devices.traits."
 COMMAND = "sdm.devices.commands."
 EVENT = "sdm.devices.events."
@@ -115,14 +116,16 @@ def refresh(client_id: str, client_secret: str, refresh_token: str) -> dict[str,
     )
 
 
-def _call(method: str, url: str, token: str, body: Any = None) -> Any:
+def _call(
+    method: str, url: str, token: str, body: Any = None, wait: float = TIMEOUT_SECONDS
+) -> Any:
     try:
         response = requests.request(
             method,
             url,
             headers={"Authorization": f"Bearer {token}"},
             json=body,
-            timeout=TIMEOUT_SECONDS,
+            timeout=wait,
         )
     except requests.RequestException as error:
         raise NestError(f"could not reach Google: {type(error).__name__}") from None
@@ -158,12 +161,18 @@ def execute(token: str, device_name: str, command: str, params: dict[str, Any]) 
 def pull(token: str, subscription: str, most: int = 50) -> list[dict[str, Any]]:
     """Waiting events from the Pub/Sub subscription ("projects/../subscriptions/..")
     as [{"ack_id", "event"}] (event: the decoded SDM message)."""
-    answer = _call(
-        "POST",
-        f"{PUBSUB}/{subscription}:pull",
-        token,
-        {"maxMessages": most, "returnImmediately": True},
-    )
+    try:
+        answer = _call(
+            "POST",
+            f"{PUBSUB}/{subscription}:pull",
+            token,
+            {"maxMessages": most, "returnImmediately": True},
+            wait=PULL_SECONDS,
+        )
+    except NestError as error:
+        if "ReadTimeout" in str(error):
+            return []  # Pub/Sub held the pull open: nothing waiting
+        raise
     found = []
     for received in answer.get("receivedMessages") or []:
         data = (received.get("message") or {}).get("data") or ""
