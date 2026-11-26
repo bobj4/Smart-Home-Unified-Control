@@ -5,7 +5,7 @@
  */
 
 const STEP_COMMANDS = {
-  light: [['turn_on', 'On'], ['turn_off', 'Off'], ['set_brightness', 'Brightness', 'brightness'], ['set_color_temp', 'White', 'kelvin'], ['set_color', 'Color', 'color']],
+  light: [['turn_on', 'On'], ['turn_off', 'Off'], ['set_brightness', 'Brightness', 'brightness'], ['set_color_temp', 'White', 'kelvin'], ['set_color', 'Color', 'color'], ['flash', 'Flash', 'flash']],
   plug: [['turn_on', 'On'], ['turn_off', 'Off']],
   tv: [['turn_on', 'On'], ['turn_off', 'Off']],
   garage_door: [['open', 'Open'], ['close', 'Close'], ['light_on', 'Light on'], ['light_off', 'Light off'], ['laser_on', 'Parking laser on'], ['laser_off', 'Parking laser off']],
@@ -37,6 +37,21 @@ function colorWithSwatches(value) {
   input.addEventListener('input', mark);
   mark();
   return { input, box: el('span', { className: 'step-color' }, [input, el('span', { className: 'step-swatches', role: 'group', 'aria-label': 'Color samples' }, swatches)]) };
+}
+
+/** Flash: how many times, how long each lasts, how long between (seconds). */
+function flashInputs(payload) {
+  const number = (key, label, value, attrs) => {
+    const input = el('input', { type: 'number', value: String(value), 'aria-label': label, testid: `step-flash-${key}`, ...attrs });
+    input.dataset.flash = key;
+    return el('label', { className: 'step-flash-part' }, [el('span', { className: 'muted', text: label }), input]);
+  };
+  const seconds = { min: '0.5', max: '10', step: '0.5' };
+  return el('span', { className: 'step-flash' }, [
+    number('times', 'Times', payload.times ?? 3, { min: '1', max: '20', step: '1' }),
+    number('on_seconds', 'Flash lasts (s)', payload.on_seconds ?? 1, seconds),
+    number('off_seconds', 'Between (s)', payload.off_seconds ?? 1, seconds),
+  ]);
 }
 
 function stepChoice(options, value, testid) {
@@ -91,6 +106,7 @@ class StepList {
       if (key === 'brightness') input = el('input', { type: 'number', min: '0', max: '100', value: String(payload.brightness ?? 50), 'aria-label': 'Brightness %' });
       if (key === 'kelvin') input = el('input', { type: 'number', min: '2000', max: '6500', step: '100', value: String(payload.kelvin ?? 2700), 'aria-label': 'White (kelvin)' });
       if (key === 'color') ({ input, box: shown } = colorWithSwatches(payload.color || '#ffaa55'));
+      if (key === 'flash') shown = flashInputs(payload);
       if (key === 'temperature') input = el('input', { type: 'number', step: '1', value: String(payload.temperature ?? 70), 'aria-label': 'Temperature' });
       if (key === 'mode') input = stepChoice(((device && device.state.modes) || ['off', 'heat', 'cool', 'auto']).map((m) => [m, m]), payload.mode, 'step-choice');
       if (STEP_CHOICES[key]) input = stepChoice(STEP_CHOICES[key], payload[key], 'step-choice');
@@ -115,6 +131,9 @@ class StepList {
       const [kind, id] = row.querySelector('[data-testid="step-target"]').value.split(':');
       const input = row.querySelector('[data-key]');
       const payload = {};
+      row.querySelectorAll('[data-flash]').forEach((part) => {
+        payload[part.dataset.flash] = part.dataset.flash === 'times' ? Number.parseInt(part.value, 10) : Number(part.value);
+      });
       if (input) {
         const key = input.dataset.key;
         if (['brightness', 'kelvin'].includes(key)) payload[key] = Number.parseInt(input.value, 10);

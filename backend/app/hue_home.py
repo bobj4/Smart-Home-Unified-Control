@@ -142,6 +142,16 @@ def list_scenes(db: Session, home_id: str) -> list[dict[str, str]]:
     return found
 
 
+def scene_states(db: Session, home_id: str, scene: str) -> dict[str, dict[str, Any]]:
+    """{device id: what the Hue scene sets it to} for the scene's lights."""
+    host, key = _bridge(db, home_id)
+    found: dict[str, dict[str, Any]] = _guard(
+        lambda: hue.scene_states(host, key, scene)
+    )
+    by_light = {str(d.external_id): d.id for d in list_lights(db, home_id)}
+    return {by_light[k]: v for k, v in found.items() if k in by_light}
+
+
 def recall_scene(db: Session, home_id: str, scene: str) -> None:
     if not integration_enabled(db, home_id, INTEGRATION):
         raise HueUnavailable(409, "the Philips Hue integration is turned off")

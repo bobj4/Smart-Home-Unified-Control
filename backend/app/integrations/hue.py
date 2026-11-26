@@ -126,6 +126,25 @@ def scenes(host: str, key: str) -> list[dict[str, str]]:
     return sorted(out, key=lambda s: (s["room"].lower(), s["name"].lower()))
 
 
+def scene_states(host: str, key: str, scene: str) -> dict[str, dict[str, Any]]:
+    """What a Hue scene ("<room>/<scene>") sets each of its lights to:
+    {light id: {"on", "brightness" (percent, when it sets one)}}."""
+    _, _, scene_id = scene.partition("/")
+    if not scene_id.replace("-", "").isalnum():
+        raise HueError("not a Hue scene")
+    data = _call("GET", f"{_base(host, key)}/scenes/{scene_id}") or {}
+    states = data.get("lightstates") if isinstance(data, dict) else None
+    out: dict[str, dict[str, Any]] = {}
+    for light_id, state in (states or {}).items():
+        if not isinstance(state, dict):
+            continue
+        entry: dict[str, Any] = {"on": bool(state.get("on", True))}
+        if "bri" in state:
+            entry["brightness"] = round(int(state["bri"]) * 100 / 254)
+        out[str(light_id)] = entry
+    return out
+
+
 def recall(host: str, key: str, scene: str) -> None:
     """Show a Hue scene ("<room>/<scene>") on its room's lights."""
     group, _, scene_id = scene.partition("/")

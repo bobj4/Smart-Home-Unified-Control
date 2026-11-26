@@ -106,7 +106,10 @@ class NestPanel {
             project_id: project.value.trim(), client_id: client.value.trim(),
             client_secret: secret.value.trim(), subscription: subscription.value.trim(),
           });
-          if (tab) tab.location.href = result.authorize_url;
+          if (tab) {
+            tab.opener = null; // Google's page gets no handle on this one
+            tab.location.href = result.authorize_url;
+          }
           else window.open(result.authorize_url, '_blank', 'noopener');
           this.app.status.success('Sign in on Google\'s page, then paste the address it lands on here.');
           this.draw(result);

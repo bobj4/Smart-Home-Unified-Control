@@ -244,7 +244,7 @@ def test_months_count_from_the_reset_day():
     row = FilterReminder(
         mode="months", every=1, changed_at=datetime(2026, 1, 31, tzinfo=UTC)
     )
-    on = datetime(2026, 2, 20, tzinfo=UTC)
+    on = datetime(2026, 2, 20, tzinfo=filter_reminders.local_zone(device))
     shown = filter_reminders.status(device, row, on)
     assert shown["due_at"].startswith("2026-02-28") and shown["left"] == 8
     assert filter_reminders.status(device, row, on + timedelta(days=9))["due"] is True
@@ -402,3 +402,49 @@ def test_odd_answers_change_nothing(db, owner):
     )
     shown = filter_reminders.for_device(db, hall)
     assert (shown["mode"], shown["every"]) == ("months", 6)
+
+
+def test_a_reset_that_did_not_take_is_said(
+    client, db, owner, login, csrf, held, monkeypatch
+):
+    hall = thermostat(db, owner, hours=984, reset="2026-06-17")
+    assert login(client, owner).status_code == 200
+    body = {"mode": "hours", "every": 500}
+    client.put(url(owner, hall), json=body, headers=csrf(client))
+
+    def ignored(api, loop, cloud_id, entries):
+        points = dict(t.parse_probe_reply(_thermostat.REPLY))
+        points[t.FILTER] = json.dumps(
+            {"ResetData": "2026-06-17T18:25:45", "Runtime": 984}
+        )
+        return points
+
+    monkeypatch.setattr(cync, "thermostat_write_on_open", ignored)
+    r = client.post(url(owner, hall, "/changed"), headers=csrf(client))
+    assert r.json()["thermostat_reset"] is False
+    assert r.json()["left"] == 500  # counted here from the press
+
+
+def test_reset_day_is_the_homes_local_day(db, owner):
+    """Changed Filter at 8 pm in New York is the next day in UTC: still the
+    thermostat's reset day (its count), not one counted here."""
+    from app.models import ScheduleSettings
+
+    db.add(
+        ScheduleSettings(
+            home_id=owner.home_id, time_zone="America/New_York", editors="admin"
+        )
+    )
+    hall = thermostat(db, owner, hours=0, reset="2026-11-26")
+    row = FilterReminder(
+        device_id=hall.id,
+        mode="months",
+        every=3,
+        changed_at=datetime(2026, 11, 27, 1, 0, tzinfo=UTC),  # 8 pm on the 26th there
+        runtime_at_change=0,
+    )
+    db.add(row)
+    db.commit()
+    shown = filter_reminders.status(hall, row, datetime(2026, 11, 27, 2, 0, tzinfo=UTC))
+    assert shown["due_at"].startswith("2027-02-26T00:00:00-05:00")
+    assert shown["changed_at"].startswith("2026-11-26T00:00:00-05:00")

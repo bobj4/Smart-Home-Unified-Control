@@ -79,10 +79,14 @@ layout**, separately for phones and wide screens) and filtered by type or
   (minutes before or after), on the days you choose.
 - **Scenes** switch devices, groups (and Hue scenes) together with one press.
   A color step has color samples to pick from (or any color with its
-  picker).
+  picker). **Flash** (a light or a group): how many times, how long each
+  flash lasts and how long between them (seconds). Flashing starts after
+  the scene's other steps, lights with the same timing flash together, and
+  each light ends on or off as it was.
 - **Reset** (on a scene that has run): puts back what the scene changed,
-  only that (a brightness step: the brightness), and only where it still
-  differs. Running the scene again within 12 hours keeps the first
+  only that (a brightness step: the brightness; a Hue scene: its own
+  lights), and only where it is still as the scene left it (a lamp dimmed
+  by hand since stays as it is). Running the scene again within 12 hours keeps the first
   "before". Anyone who can run the scene can reset it.
 
 Admins choose who may make and change them, the home's time zone and
