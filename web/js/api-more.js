@@ -18,6 +18,21 @@ Object.assign(SmartHomeAPI.prototype, {
   runScene(homeId, id) {
     return this.post(this.guest ? `/homes/${enc(homeId)}/guest/scenes/${enc(id)}/run` : `/homes/${enc(homeId)}/automation/scenes/${enc(id)}/run`);
   },
+  getNest(homeId) {
+    return this.get(`/homes/${enc(homeId)}/integrations/google_nest/account`);
+  },
+  startNest(homeId, body) {
+    return this.put(`/homes/${enc(homeId)}/integrations/google_nest/account`, body);
+  },
+  finishNest(homeId, address) {
+    return this.post(`/homes/${enc(homeId)}/integrations/google_nest/finish`, { address });
+  },
+  syncNest(homeId) {
+    return this.post(`/homes/${enc(homeId)}/integrations/google_nest/sync`);
+  },
+  disconnectNest(homeId) {
+    return this.del(`/homes/${enc(homeId)}/integrations/google_nest/account`);
+  },
   getDevicePages(homeId) {
     return this.get(`/homes/${enc(homeId)}/device-pages`);
   },

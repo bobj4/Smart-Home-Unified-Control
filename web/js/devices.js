@@ -176,6 +176,7 @@ class DevicesView {
     if (device.type === 'garage_door') card.append(...garageExtras(this, device, state).filter(Boolean));
     if (device.type === 'thermostat') card.append(...thermostatExtras(this, device, state));
     if (device.type === 'sensor') card.append(this.readings(state));
+    if (device.type === 'camera' && device.integration === 'google_nest') card.append(cameraSeen(state));
     return card;
   }
 

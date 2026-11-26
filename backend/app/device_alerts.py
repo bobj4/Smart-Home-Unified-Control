@@ -8,6 +8,7 @@ bell itself):
                 auto_close_minutes (0: never); obstruction; offline_minutes
   water_heater  problems (a new Rheem alert); offline_minutes
   thermostat    offline_minutes; too_cold / too_hot (°, None: off)
+  camera        (Nest) person, motion, sound, doorbell; offline_minutes
   others        offline (after OFFLINE_MINUTES)
 Minutes of 0 turn that alert off. Devices nobody has set use DEFAULTS:
 garage doors, water heaters and thermostats on, the rest off (a light
@@ -41,8 +42,16 @@ SETTINGS: dict[str, dict[str, tuple[Any, str, int, int]]] = {
         "too_cold": (None, "degrees", -20, 120),
         "too_hot": (None, "degrees", -20, 120),
     },
+    # Nest cameras, doorbells and displays: what they see (app/nest_home.handle).
+    "camera": {
+        "person": (True, "bool", 0, 1),
+        "motion": (False, "bool", 0, 1),
+        "sound": (False, "bool", 0, 1),
+        "doorbell": (True, "bool", 0, 1),
+        "offline_minutes": (OFFLINE_MINUTES, "minutes", 0, 1440),
+    },
 }
-ON_BY_DEFAULT = ("garage_door", "water_heater", "thermostat")
+ON_BY_DEFAULT = ("garage_door", "water_heater", "thermostat", "camera")
 
 
 class DeviceAlertError(Exception):

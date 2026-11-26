@@ -28,6 +28,8 @@ Kind = Literal[
     "camera",
     "smartthings",
     "filter",
+    "doorbell",
+    "nest",
 ]
 
 

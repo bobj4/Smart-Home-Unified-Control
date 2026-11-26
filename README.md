@@ -21,6 +21,9 @@ through the backend's permission checks and device safety limits.
 - **TP-Link Kasa** plugs, power strips, switches, dimmers and bulbs (older
   and newer firmware)
 - **Rheem EcoNet** water heaters (set point, modes, away, schedule, usage)
+- **Google Nest** thermostats, and camera and doorbell alerts (person,
+  motion, sound, doorbell), through Google's Device Access: Google charges a
+  one-time, non-refundable US$5 to register (docs/NEST.md)
 - **Samsung**, **LG** and **Roku** TVs (remote control, apps, inputs; TVs
   can be found on the network automatically). A TV's ⋯ menu names its
   inputs (HDMI 2 = "PlayStation", switched by remote key on the home
@@ -208,7 +211,7 @@ before using other devices.
 | Path | What |
 | --- | --- |
 | `backend/app` | FastAPI server: routes, models, security, device integrations |
-| `backend/app/integrations` | One adapter per vendor (Cync, Hue, Kasa, Rheem, Samsung, LG, Roku, SmartThings, ratgdo, Frigate) |
+| `backend/app/integrations` | One adapter per vendor (Cync, Hue, Kasa, Rheem, Samsung, LG, Roku, SmartThings, ratgdo, Frigate, Google Nest) |
 | `backend/alembic` | Database migrations |
 | `backend/tests` | Unit, contract and browser (Playwright) tests |
 | `backend/scripts` | Server start, backups, secrets key, account recovery |
